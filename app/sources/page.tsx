@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import PcHeader from "@/components/PcHeader";
+import MaintainPanel from "@/components/MaintainPanel";
 import { api, usePoll, fmtDateTime, ago, useNow } from "@/components/lib";
 
 type State = { key: string; label: string; ready: boolean; last_ok_at: string | null; last_try_at: string | null; last_error: string | null; record_count: number | null };
@@ -49,6 +50,8 @@ export default function SourcesPage() {
             );
           })}
         </div>
+
+        <MaintainPanel />
 
         <div className="g2">
           <section className="card stack" style={{ padding: 18 }}>

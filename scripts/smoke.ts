@@ -160,6 +160,15 @@ await j(`/api/incidents/${drill2}`, { method: "POST", json: { action: "close" },
 const src = await j("/api/sources");
 ok(src.outsource.present === 1 && src.outsource.staff === 1, "หน้าแหล่งข้อมูลเห็น Outsource ในพื้นที่ 1 คน");
 
+// ---------- Maintain ----------
+ok(await fails(j("/api/maintain", { tok: "bad" })), "Maintain: ต้องใช้รหัส Admin");
+const mt = await j("/api/maintain", { method: "POST" });
+ok(Array.isArray(mt.steps) && mt.steps.some((x: any) => x.key === "driver") && typeof mt.pull_ms === "number", "Maintain: ดึงทุกแหล่ง จับเวลารายแหล่ง");
+const osIn = mt.report.people.find((p: any) => p.source === "outsource" && p.key === "OS900");
+const osOut = mt.report.people.find((p: any) => p.source === "outsource" && p.key === "OS901");
+ok(osIn?.verdict === "in" && osOut?.verdict === "out", "Maintain: ตรวจ Outsource อยู่/ไม่อยู่ถูกต้อง");
+ok(mt.report.summary.outsource.in === 1, "Maintain: สรุปจำนวนรายแหล่ง");
+
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);
   ok(r.status === 200, `หน้า ${p} เปิดได้`);
