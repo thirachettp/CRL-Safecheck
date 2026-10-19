@@ -87,3 +87,9 @@ test("อ่าน Excel ของฟอร์ม", () => {
   assert.equal(rows[0].gender, "หญิง");
   assert.equal(rows[0].response_id, "1");
 });
+
+test("เพศจากตัวเลือก MS Form (Man / Female)", async () => {
+  const { normalizeGender } = await import("../lib/parsers.ts");
+  assert.equal(normalizeGender("Man"), "ชาย");
+  assert.equal(normalizeGender("Female"), "หญิง");
+});

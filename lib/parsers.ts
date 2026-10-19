@@ -49,8 +49,8 @@ const toInt = (v: unknown): number | null => {
 export function normalizeGender(v: unknown): string | null {
   const s = cell(v).toLowerCase();
   if (!s) return null;
-  if (["ชาย", "male", "m", "ช"].includes(s)) return "ชาย";
-  if (["หญิง", "female", "f", "ญ"].includes(s)) return "หญิง";
+  if (["ชาย", "male", "m", "man", "men", "ช", "นาย"].includes(s)) return "ชาย";
+  if (["หญิง", "female", "f", "woman", "women", "ญ"].includes(s)) return "หญิง";
   return "อื่นๆ";
 }
 
