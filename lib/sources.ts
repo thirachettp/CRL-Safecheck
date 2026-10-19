@@ -2,7 +2,7 @@ import { q, one } from "./db";
 import { fetchListDelta, graphConfigured } from "./graph";
 import { normalizeGender, type FormCheckin } from "./parsers";
 import { fetchKiosk, kioskConfigured } from "./kiosk";
-import { detectFields, toVehicles, shouldHold, type KioskFields } from "./kioskMap";
+import { detectFields, toVehicles, shouldHold, prepareRows, type KioskFields } from "./kioskMap";
 import { setSetting } from "./settings";
 
 export const SOURCES = [
@@ -119,7 +119,7 @@ function kioskOverride(): Partial<KioskFields> {
 export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: boolean; held?: boolean; count?: number; message: string }> {
   if (!kioskConfigured()) return { ok: false, message: "ยังไม่ได้ตั้งค่า KIOS_BASE_URL / KIOS_API_KEY" };
   try {
-    const rows = await fetchKiosk();
+    const rows = prepareRows(await fetchKiosk());
     await q(`INSERT INTO ingest_raw (source, batch_id, payload) VALUES ('driver', $1, $2) ON CONFLICT DO NOTHING`, [
       `kios-${Date.now()}`,
       JSON.stringify(rows),

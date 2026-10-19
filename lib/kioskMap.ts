@@ -3,11 +3,14 @@
 
 export type KioskFields = {
   plate: string | null;
+  plate_alt: string | null;   // ทะเบียนสำรอง (เช่น dpark_car_plate) ใช้เมื่อช่องหลักว่าง
+  row_id: string | null;      // รหัสรายการ ใช้เป็น key เมื่อไม่มีทะเบียน (ห้ามตัดคนทิ้ง)
   province: string | null;
   driver_name: string | null;
   phone: string | null;
   company: string | null;
   checkin_at: string | null;
+  checkin_alt: string | null;
   zone: string | null;
 };
 
@@ -23,14 +26,32 @@ export type Vehicle = {
 
 // คำที่ใช้เดาชื่อคอลัมน์ เรียงจากเฉพาะเจาะจงที่สุด
 const GUESS: Record<keyof KioskFields, RegExp[]> = {
-  plate: [/license.?plate/i, /plate.?no/i, /car.?license/i, /truck.?(no|license)/i, /vehicle.?(no|plate|license)/i, /^plate$/i, /plate/i, /ทะเบียน/, /license(?!.*(type|date|exp))/i],
+  plate: [/visitor.?vehicle.?plate/i, /license.?plate/i, /plate.?no/i, /car.?license/i, /truck.?(no|license)/i, /vehicle.?(no|plate|license)/i, /^plate$/i, /plate/i, /ทะเบียน/, /license(?!.*(type|date|exp))/i],
+  plate_alt: [/dpark.?car.?plate/i, /car.?plate/i],
+  row_id: [/visitor.?transaction.?id/i, /transaction.?id/i, /ticket.?number/i, /^id$/i],
   province: [/province/i, /จังหวัด/],
-  driver_name: [/driver.?name/i, /^driver$/i, /ชื่อคนขับ|คนขับ/, /full.?name/i, /^name$/i, /driver/i],
+  driver_name: [/visitor.?name/i, /driver.?name/i, /^driver$/i, /ชื่อคนขับ|คนขับ/, /full.?name/i, /(^|_)name$/i, /driver/i],
   phone: [/phone|mobile|tel/i, /เบอร์/],
   company: [/company|vendor|carrier|transport|supplier/i, /บริษัท|ขนส่ง/],
-  checkin_at: [/check.?in.*(time|date|at)?/i, /time.?in|in.?time|entry|arriv/i, /gate.?in/i, /เวลาเข้า/, /created.?at/i, /^date$|datetime|timestamp/i],
-  zone: [/dock|zone|parking|lane|slot|bay/i, /ช่องจอด|โซน/],
+  checkin_at: [/visitor.?check.?in/i, /check.?in.*(time|date|at)?/i, /time.?in|in.?time|entry|arriv/i, /gate.?in/i, /เวลาเข้า/, /created.?at/i, /^date$|datetime|timestamp/i],
+  checkin_alt: [/dpark.?check.?in/i, /check.?in/i, /create.?date/i],
+  zone: [/^places$/i, /dock|zone|parking(?!.?time)|lane|slot|bay/i, /ช่องจอด|โซน/],
 };
+
+// ข้อมูลส่วนบุคคลที่ระบบนับคนไม่ต้องใช้ ตัดทิ้งก่อนเก็บลงฐานข้อมูล (PDPA)
+const SENSITIVE = /citizen|passport|address|image|photo/i;
+
+/** เตรียมแถวจาก KIOS: ตัดข้อมูลอ่อนไหว และรวมสถานที่ (visitor_places) เป็นข้อความ */
+export function prepareRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.map((r) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) if (!SENSITIVE.test(k)) out[k] = v;
+    if (Array.isArray(r.visitor_places)) {
+      out.places = (r.visitor_places as any[]).map((p) => p?.PlaceName ?? p?.placeName ?? "").filter(Boolean).join("; ") || null;
+    }
+    return out;
+  });
+}
 
 const isScalar = (v: unknown) => v === null || ["string", "number", "boolean"].includes(typeof v);
 
@@ -82,21 +103,26 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields): { v
   const map = new Map<string, Vehicle>();
   let skipped = 0;
   for (const r of rows) {
-    const rawPlate = f.plate ? str(r[f.plate]) : null;
-    const plate = normalizePlate(rawPlate);
+    const rawPlate = (f.plate ? str(r[f.plate]) : null) ?? (f.plate_alt ? str(r[f.plate_alt]) : null);
+    let plate = normalizePlate(rawPlate);
     if (!plate) {
-      skipped++;
-      continue;
+      // ไม่มีทะเบียน: ยังต้องนับคน ใช้รหัสรายการแทน
+      const rid = f.row_id ? str(r[f.row_id]) : null;
+      if (!rid) {
+        skipped++;
+        continue;
+      }
+      plate = `ID-${rid}`;
     }
     const prov = f.province ? str(r[f.province]) : null;
     const v: Vehicle = {
       plate: prov ? plate + normalizePlate(prov) : plate,
-      plate_display: [rawPlate, prov].filter(Boolean).join(" "),
+      plate_display: rawPlate ? [rawPlate, prov].filter(Boolean).join(" ") : `ไม่มีทะเบียน (${plate.slice(3)})`,
       driver_name: f.driver_name ? str(r[f.driver_name]) : null,
       phone: f.phone ? str(r[f.phone]) : null,
       company: f.company ? str(r[f.company]) : null,
       zone: f.zone ? str(r[f.zone]) : null,
-      checkin_at: f.checkin_at ? toIso(r[f.checkin_at]) : null,
+      checkin_at: (f.checkin_at ? toIso(r[f.checkin_at]) : null) ?? (f.checkin_alt ? toIso(r[f.checkin_alt]) : null),
     };
     const prev = map.get(v.plate);
     if (!prev || (v.checkin_at ?? "") > (prev.checkin_at ?? "")) {
