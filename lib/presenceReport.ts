@@ -13,6 +13,22 @@ export type PersonCheck = {
   reason: string;
   flags: string[]; // สิ่งผิดปกติที่ควรตรวจ
   events: number;
+  // ฟิลด์มาตรฐานเดียวกันทุกแหล่ง (เติมเพิ่มใน maintain.ts จากชุดธง / รายชื่อ / โปรไฟล์)
+  in_at: string | null;   // เข้าล่าสุด
+  out_at: string | null;  // ออกล่าสุด (หรือเวลาที่ถือว่าออก)
+  emp_id?: string | null;
+  email?: string | null;
+  plate?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  cost_center?: string | null;
+  cc_name?: string | null;
+  area?: string | null;
+  flag_no?: number | null;
+  assembly_point?: string | null;
+  in_plan?: boolean;
+  status_text?: string | null;
 };
 
 const H = 3600e3;
@@ -27,7 +43,7 @@ export function bkk(d: Date | string, now = new Date()) {
 const hrs = (ms: number) => (ms / H).toFixed(1).replace(/\.0$/, "");
 
 /** MS Form: ไม่มีคำถามเข้า/ออก ใช้กฎอนุมาน */
-export function checkDiv(email: string, name: string | null, events: { at: Date; site: string | null }[], now: Date): PersonCheck {
+export function checkDiv(email: string, name: string | null, events: { at: Date; site: string | null }[], now: Date, gender: string | null = null): PersonCheck {
   const sorted = [...events].sort((a, b) => a.at.getTime() - b.at.getTime());
   const flags: string[] = [];
   let dupes = 0;
@@ -42,14 +58,17 @@ export function checkDiv(email: string, name: string | null, events: { at: Date;
   if (sorted.some((e) => e.at.getTime() > now.getTime() + 5 * 60e3)) flags.push("มีเวลาส่งในอนาคต");
   if (!name) flags.push("ไม่มีชื่อ");
   const p = computePresence(sorted, now);
-  const base = { source: "div" as const, key: email, name: name || email, events: sorted.length, flags };
+  const base = { source: "div" as const, key: email, email, gender, name: name || email, events: sorted.length, flags,
+    in_at: null as string | null, out_at: null as string | null };
   if (p.state === "in") {
     const left = AUTO_OUT_MS - (now.getTime() - p.since.getTime());
-    return { ...base, verdict: "in", site: p.site, since: p.since.toISOString(),
+    return { ...base, verdict: "in", site: p.site, since: p.since.toISOString(), in_at: p.since.toISOString(),
       reason: `เข้า ${bkk(p.since, now)}${p.site ? ` ที่ ${p.site}` : ""}${moves ? " (ย้ายไซต์มา)" : ""} ยังไม่มีขาที่สอง · อีก ${hrs(left)} ชม. จะถือว่าออกอัตโนมัติ` };
   }
   if (p.state === "out") {
-    return { ...base, verdict: "out", site: p.site, since: null,
+    const lastIn = [...sorted].reverse().find((e) => e.at.getTime() <= p.at.getTime() - (p.reason === "auto" ? 0 : DEDUPE_MS));
+    return { ...base, verdict: "out", site: p.site, since: null, out_at: p.at.toISOString(),
+      in_at: p.reason === "auto" ? new Date(p.at.getTime() - AUTO_OUT_MS).toISOString() : lastIn?.at.toISOString() ?? null,
       reason: p.reason === "auto"
         ? `เข้าแล้วไม่ส่งขาออก ครบ 14 ชม. ถือว่าออกอัตโนมัติ ${bkk(p.at, now)}`
         : `ส่งครั้งที่สอง ${bkk(p.at, now)}${p.site ? ` ที่ ${p.site}` : ""} = ออก` };
@@ -63,10 +82,12 @@ type OsRow = { emp_id: string; clock_in: string | null; clock_out: string | null
 export function checkOutsource(emp: string, name: string | null, rows: OsRow[], now: Date): PersonCheck {
   const flags: string[] = [];
   const withIn = rows.filter((r) => r.clock_in).sort((a, b) => +new Date(b.clock_in!) - +new Date(a.clock_in!));
-  const base = { source: "outsource" as const, key: emp, name: name || `Outsource ${emp}`, events: rows.length, flags };
+  const base = { source: "outsource" as const, key: emp, emp_id: emp, name: name || `Outsource ${emp}`, events: rows.length, flags,
+    in_at: null as string | null, out_at: null as string | null, status_text: null as string | null };
   if (!name) flags.push("ไม่พบชื่อใน DC_FTE");
   if (rows.length > withIn.length) flags.push(`มี ${rows.length - withIn.length} แถวที่ไม่มี Clock in`);
   const r = withIn[0];
+  if (r) { base.in_at = new Date(r.clock_in!).toISOString(); base.out_at = r.clock_out ? new Date(r.clock_out).toISOString() : null; base.status_text = r.status; }
   if (!r) return { ...base, verdict: "unknown", site: null, since: null, reason: "ไม่มี Clock in ใน 48 ชม." };
   const tin = new Date(r.clock_in!).getTime();
   const tout = r.clock_out ? new Date(r.clock_out).getTime() : null;
@@ -87,7 +108,7 @@ export function checkOutsource(emp: string, name: string | null, rows: OsRow[], 
 }
 
 /** KIOS: API ให้เฉพาะรถที่ยังอยู่ในลาน (status 2) */
-export function checkDriver(v: { plate: string; plate_display: string | null; driver_name: string | null; zone: string | null; checkin_at: string | null }, now: Date): PersonCheck {
+export function checkDriver(v: { plate: string; plate_display: string | null; driver_name: string | null; zone: string | null; checkin_at: string | null; phone?: string | null; company?: string | null }, now: Date): PersonCheck {
   const flags: string[] = [];
   if (!v.driver_name) flags.push("ไม่มีชื่อคนขับ");
   if (/^ID-|https?:/i.test(v.plate)) flags.push("ไม่มีทะเบียนรถที่ใช้ได้");
@@ -95,7 +116,9 @@ export function checkDriver(v: { plate: string; plate_display: string | null; dr
   if (age !== null && age > 24 * H) flags.push(`ค้างในลาน ${hrs(age)} ชม. (ลืม check-out?)`);
   if (age === null) flags.push("ไม่มีเวลาเข้าลาน");
   return {
-    source: "driver", key: v.plate, name: v.driver_name || `คนขับรถ ${v.plate_display ?? v.plate}`, events: 1, flags,
+    source: "driver", key: v.plate, plate: v.plate_display ?? v.plate, phone: v.phone ?? null, company: v.company ?? null,
+    in_at: v.checkin_at, out_at: null, cost_center: "DRIVER", cc_name: "คนขับ (KIOS)",
+    name: v.driver_name || `คนขับรถ ${v.plate_display ?? v.plate}`, events: 1, flags,
     verdict: "in", site: v.zone, since: v.checkin_at,
     reason: `KIOS ยังเป็น check-in${v.checkin_at ? ` เข้าลาน ${bkk(v.checkin_at, now)}` : ""}${v.zone ? ` · ${v.zone}` : ""}`,
   };

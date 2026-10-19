@@ -4,7 +4,13 @@ import { api, fmtDateTime } from "./lib";
 import { useAdmin } from "./identity";
 
 type Step = { key: string; label: string; mode: "pull" | "push" | "off"; ok: boolean; ms: number | null; received: number | null; message: string };
-type Person = { source: "div" | "outsource" | "driver"; key: string; name: string; verdict: "in" | "out" | "unknown"; site: string | null; since: string | null; reason: string; flags: string[]; events: number };
+type Person = {
+  source: "div" | "outsource" | "driver"; key: string; name: string; verdict: "in" | "out" | "unknown"; site: string | null; since: string | null;
+  reason: string; flags: string[]; events: number; in_at: string | null; out_at: string | null;
+  emp_id?: string | null; email?: string | null; plate?: string | null; gender?: string | null; phone?: string | null; company?: string | null;
+  cost_center?: string | null; cc_name?: string | null; area?: string | null; flag_no?: number | null; assembly_point?: string | null;
+  in_plan?: boolean; status_text?: string | null;
+};
 type Count = { in: number; out: number; unknown: number; flagged: number };
 type Report = {
   at: string; window_h: number; ms: number; rows: Record<string, number>;
@@ -15,6 +21,45 @@ type Res = { steps: Step[] | null; pull_ms?: number; total_ms?: number; report: 
 
 const SRC: Record<string, string> = { div: "DIV+ (MS Form)", outsource: "Outsource", driver: "Driver (KIOS)" };
 const V: Record<string, [string, string]> = { in: ["ok", "อยู่"], out: ["grey", "ไม่อยู่"], unknown: ["warn", "ไม่แน่ใจ"] };
+const d = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
+
+/** คอลัมน์มาตรฐาน ใช้ทั้งตารางและไฟล์ CSV */
+const COLS: [string, (p: Person) => string][] = [
+  ["ผล", (p) => V[p.verdict][1]],
+  ["แหล่ง", (p) => SRC[p.source]],
+  ["รหัสพนักงาน", (p) => d(p.emp_id)],
+  ["ชื่อ", (p) => p.name],
+  ["เพศ", (p) => d(p.gender)],
+  ["Cost Center", (p) => d(p.cost_center)],
+  ["ชื่อ Cost Center", (p) => d(p.cc_name)],
+  ["แผนก/พื้นที่", (p) => d(p.area)],
+  ["ธง", (p) => d(p.flag_no)],
+  ["จุดรวมพล", (p) => d(p.assembly_point)],
+  ["ในชุดธง", (p) => (p.source === "driver" ? "—" : p.in_plan ? "ใช่" : "ไม่")],
+  ["ไซต์/โซน", (p) => d(p.site)],
+  ["เข้า", (p) => (p.in_at ? fmtDateTime(p.in_at) : "—")],
+  ["ออก", (p) => (p.out_at ? fmtDateTime(p.out_at) : "—")],
+  ["สถานะในระบบต้นทาง", (p) => d(p.status_text)],
+  ["อีเมล", (p) => d(p.email)],
+  ["เบอร์โทร", (p) => d(p.phone)],
+  ["บริษัท", (p) => d(p.company)],
+  ["ทะเบียนรถ", (p) => d(p.plate)],
+  ["จำนวนรายการ", (p) => String(p.events)],
+  ["เหตุผล", (p) => p.reason],
+  ["ควรตรวจ", (p) => p.flags.join(" · ")],
+];
+
+function downloadCsv(list: Person[]) {
+  const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const rows = [COLS.map((c) => c[0]), ...list.map((p) => COLS.map((c) => c[1](p)))];
+  const blob = new Blob(["\uFEFF" + rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `safecheck-maintain-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 const sec = (ms: number | null | undefined) => (ms == null ? "—" : `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)} วิ`);
 
 /** ปุ่ม Maintain: ดึงทุกแหล่งย้อนหลัง 48 ชม. จับเวลา และตรวจคร่าวๆ ว่าใครอยู่/ไม่อยู่ */
@@ -115,19 +160,21 @@ export default function MaintainPanel() {
             <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={onlyFlag} onChange={(e) => setOnlyFlag(e.target.checked)} /> เฉพาะที่ผิดปกติ</label>
             <input className="in grow" style={{ minWidth: 160 }} placeholder="ค้นชื่อ / รหัส / อีเมล / ทะเบียน" value={term} onChange={(e) => setTerm(e.target.value)} />
             <span className="muted xs">{list.length} คน</span>
+            <button className="btn btn-sm" onClick={() => downloadCsv(list)} disabled={!list.length}>ดาวน์โหลด CSV</button>
           </div>
           <div className="scroll-x" style={{ maxHeight: 520, overflowY: "auto" }}><table className="tbl">
-            <thead><tr><th>ผล</th><th>แหล่ง</th><th>ชื่อ</th><th>ไซต์</th><th>เหตุผล</th><th>ควรตรวจ</th></tr></thead>
+            <thead><tr>{COLS.map(([h]) => <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>
-              {!list.length && <tr><td colSpan={6} className="muted">ไม่มีรายการ</td></tr>}
+              {!list.length && <tr><td colSpan={COLS.length} className="muted">ไม่มีรายการ</td></tr>}
               {list.slice(0, 500).map((p) => (
                 <tr key={`${p.source}:${p.key}`}>
-                  <td><span className={`chip sm ${V[p.verdict][0]}`}>{V[p.verdict][1]}</span></td>
-                  <td className="small">{SRC[p.source]}</td>
-                  <td><b>{p.name}</b><div className="muted xs mono">{p.key}{p.events > 1 ? ` · ${p.events} รายการ` : ""}</div></td>
-                  <td>{p.site ?? "—"}</td>
-                  <td className="small">{p.reason}</td>
-                  <td className="small" style={{ color: "#9a3412" }}>{p.flags.join(" · ")}</td>
+                  {COLS.map(([h, f]) => (
+                    <td key={h} className={h === "เหตุผล" || h === "ควรตรวจ" ? "small" : h === "ชื่อ" ? "" : "small"}
+                      style={{ whiteSpace: h === "เหตุผล" || h === "ควรตรวจ" ? "normal" : "nowrap", minWidth: h === "เหตุผล" ? 260 : h === "ควรตรวจ" ? 200 : undefined,
+                        color: h === "ควรตรวจ" ? "#9a3412" : undefined }}>
+                      {h === "ผล" ? <span className={`chip sm ${V[p.verdict][0]}`}>{f(p)}</span> : h === "ชื่อ" ? <b>{f(p)}</b> : f(p)}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
