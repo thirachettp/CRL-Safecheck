@@ -4,21 +4,19 @@ import { addManualPerson, setStatus } from "@/lib/incident";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
-/** เพิ่มคนที่ไม่อยู่ในรายชื่อ */
+/** เพิ่มคนนอกรายชื่อระหว่างเหตุ */
 export const POST = handle(async (req: Request, { params }: Ctx) => {
   const id = Number((await params).id);
   const b = await req.json();
   if (!String(b.name ?? "").trim()) return fail("กรอกชื่อก่อน");
-  const key = await addManualPerson(id, {
-    name: b.name, gender: b.gender, flag_no: b.flag_no === "" || b.flag_no == null ? null : Number(b.flag_no), note: b.note, by: b.by,
-  });
-  return ok({ person_key: key });
+  const flag = b.flag_no === "" || b.flag_no == null ? null : Number(b.flag_no);
+  return ok({ person_key: await addManualPerson(id, { name: b.name, gender: b.gender, flag_no: flag, note: b.note, by: b.by }) });
 });
 
-/** เปลี่ยนสถานะคน */
+/** ระบุสถานะรายคน (ไม่ต้อง login) */
 export const PATCH = handle(async (req: Request, { params }: Ctx) => {
   const id = Number((await params).id);
   const b = await req.json();
-  await setStatus(id, String(b.person_key), b.status, String(b.by ?? ""));
+  await setStatus(id, String(b.person_key), b.status, String(b.by ?? "").trim() || "ไม่ระบุชื่อ", b.note ?? null);
   return ok({ ok: true });
 });

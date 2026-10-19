@@ -115,4 +115,119 @@ export const SCHEMA: string[] = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS plate text`,
+
+  // ---------- v2: ตาม mockup SafeCheck v1 ----------
+  // แผนอพยพ: เก็บค่าจาก Excel ไว้เทียบความแม่นยำ + ร่องรอยการแก้จากหน้าตรวจทาน
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS tel text`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS orig_flag int`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS added_manually boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS edited_note text`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS edited_by text`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS edited_at timestamptz`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS removed boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS removed_reason text`,
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS removed_by text`,
+  `CREATE TABLE IF NOT EXISTS assembly_points (
+    code      text PRIMARY KEY,
+    name      text NOT NULL,
+    backup    text,
+    sort      int NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS flag_reviews (
+    flag_no     int PRIMARY KEY,
+    reviewed_by text,
+    reviewed_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  // มา / ไม่มา วันนี้ (ตั้งจากหน้าตรวจทาน) ใช้ตอน snapshot
+  `CREATE TABLE IF NOT EXISTS attendance (
+    person_key text NOT NULL,
+    day        date NOT NULL,
+    here       boolean NOT NULL,
+    by_name    text,
+    at         timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (person_key, day)
+  )`,
+  `CREATE TABLE IF NOT EXISTS plan_versions (
+    id         serial PRIMARY KEY,
+    note       text,
+    created_by text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    people     int NOT NULL,
+    data       jsonb NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS confirmers (
+    id        serial PRIMARY KEY,
+    name      text NOT NULL,
+    role      text NOT NULL CHECK (role IN ('admin','safety')),
+    pin_hash  text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS announce_codes (
+    id      serial PRIMARY KEY,
+    label   text NOT NULL,
+    meaning text,
+    tone    text NOT NULL DEFAULT 'warn',
+    closes  boolean NOT NULL DEFAULT false,
+    sort    int NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS profiles (
+    code       text PRIMARY KEY,
+    name       text,
+    gender     text,
+    tel        text,
+    emer_name  text,
+    emer_tel   text,
+    blood      text,
+    consent_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  // เหตุการณ์: แจ้ง → รอยืนยัน → เริ่ม → ปิด
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS state text NOT NULL DEFAULT 'active'`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS kind text`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS area text`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reported_by text`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS confirmed_by text`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS confirmed_at timestamptz`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS closed_points text[]`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS plan_version int`,
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS closed_by text`,
+  `UPDATE incidents SET state = 'closed' WHERE state = 'active' AND closed_at IS NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS incident_announcements (
+    id          bigserial PRIMARY KEY,
+    incident_id bigint NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    code_id     int,
+    label       text NOT NULL,
+    tone        text,
+    meaning     text,
+    by_name     text,
+    at          timestamptz NOT NULL DEFAULT now()
+  )`,
+  // สถานะคนตาม Flow: unk ยังไม่ทราบ, in ยังอยู่ในคลัง, safe, inj บาดเจ็บ, cmd กองอำนวยการกลาง,
+  // abs ปลอดภัยตามระบบ (ไม่มา รอยืนยัน), gone ยืนยันไม่อยู่
+  `DO $$ BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'incident_people_status_check'
+                    AND pg_get_constraintdef(oid) LIKE '%unk%') THEN
+       ALTER TABLE incident_people DROP CONSTRAINT IF EXISTS incident_people_status_check;
+       UPDATE incident_people SET status = CASE status WHEN 'pending' THEN 'unk' WHEN 'injured' THEN 'inj'
+         WHEN 'trapped' THEN 'in' WHEN 'absent' THEN 'gone' ELSE status END;
+       ALTER TABLE incident_people ALTER COLUMN status SET DEFAULT 'unk';
+       ALTER TABLE incident_people ADD CONSTRAINT incident_people_status_check
+         CHECK (status IN ('unk','in','safe','inj','cmd','abs','gone'));
+     END IF;
+   END $$`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS here boolean NOT NULL DEFAULT true`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS cost_center text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS cc_name text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS tel text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS source text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS status_note text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS triage text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS symptoms text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS hospital text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS triage_by text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS done_at timestamptz`,
+  `INSERT INTO announce_codes (label, meaning, tone, closes, sort)
+   SELECT * FROM (VALUES ('Code 500', NULL::text, 'warn', false, 1), ('Code 500 ด่วนมาก', NULL::text, 'err', false, 2),
+                         ('คุณสบายใจ', 'ใช้ปิดเหตุการณ์', 'grey', true, 3)) v
+   WHERE NOT EXISTS (SELECT 1 FROM announce_codes)`,
 ];

@@ -1,10 +1,19 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** แนบ token ของ Admin / Safety ที่ใส่รหัสไว้ในแท็บนี้ */
+function adminHeader(): Record<string, string> {
+  try {
+    const a = JSON.parse(sessionStorage.getItem("sc_admin") ?? "null");
+    if (a?.token && a.exp > Date.now()) return { "x-admin-token": a.token };
+  } catch {}
+  return {};
+}
+
 export async function api<T = any>(url: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...adminHeader(), ...(init?.headers ?? {}) },
     body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body,
     cache: "no-store",
   });
@@ -67,20 +76,27 @@ export function duration(fromIso: string, toIso?: string | null) {
   return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
-export const STATUS_LABEL: Record<string, string> = {
-  pending: "ยังไม่ถูกนับ",
-  safe: "ปลอดภัย",
-  injured: "บาดเจ็บ",
-  trapped: "ติดอยู่ข้างใน",
-  absent: "ไม่อยู่ในพื้นที่",
+export const LBL: Record<string, string> = {
+  cmd: "กองอำนวยการกลาง", safe: "ปลอดภัย", in: "ยังอยู่ในคลัง", inj: "บาดเจ็บ",
+  unk: "ยังไม่ทราบ", abs: "ปลอดภัยตามระบบ", gone: "ยืนยันไม่อยู่",
 };
-export const STATUS_PILL: Record<string, string> = {
-  pending: "pill-warn",
-  safe: "pill-safe",
-  injured: "pill-fire",
-  trapped: "pill-fire",
-  absent: "pill-slate",
-};
+export const ORDER: Record<string, number> = { unk: 0, in: 1, inj: 2, safe: 3, cmd: 3, abs: 4, gone: 5 };
+export const EVAC = ["safe", "inj", "cmd"];
+export const MISSING = ["unk", "in"];
+export const inPool = (s: string) => s !== "abs" && s !== "gone";
+export const KINDS = [
+  { id: "ไฟไหม้", label: "ไฟไหม้" }, { id: "สารเคมีรั่ว", label: "สารเคมีรั่ว" },
+  { id: "แผ่นดินไหว", label: "แผ่นดินไหว" }, { id: "อื่นๆ", label: "อื่นๆ" },
+];
+export const TRI = [
+  { id: "green", label: "เขียว", dot: "#16A34A", bg: "#DCFCE7", fg: "#14532D", name: "เจ็บเล็กน้อย" },
+  { id: "yellow", label: "เหลือง", dot: "#CA8A04", bg: "#FEF9C3", fg: "#713F12", name: "เจ็บปานกลาง" },
+  { id: "red", label: "แดง", dot: "#DC2626", bg: "#FEE2E2", fg: "#7F1D1D", name: "เจ็บรุนแรง" },
+  { id: "black", label: "ดำ", dot: "#17191C", bg: "#E5E7EB", fg: "#111827", name: "วิกฤต" },
+];
+export const fmtClock = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleTimeString("th-TH", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
+export const initials = (name: string) => name.trim().slice(0, 2);
 
 export function useNow(ms = 1000) {
   const [now, setNow] = useState(() => Date.now());
@@ -89,4 +105,17 @@ export function useNow(ms = 1000) {
     return () => clearInterval(t);
   }, [ms]);
   return now;
+}
+
+/** [1,2,3,5,7,8] → "1–3, 5, 7–8" */
+export function rangeText(ns: number[]) {
+  const s = [...ns].sort((a, b) => a - b);
+  const out: string[] = [];
+  for (let i = 0; i < s.length; i++) {
+    let j = i;
+    while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++;
+    out.push(i === j ? `${s[i]}` : `${s[i]}–${s[j]}`);
+    i = j;
+  }
+  return out.join(", ");
 }

@@ -9,8 +9,8 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     try {
       return await fn(...args);
     } catch (e: any) {
-      console.error(e);
-      return fail(e?.message ?? "เกิดข้อผิดพลาด", 500);
+      if (!e?.status) console.error(e);
+      return fail(e?.message ?? "เกิดข้อผิดพลาด", e?.status ?? 500);
     }
   };
 }

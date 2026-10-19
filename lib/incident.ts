@@ -1,72 +1,87 @@
+import { UserError } from "./errors";
 import { q, one } from "./db";
 import { computePresence } from "./presence";
 import { getSetting } from "./settings";
+import type { Actor } from "./auth";
 
-export type Status = "pending" | "safe" | "injured" | "trapped" | "absent";
-export const STATUSES: Status[] = ["pending", "safe", "injured", "trapped", "absent"];
+// สถานะคนตาม Flow ใน mockup
+export type Status = "unk" | "in" | "safe" | "inj" | "cmd" | "abs" | "gone";
+export const STATUSES: Status[] = ["unk", "in", "safe", "inj", "cmd", "abs", "gone"];
+export const EVACUATED: Status[] = ["safe", "inj", "cmd"]; // อพยพแล้ว
+export const MISSING: Status[] = ["unk", "in"]; // ผู้สูญหาย
+export const TRIAGE = ["green", "yellow", "red", "black"] as const;
 
 export type Incident = {
   id: number;
   mode: "real" | "drill";
+  state: "pending" | "active" | "closed" | "cancelled";
   title: string | null;
+  kind: string | null;
+  area: string | null;
+  reported_by: string | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  closed_points: string[] | null;
+  plan_version: number | null;
   div_sites: string[] | null;
   include_plan: boolean;
   opened_at: string;
   closed_at: string | null;
+  closed_by: string | null;
   first_full_at: string | null;
 };
 
-export type Person = {
-  person_key: string;
-  emp_id: string | null;
-  email: string | null;
-  name: string;
-  gender: string | null;
-  area: string | null;
-  flag_no: number | null;
-  assembly_point: string | null;
-  is_leader: boolean;
-  presence: "plan" | "div" | "kiosk" | "manual";
-  plate: string | null;
-  presence_site: string | null;
-  presence_since: string | null;
-  still_in_source: boolean;
-  status: Status;
-  status_by: string | null;
-  status_at: string | null;
-  added_by: string;
-  added_at: string;
+const iso = (v: any) => (v ? new Date(v).toISOString() : null);
+
+function rowToIncident(r: any): Incident {
+  return {
+    ...r,
+    id: Number(r.id),
+    opened_at: iso(r.opened_at)!,
+    closed_at: iso(r.closed_at),
+    confirmed_at: iso(r.confirmed_at),
+    first_full_at: iso(r.first_full_at),
+  };
+}
+
+/** วันที่ตามเวลาไทย ใช้กับ มา/ไม่มา วันนี้ */
+export const bangkokDay = (d = new Date()) => new Date(d.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
+
+type Candidate = {
+  person_key: string; emp_id: string | null; email: string | null; plate: string | null;
+  name: string; gender: string | null; area: string | null; cost_center: string | null; cc_name: string | null;
+  tel: string | null; flag_no: number | null; assembly_point: string | null; is_leader: boolean;
+  presence: string; presence_site: string | null; presence_since: string | null; here: boolean; source: string;
 };
 
-type Candidate = Omit<Person, "status" | "status_by" | "status_at" | "added_by" | "added_at" | "still_in_source">;
-
-/** สร้างรายชื่อผู้ที่ควรอยู่ในเคส จากแผนอพยพ + ใครอยู่ในพื้นที่ตอนนี้ */
+/** รายชื่อที่ควรอยู่ในเหตุการณ์: แผนอพยพ (หักคนที่ลบ) + คนที่อยู่ในพื้นที่จากแต่ละแหล่ง */
 async function buildCandidates(inc: Incident, now = new Date()): Promise<Candidate[]> {
-  const [plan, links, checkins, vehicles, driverFlag, leaders] = await Promise.all([
-    q<any>(`SELECT * FROM evac_plan`),
+  const [plan, links, checkins, vehicles, driverFlag, att, ccNames, profiles] = await Promise.all([
+    q<any>(`SELECT * FROM evac_plan WHERE NOT removed`),
     q<any>(`SELECT lower(email) AS email, emp_id FROM person_links`),
     q<any>(
-      `SELECT lower(email) AS email, full_name, gender, site, submitted_at
-       FROM div_checkins WHERE submitted_at > $1::timestamptz - interval '48 hours'
-       ORDER BY submitted_at`,
+      `SELECT lower(email) AS email, full_name, gender, site, submitted_at FROM div_checkins
+       WHERE submitted_at > $1::timestamptz - interval '48 hours' ORDER BY submitted_at`,
       [now.toISOString()],
     ),
-    q<any>(`SELECT * FROM driver_presence ORDER BY checkin_at NULLS LAST`),
+    q<any>(`SELECT * FROM driver_presence`),
     getSetting<number | null>("driver_flag", null),
-    q<any>(`SELECT flag_no, assembly_point FROM flag_leaders`),
+    q<any>(`SELECT person_key, here FROM attendance WHERE day = $1`, [bangkokDay(now)]),
+    q<any>(`SELECT cost_center, mode() WITHIN GROUP (ORDER BY area) AS name FROM evac_plan
+            WHERE cost_center IS NOT NULL GROUP BY cost_center`),
+    q<any>(`SELECT code, tel FROM profiles WHERE tel IS NOT NULL`),
   ]);
-
   const linkMap = new Map<string, string>(links.map((l) => [l.email, l.emp_id]));
   const planMap = new Map<string, any>(plan.map((p) => [p.emp_id, p]));
+  const hereMap = new Map<string, boolean>(att.map((a) => [a.person_key, a.here]));
+  const ccMap = new Map<string, string>(ccNames.map((c) => [c.cost_center, c.name]));
+  const telMap = new Map<string, string>(profiles.map((p) => [p.code, p.tel]));
+  const flagPoint = new Map<number, string>();
+  for (const p of plan) if (p.flag_no != null && p.assembly_point && !flagPoint.has(p.flag_no)) flagPoint.set(p.flag_no, p.assembly_point);
   const sites = (inc.div_sites ?? []).map((s) => s.toUpperCase());
 
-  // จัดกลุ่มเช็กอินตามอีเมล แล้วคำนวณสถานะด้วยกฎเข้า/ออก
   const byEmail = new Map<string, any[]>();
-  for (const c of checkins) {
-    const list = byEmail.get(c.email) ?? [];
-    list.push(c);
-    byEmail.set(c.email, list);
-  }
+  for (const c of checkins) byEmail.set(c.email, [...(byEmail.get(c.email) ?? []), c]);
   const present = new Map<string, { site: string | null; since: Date; row: any }>();
   for (const [email, list] of byEmail) {
     const p = computePresence(list.map((c) => ({ at: new Date(c.submitted_at), site: c.site })), now);
@@ -76,22 +91,18 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
   }
 
   const out = new Map<string, Candidate>();
-  const fromPlan = (p: any): Candidate => ({
-    person_key: `emp:${p.emp_id}`,
-    emp_id: p.emp_id,
-    email: null,
-    name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.emp_id,
-    gender: p.gender,
-    area: p.area,
-    flag_no: p.flag_no,
-    assembly_point: p.assembly_point,
-    is_leader: /ผู้นำ/.test(p.role ?? ""),
-    presence: "plan",
-    presence_site: null,
-    presence_since: null,
-    plate: null,
-  });
-
+  const fromPlan = (p: any): Candidate => {
+    const key = `emp:${p.emp_id}`;
+    return {
+      person_key: key, emp_id: p.emp_id, email: null, plate: null,
+      name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.emp_id,
+      gender: p.gender, area: p.area, cost_center: p.cost_center, cc_name: p.cost_center ? ccMap.get(p.cost_center) ?? null : null,
+      tel: p.tel ?? telMap.get(p.emp_id) ?? null, flag_no: p.flag_no,
+      assembly_point: p.assembly_point ?? (p.flag_no != null ? flagPoint.get(p.flag_no) ?? null : null),
+      is_leader: /ผู้นำ/.test(p.role ?? ""), presence: "plan", presence_site: null, presence_since: null,
+      here: hereMap.get(key) ?? true, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
+    };
+  };
   if (inc.include_plan) for (const p of plan) out.set(`emp:${p.emp_id}`, fromPlan(p));
 
   for (const [email, pr] of present) {
@@ -99,73 +110,49 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     const planRow = emp ? planMap.get(emp) : null;
     if (planRow) {
       const c = out.get(`emp:${emp}`) ?? fromPlan(planRow);
-      out.set(c.person_key, {
-        ...c,
-        email,
-        presence: "div",
-        presence_site: pr.site,
-        presence_since: pr.since.toISOString(),
-      });
+      out.set(c.person_key, { ...c, email, presence: "div", presence_site: pr.site, presence_since: pr.since.toISOString(), source: "MS Form" });
     } else {
-      // อยู่ในพื้นที่แต่จับคู่กับแผนอพยพไม่ได้ → ไม่ระบุธง
-      out.set(`div:${email}`, {
-        person_key: `div:${email}`,
-        emp_id: emp ?? null,
-        email,
-        name: pr.row.full_name || email,
-        gender: pr.row.gender,
-        area: null,
-        flag_no: null,
-        assembly_point: null,
-        is_leader: false,
-        presence: "div",
-        presence_site: pr.site,
-        presence_since: pr.since.toISOString(),
-        plate: null,
+      const key = `div:${email}`;
+      out.set(key, {
+        person_key: key, emp_id: emp ?? null, email, plate: null, name: pr.row.full_name || email, gender: pr.row.gender,
+        area: null, cost_center: null, cc_name: null, tel: null, flag_no: null, assembly_point: null, is_leader: false,
+        presence: "div", presence_site: pr.site, presence_since: pr.since.toISOString(), here: hereMap.get(key) ?? true, source: "MS Form",
       });
     }
   }
 
-  // คนขับจาก KIOS: หนึ่งคันหนึ่งคน key = ทะเบียนรถ ไปรวมที่ธงที่ตั้งไว้ (ไม่ตั้ง = ไม่ระบุธง)
-  const dflag = driverFlag ?? null;
-  const dap = dflag === null ? null : leaders.find((l) => l.flag_no === dflag)?.assembly_point ?? null;
+  // คนขับจาก KIOS: หนึ่งคันหนึ่งคน key = ทะเบียนรถ
   for (const v of vehicles) {
-    out.set(`plate:${v.plate}`, {
-      person_key: `plate:${v.plate}`,
-      emp_id: null,
-      email: null,
-      name: v.driver_name ? `${v.driver_name}` : `คนขับรถ ${v.plate_display ?? v.plate}`,
-      gender: null,
-      area: ["คนขับ", v.company].filter(Boolean).join(" "),
-      flag_no: dflag,
-      assembly_point: dap,
-      is_leader: false,
-      presence: "kiosk",
-      presence_site: v.zone,
-      presence_since: v.checkin_at ? new Date(v.checkin_at).toISOString() : null,
-      plate: v.plate_display ?? v.plate,
+    const key = `plate:${v.plate}`;
+    out.set(key, {
+      person_key: key, emp_id: null, email: null, plate: v.plate_display ?? v.plate,
+      name: v.driver_name || `คนขับรถ ${v.plate_display ?? v.plate}`, gender: null,
+      area: ["คนขับ", v.company].filter(Boolean).join(" "), cost_center: "DRIVER", cc_name: "คนขับ (KIOS)",
+      tel: v.phone, flag_no: driverFlag ?? null, assembly_point: driverFlag != null ? flagPoint.get(driverFlag) ?? null : null,
+      is_leader: false, presence: "kiosk", presence_site: v.zone, presence_since: iso(v.checkin_at),
+      here: hereMap.get(key) ?? true, source: "Driver (KIOS)",
     });
   }
   return [...out.values()];
 }
 
 /**
- * merge ผลลง incident_people ตามกฎ:
- * - บวกอย่างเดียว ห้ามลบ
- * - ห้ามทับสถานะที่คนกดแล้ว (อัปเดตแค่ข้อมูลตำแหน่ง)
- * - คนที่หายจากแหล่งข้อมูล ติดป้าย still_in_source=false
+ * merge ตามกฎ: บวกอย่างเดียว ห้ามลบ ห้ามทับสถานะที่คนระบุแล้ว
+ * คนใหม่: มา = ยังไม่ทราบ, ไม่มา = ปลอดภัยตามระบบ (รอยืนยัน)
  */
 export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" | "sync") {
   const inc = await getIncident(incidentId);
-  if (!inc) throw new Error("ไม่พบเหตุการณ์");
-  if (inc.closed_at) return { added: 0 };
-  const cands = await buildCandidates(inc);
-
+  if (!inc) throw new UserError("ไม่พบเหตุการณ์");
+  if (inc.state !== "active") return { added: 0 };
+  const C = await buildCandidates(inc);
+  const col = <K extends keyof Candidate>(k: K) => C.map((c) => c[k]);
   const ins = await q(
-    `INSERT INTO incident_people (incident_id, person_key, emp_id, email, name, gender, area, flag_no,
-       assembly_point, is_leader, presence, presence_site, presence_since, added_by, plate)
-     SELECT $1, * FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
-       $8::int[], $9::text[], $10::bool[], $11::text[], $12::text[], $13::timestamptz[], $14::text[], $15::text[])
+    `INSERT INTO incident_people (incident_id, person_key, emp_id, email, plate, name, gender, area, cost_center, cc_name,
+       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by)
+     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20
+     FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+       $11::text[], $12::int[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[])
+       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src)
      ON CONFLICT (incident_id, person_key) DO UPDATE SET
        email = COALESCE(EXCLUDED.email, incident_people.email),
        presence = CASE WHEN EXCLUDED.presence IN ('div','kiosk') THEN EXCLUDED.presence ELSE incident_people.presence END,
@@ -174,127 +161,196 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
        still_in_source = true
      RETURNING (xmax = 0) AS inserted`,
     [
-      incidentId,
-      cands.map((c) => c.person_key),
-      cands.map((c) => c.emp_id),
-      cands.map((c) => c.email),
-      cands.map((c) => c.name),
-      cands.map((c) => c.gender),
-      cands.map((c) => c.area),
-      cands.map((c) => c.flag_no),
-      cands.map((c) => c.assembly_point),
-      cands.map((c) => c.is_leader),
-      cands.map((c) => c.presence),
-      cands.map((c) => c.presence_site),
-      cands.map((c) => c.presence_since),
-      cands.map(() => addedBy),
-      cands.map((c) => c.plate),
+      incidentId, col("person_key"), col("emp_id"), col("email"), col("plate"), col("name"), col("gender"), col("area"),
+      col("cost_center"), col("cc_name"), col("tel"), col("flag_no"), col("assembly_point"), col("is_leader"), col("presence"),
+      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy,
     ],
   );
-
   await q(
     `UPDATE incident_people SET still_in_source = false
      WHERE incident_id = $1 AND added_by <> 'manual' AND NOT (person_key = ANY($2::text[]))`,
-    [incidentId, cands.map((c) => c.person_key)],
+    [incidentId, col("person_key")],
   );
   return { added: ins.filter((r: any) => r.inserted).length };
 }
 
-export async function openIncident(opts: { mode: "real" | "drill"; title?: string; divSites?: string[]; includePlan?: boolean }) {
-  const inc = await one<{ id: number }>(
-    `INSERT INTO incidents (mode, title, div_sites, include_plan) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [opts.mode, opts.title || null, opts.divSites?.length ? opts.divSites : null, opts.includePlan ?? true],
+async function latestVersion() {
+  return (await one<{ id: number }>(`SELECT id FROM plan_versions ORDER BY id DESC LIMIT 1`))?.id ?? null;
+}
+
+/** แจ้งเหตุ (ต้องระบุตัวตน) → รอ Admin / Safety Officer ยืนยัน */
+export async function reportIncident(o: { kind: string; area: string; by: string }) {
+  const cur = await currentIncident();
+  if (cur) return cur.id;
+  const r = await one<{ id: number }>(
+    `INSERT INTO incidents (mode, state, kind, area, reported_by, title) VALUES ('real', 'pending', $1, $2, $3, $4) RETURNING id`,
+    [o.kind, o.area, o.by, o.kind],
   );
-  await mergeIntoIncident(Number(inc!.id), "snapshot");
-  return Number(inc!.id);
+  return Number(r!.id);
+}
+
+/** ยืนยันเหตุจริง: เริ่มนับเวลา snapshot รายชื่อ และปิดจุดรวมพลที่ใช้ไม่ได้ */
+export async function confirmIncident(id: number, actor: Actor, closedPoints: string[]) {
+  const inc = await getIncident(id);
+  if (!inc || inc.state !== "pending") throw new UserError("เหตุการณ์นี้ไม่ได้รอยืนยัน");
+  await q(
+    `UPDATE incidents SET state = 'active', confirmed_by = $2, confirmed_at = now(), opened_at = now(),
+       closed_points = $3, plan_version = $4 WHERE id = $1`,
+    [id, actor.name, closedPoints.length ? closedPoints : null, await latestVersion()],
+  );
+  await mergeIntoIncident(id, "snapshot");
+}
+
+export async function cancelIncident(id: number, by: string) {
+  await q(`UPDATE incidents SET state = 'cancelled', closed_at = now(), closed_by = $2 WHERE id = $1 AND state = 'pending'`, [id, by]);
+}
+
+export async function startDrill(actor: Actor, title?: string) {
+  const cur = await currentIncident();
+  if (cur) throw new UserError("มีเหตุการณ์ที่ยังไม่ปิดอยู่ ปิดก่อนจึงจะเริ่มซ้อมได้");
+  const r = await one<{ id: number }>(
+    `INSERT INTO incidents (mode, state, title, confirmed_by, confirmed_at, plan_version, include_plan)
+     VALUES ('drill', 'active', $1, $2, now(), $3, true) RETURNING id`,
+    [title || `ซ้อมอพยพ ${new Date().getFullYear()}`, actor.name, await latestVersion()],
+  );
+  await mergeIntoIncident(Number(r!.id), "snapshot");
+  return Number(r!.id);
+}
+
+/** ปิดเคสได้เสมอ แต่แจ้งจำนวนปลอดภัยตามระบบที่ยังรอยืนยัน */
+export async function closeIncident(id: number, actor: Actor) {
+  const pend = await one<{ n: number }>(
+    `SELECT count(*)::int AS n FROM incident_people WHERE incident_id = $1 AND status = 'abs'`, [id]);
+  await q(`UPDATE incidents SET state = 'closed', closed_at = now(), closed_by = $2 WHERE id = $1 AND state = 'active'`, [id, actor.name]);
+  return { absPending: pend?.n ?? 0 };
 }
 
 export async function getIncident(id: number): Promise<Incident | null> {
   const r = await one<any>(`SELECT * FROM incidents WHERE id = $1`, [id]);
-  if (!r) return null;
-  return {
-    ...r,
-    id: Number(r.id),
-    opened_at: new Date(r.opened_at).toISOString(),
-    closed_at: r.closed_at ? new Date(r.closed_at).toISOString() : null,
-    first_full_at: r.first_full_at ? new Date(r.first_full_at).toISOString() : null,
-  };
+  return r ? rowToIncident(r) : null;
 }
 
-export async function listIncidents(): Promise<(Incident & { total: number; pending: number })[]> {
+export async function currentIncident(): Promise<Incident | null> {
+  const r = await one<any>(
+    `SELECT * FROM incidents WHERE state IN ('pending','active') ORDER BY (state = 'active') DESC, id DESC LIMIT 1`);
+  return r ? rowToIncident(r) : null;
+}
+
+export async function listIncidents() {
   const rows = await q<any>(
-    `SELECT i.*, count(p.*)::int AS total, count(p.*) FILTER (WHERE p.status = 'pending')::int AS pending
+    `SELECT i.*, count(p.*)::int AS total,
+       count(p.*) FILTER (WHERE p.status IN ('unk','in'))::int AS missing
      FROM incidents i LEFT JOIN incident_people p ON p.incident_id = i.id
-     GROUP BY i.id ORDER BY i.opened_at DESC LIMIT 50`,
-  );
-  return rows.map((r) => ({
-    ...r,
-    id: Number(r.id),
-    opened_at: new Date(r.opened_at).toISOString(),
-    closed_at: r.closed_at ? new Date(r.closed_at).toISOString() : null,
-    first_full_at: r.first_full_at ? new Date(r.first_full_at).toISOString() : null,
-  }));
+     WHERE i.state <> 'cancelled' GROUP BY i.id ORDER BY i.id DESC LIMIT 50`);
+  return rows.map((r) => ({ ...rowToIncident(r), total: r.total, missing: r.missing }));
 }
 
-export async function getPeople(incidentId: number, flag?: number | "none"): Promise<Person[]> {
-  const where =
-    flag === undefined ? "" : flag === "none" ? "AND flag_no IS NULL" : "AND flag_no = $2";
-  const params: unknown[] = [incidentId];
-  if (typeof flag === "number") params.push(flag);
+export async function getPeople(incidentId: number) {
   const rows = await q<any>(
-    `SELECT * FROM incident_people WHERE incident_id = $1 ${where}
-     ORDER BY flag_no NULLS LAST, is_leader DESC, name`,
-    params,
-  );
+    `SELECT * FROM incident_people WHERE incident_id = $1 ORDER BY flag_no NULLS LAST, is_leader DESC, name`, [incidentId]);
   return rows.map((r) => ({
     ...r,
-    presence_since: r.presence_since ? new Date(r.presence_since).toISOString() : null,
-    status_at: r.status_at ? new Date(r.status_at).toISOString() : null,
-    added_at: new Date(r.added_at).toISOString(),
+    incident_id: Number(r.incident_id),
+    presence_since: iso(r.presence_since),
+    status_at: iso(r.status_at),
+    added_at: iso(r.added_at),
   }));
 }
 
-export async function setStatus(incidentId: number, personKey: string, status: Status, by: string) {
-  if (!STATUSES.includes(status)) throw new Error("สถานะไม่ถูกต้อง");
+async function assertActive(incidentId: number) {
   const inc = await getIncident(incidentId);
-  if (!inc || inc.closed_at) throw new Error("เหตุการณ์ปิดแล้ว");
-  const prev = await one<{ status: string }>(
-    `SELECT status FROM incident_people WHERE incident_id = $1 AND person_key = $2`,
-    [incidentId, personKey],
-  );
-  if (!prev) throw new Error("ไม่พบรายชื่อนี้ในเหตุการณ์");
-  await q(
-    `UPDATE incident_people SET status = $3, status_by = $4, status_at = now()
-     WHERE incident_id = $1 AND person_key = $2`,
-    [incidentId, personKey, status, by || null],
-  );
-  // เก็บ log ทุกการเปลี่ยน ห้าม overwrite ทิ้ง
-  await q(
-    `INSERT INTO status_log (incident_id, person_key, from_status, to_status, by_name) VALUES ($1, $2, $3, $4, $5)`,
-    [incidentId, personKey, prev.status, status, by || null],
-  );
-  // บันทึกเวลาที่นับครบครั้งแรก (ใช้วัดผลการซ้อม)
+  if (!inc || inc.state !== "active") throw new UserError("เหตุการณ์นี้ไม่ได้เปิดอยู่");
+  return inc;
+}
+
+async function updateFirstFull(incidentId: number) {
   await q(
     `UPDATE incidents SET first_full_at = now()
      WHERE id = $1 AND first_full_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM incident_people WHERE incident_id = $1 AND status = 'pending')`,
-    [incidentId],
-  );
+       AND NOT EXISTS (SELECT 1 FROM incident_people WHERE incident_id = $1 AND status IN ('unk','in'))`,
+    [incidentId]);
+}
+
+async function applyStatus(incidentId: number, key: string, status: Status, by: string, note?: string | null) {
+  const prev = await one<{ status: string }>(
+    `SELECT status FROM incident_people WHERE incident_id = $1 AND person_key = $2`, [incidentId, key]);
+  if (!prev) throw new UserError("ไม่พบรายชื่อนี้ในเหตุการณ์");
+  await q(
+    `UPDATE incident_people SET status = $3, status_by = $4, status_at = now(),
+       status_note = CASE WHEN $5::text IS NULL THEN status_note ELSE $5 END
+     WHERE incident_id = $1 AND person_key = $2`,
+    [incidentId, key, status, by || null, note ?? null]);
+  // เก็บ log ทุกการเปลี่ยน ห้าม overwrite ทิ้ง
+  await q(`INSERT INTO status_log (incident_id, person_key, from_status, to_status, by_name) VALUES ($1, $2, $3, $4, $5)`,
+    [incidentId, key, prev.status, status, by || null]);
+}
+
+export async function setStatus(incidentId: number, key: string, status: Status, by: string, note?: string | null) {
+  if (!STATUSES.includes(status)) throw new UserError("สถานะไม่ถูกต้อง");
+  await assertActive(incidentId);
+  await applyStatus(incidentId, key, status, by, note);
+  await updateFirstFull(incidentId);
+}
+
+/**
+ * เช็คชื่อทั้งธง (ซ้อมเท่านั้น): จำนวนที่นับได้ต้องตรงกับ ติ๊ก + คนที่ระบุไปแล้วที่จุดรวมพล
+ * ติ๊ก = ปลอดภัย (หรือบาดเจ็บ) ไม่ติ๊ก = คงสถานะเดิม
+ */
+export async function rollCall(incidentId: number, o: { flag: number; safe: string[]; inj: string[]; count: number; by: string }) {
+  const inc = await assertActive(incidentId);
+  if (inc.mode !== "drill") throw new UserError("เช็คชื่อทั้งธงใช้ได้เฉพาะการซ้อม");
+  const members = await q<any>(
+    `SELECT person_key, status FROM incident_people WHERE incident_id = $1 AND flag_no = $2`, [incidentId, o.flag]);
+  const open = new Set(members.filter((m) => m.status === "unk" || m.status === "abs").map((m) => m.person_key));
+  const keys = [...new Set([...o.safe, ...o.inj])];
+  if (keys.some((k) => !open.has(k))) throw new UserError("มีรายชื่อที่ถูกระบุสถานะไปแล้ว รีเฟรชแล้วลองใหม่");
+  const done = members.filter((m) => m.status === "safe" || m.status === "inj").length;
+  if (o.count !== keys.length + done) throw new UserError(`จำนวนไม่ตรง: นับได้ ${o.count} แต่รายชื่อที่จุดรวมพล ${keys.length + done}`);
+  const tag = `${o.by || `ผู้นำธง ${o.flag}`} (เช็คชื่อทั้งธง · นับได้ ${o.count})`;
+  const inj = new Set(o.inj);
+  for (const k of keys) await applyStatus(incidentId, k, inj.has(k) ? "inj" : "safe", tag);
+  await updateFirstFull(incidentId);
+  return { updated: keys.length };
+}
+
+export async function setInjury(incidentId: number, key: string, o: { triage?: string | null; symptoms?: string; hospital?: string }, actor: Actor) {
+  await assertActive(incidentId);
+  if (o.triage && !TRIAGE.includes(o.triage as any)) throw new UserError("ระดับไม่ถูกต้อง");
+  const p = await one<any>(`SELECT status FROM incident_people WHERE incident_id = $1 AND person_key = $2`, [incidentId, key]);
+  if (!p) throw new UserError("ไม่พบรายชื่อนี้");
+  if (p.status !== "inj") await applyStatus(incidentId, key, "inj", actor.name);
+  await q(
+    `UPDATE incident_people SET triage = $3, symptoms = $4, hospital = $5, triage_by = $6
+     WHERE incident_id = $1 AND person_key = $2`,
+    [incidentId, key, o.triage ?? null, o.symptoms ?? null, o.hospital ?? null, actor.name]);
+  await updateFirstFull(incidentId);
 }
 
 export async function addManualPerson(
   incidentId: number,
   p: { name: string; gender?: string | null; flag_no?: number | null; note?: string; by?: string },
 ) {
+  await assertActive(incidentId);
   const key = `manual:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+  const ap = p.flag_no != null
+    ? (await one<{ ap: string }>(`SELECT max(assembly_point) AS ap FROM evac_plan WHERE flag_no = $1`, [p.flag_no]))?.ap ?? null
+    : null;
   await q(
-    `INSERT INTO incident_people (incident_id, person_key, name, gender, flag_no, area, presence, added_by, status_by)
-     VALUES ($1, $2, $3, $4, $5, $6, 'manual', 'manual', $7)`,
-    [incidentId, key, p.name.trim(), p.gender || null, p.flag_no ?? null, p.note || null, p.by || null],
-  );
+    `INSERT INTO incident_people (incident_id, person_key, name, gender, flag_no, assembly_point, area, presence, added_by,
+       status, here, source, status_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', 'manual', 'unk', true, 'เพิ่มระหว่างเหตุ', $8)`,
+    [incidentId, key, p.name.trim(), p.gender || null, p.flag_no ?? null, ap, p.note || null, p.by || null]);
+  await q(`UPDATE incidents SET first_full_at = NULL WHERE id = $1`, [incidentId]);
   return key;
 }
 
-export async function closeIncident(incidentId: number) {
-  await q(`UPDATE incidents SET closed_at = now() WHERE id = $1 AND closed_at IS NULL`, [incidentId]);
+export async function announce(incidentId: number, codeId: number | null, label: string | null, actor: Actor) {
+  const inc = await getIncident(incidentId);
+  if (!inc || inc.state !== "active") throw new UserError("เหตุการณ์นี้ไม่ได้เปิดอยู่");
+  const code = codeId ? await one<any>(`SELECT * FROM announce_codes WHERE id = $1`, [codeId]) : null;
+  const text = code?.label ?? String(label ?? "").trim();
+  if (!text) throw new UserError("ต้องระบุ Code");
+  await q(
+    `INSERT INTO incident_announcements (incident_id, code_id, label, tone, meaning, by_name) VALUES ($1, $2, $3, $4, $5, $6)`,
+    [incidentId, code?.id ?? null, text, code?.tone ?? "grey", code?.meaning ?? null, actor.name]);
 }
