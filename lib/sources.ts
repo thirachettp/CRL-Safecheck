@@ -8,7 +8,7 @@ import { setSetting } from "./settings";
 export const SOURCES = [
   { key: "div", label: "DIV+ และอื่นๆ (MS Form)", ready: true },
   { key: "cnext", label: "Fulltime (Cnext)", ready: false },
-  { key: "outsource", label: "Outsource (Power Apps)", ready: false },
+  { key: "outsource", label: "Outsource (Power Apps)", ready: true },
   { key: "driver", label: "Driver (KIOS)", ready: true },
 ] as const;
 
@@ -24,6 +24,15 @@ async function markStatus(source: string, ok: boolean, count: number | null, err
        cursor      = COALESCE($5, source_status.cursor)`,
     [source, ok, ok ? null : error ?? "ไม่ทราบสาเหตุ", count, cursor ?? null],
   );
+}
+
+/** ใช้กับแหล่งที่ส่งเข้ามาเอง (push) */
+export async function markSource(source: string, ok: boolean, count: number | null, error?: string) {
+  if (source === "outsource" && ok && count === null) {
+    const r = await one<{ n: number }>(`SELECT count(*)::int AS n FROM outsource_attendance WHERE clock_in > now() - interval '14 hours' AND clock_out IS NULL`);
+    count = r?.n ?? null;
+  }
+  await markStatus(source, ok, count, error);
 }
 
 /** เก็บของดิบลง ingest_raw ก่อนเสมอ แล้วจึง upsert เช็กอิน (batch_id ซ้ำ = ไม่ทำอะไร) */

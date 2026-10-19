@@ -9,6 +9,10 @@ type Data = {
   sites: { site: string; n: number }[];
   recent: { response_id: string; email: string; full_name: string | null; gender: string | null; site: string | null; submitted_at: string; via: string }[];
   graph: boolean;
+  outsource?: {
+    recent: { emp_id: string; name: string | null; cost_center: string | null; site: string | null; status: string | null; clock_in: string | null; clock_out: string | null; received_at: string }[];
+    staff: number; staff_at: string | null; present: number; ingest: boolean;
+  };
 };
 const VIA: Record<string, string> = { graph: "SharePoint", xlsx: "Excel", test: "ทดสอบ", push: "Power Automate" };
 
@@ -74,6 +78,33 @@ export default function SourcesPage() {
                   <td className="mono">{fmtDateTime(r.submitted_at)} <span className="muted xs">({ago(r.submitted_at)})</span></td>
                   <td>{r.full_name ?? "—"}</td><td className="small">{r.email}</td><td>{r.gender ?? "—"}</td><td>{r.site ?? "—"}</td>
                   <td><span className="chip grey sm">{VIA[r.via] ?? r.via}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </section>
+
+        <section className="card">
+          <div className="card-h"><span className="grow">Outsource (Power Apps)</span>
+            <span className="muted xs" style={{ fontWeight: 500 }}>
+              อยู่ในพื้นที่ตอนนี้ {d.data?.outsource?.present ?? 0} คน · รายชื่อ {d.data?.outsource?.staff ?? 0} คน
+              {d.data?.outsource?.staff_at ? ` (อัปเดต ${ago(d.data.outsource.staff_at)})` : ""}
+            </span></div>
+          <p className="muted xs" style={{ padding: "0 18px" }}>
+            Power Apps บันทึกเข้า-ออกลง SharePoint (DC_Outsource_Attendance) → Power Automate ส่งเข้าแอพทันทีทุกครั้งที่สร้าง/แก้แถว ·
+            นับว่าอยู่ในพื้นที่เมื่อ Clock in ภายใน 14 ชม. และยังไม่ Clock out · ชื่อและ Cost Center มาจากรายชื่อ DC_FTE
+            {d.data?.outsource && !d.data.outsource.ingest ? " · ยังไม่ได้ตั้ง token ใน Vercel" : ""}
+          </p>
+          <div className="scroll-x"><table className="tbl">
+            <thead><tr><th>รับเมื่อ</th><th>รหัส</th><th>ชื่อ</th><th>Cost Center</th><th>ไซต์</th><th>เข้า</th><th>ออก</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              {!d.data?.outsource?.recent.length && <tr><td colSpan={8} className="muted">ยังไม่มีข้อมูล Outsource</td></tr>}
+              {d.data?.outsource?.recent.map((r, i) => (
+                <tr key={`${r.emp_id}-${i}`}>
+                  <td className="mono">{fmtDateTime(r.received_at)}</td><td className="mono">{r.emp_id}</td><td>{r.name || "—"}</td>
+                  <td className="mono">{r.cost_center ?? "—"}</td><td>{r.site ?? "—"}</td>
+                  <td className="mono">{r.clock_in ? fmtDateTime(r.clock_in) : "—"}</td><td className="mono">{r.clock_out ? fmtDateTime(r.clock_out) : "—"}</td>
+                  <td>{r.status ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

@@ -143,6 +143,23 @@ const add2 = await j(`/api/incidents/${real}/people`, { method: "POST", json: { 
 ok(!!add2.person_key, "เพิ่มคนนอกรายชื่อระหว่างเหตุ");
 await j(`/api/incidents/${real}`, { method: "POST", json: { action: "close" }, tok: token });
 
+// ---------- Outsource (Power Automate → /api/ingest/outsource) ----------
+const ING = process.env.INGEST_TOKEN ?? "tok123";
+const post = (body: unknown, tok = ING) => fetch(B + "/api/ingest/outsource", { method: "POST", headers: { "Content-Type": "application/json", "x-sync-token": tok }, body: JSON.stringify(body) });
+ok((await post({ ID: 1 }, "bad")).status === 401, "Outsource: token ผิดถูกปฏิเสธ");
+const nowIso = new Date(Date.now() - 2 * 3600e3).toISOString();
+ok((await (await post({ kind: "staff", records: [{ field_1: "OS900", field_2: "82002", field_3: "สมใจ", field_4: "รับจ้าง" }] })).json()).saved === 1, "Outsource: รับรายชื่อจาก DC_FTE");
+ok((await (await post({ ID: 77, Title: "OS900", Clock_in: nowIso, Clock_out: null, Site: { Value: "SCDC" } })).json()).saved === 1, "Outsource: รับแถวเข้างาน");
+ok((await (await post({ ID: 78, Title: "OS901", Clock_in: nowIso, Clock_out: new Date().toISOString() })).json()).saved === 1, "Outsource: รับแถวที่ออกแล้ว");
+const { id: drill2 } = await j("/api/incidents", { method: "POST", json: { action: "drill" } });
+const sd = await j(`/api/incidents/${drill2}`);
+const osp = sd.people.find((p: any) => p.person_key === "os:OS900");
+ok(osp?.name === "สมใจ รับจ้าง" && osp.cost_center === "82002" && osp.presence_site === "SCDC", "Outsource ที่ยังไม่ออกเข้าไปอยู่ในรายชื่อเหตุการณ์ พร้อมชื่อและ Cost Center");
+ok(!sd.people.some((p: any) => p.person_key === "os:OS901"), "Outsource ที่ Clock out แล้วไม่ถูกนับ");
+await j(`/api/incidents/${drill2}`, { method: "POST", json: { action: "close" }, tok: token });
+const src = await j("/api/sources");
+ok(src.outsource.present === 1 && src.outsource.staff === 1, "หน้าแหล่งข้อมูลเห็น Outsource ในพื้นที่ 1 คน");
+
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);
   ok(r.status === 200, `หน้า ${p} เปิดได้`);

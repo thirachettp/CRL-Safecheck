@@ -1,5 +1,6 @@
 import { UserError } from "./errors";
 import { q, one } from "./db";
+import { outsourcePresent } from "./outsource";
 import { computePresence } from "./presence";
 import { getSetting } from "./settings";
 import type { Actor } from "./auth";
@@ -56,7 +57,7 @@ type Candidate = {
 
 /** รายชื่อที่ควรอยู่ในเหตุการณ์: แผนอพยพ (หักคนที่ลบ) + คนที่อยู่ในพื้นที่จากแต่ละแหล่ง */
 async function buildCandidates(inc: Incident, now = new Date()): Promise<Candidate[]> {
-  const [plan, links, checkins, vehicles, driverFlag, att, ccNames, profiles] = await Promise.all([
+  const [plan, links, checkins, vehicles, driverFlag, att, ccNames, profiles, osPresent, osStaff] = await Promise.all([
     q<any>(`SELECT * FROM evac_plan WHERE NOT removed`),
     q<any>(`SELECT lower(email) AS email, emp_id FROM person_links`),
     q<any>(
@@ -72,6 +73,8 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
             SELECT cost_center, mode() WITHIN GROUP (ORDER BY area) FROM evac_plan
             WHERE cost_center IS NOT NULL AND cost_center NOT IN (SELECT code FROM cost_centers) GROUP BY cost_center`),
     q<any>(`SELECT code, tel FROM profiles WHERE tel IS NOT NULL`),
+    outsourcePresent(now),
+    q<any>(`SELECT * FROM outsource_staff`),
   ]);
   const linkMap = new Map<string, string>(links.map((l) => [l.email, l.emp_id]));
   const planMap = new Map<string, any>(plan.map((p) => [p.emp_id, p]));
@@ -123,6 +126,27 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     }
   }
 
+  // Outsource จาก Power Apps: เข้างานภายใน 14 ชม. และยังไม่ออก
+  const staffMap = new Map<string, any>(osStaff.map((s) => [s.emp_id, s]));
+  for (const a of osPresent) {
+    const planRow = planMap.get(a.emp_id);
+    if (planRow) {
+      const c = out.get(`emp:${a.emp_id}`) ?? fromPlan(planRow);
+      out.set(c.person_key, { ...c, presence: "outsource", presence_site: a.site, presence_since: a.clock_in, source: "Outsource (Power Apps)" });
+      continue;
+    }
+    const st = staffMap.get(a.emp_id);
+    const key = `os:${a.emp_id}`;
+    const cc = st?.cost_center ?? null;
+    out.set(key, {
+      person_key: key, emp_id: a.emp_id, email: null, plate: null,
+      name: [st?.first_name, st?.last_name].filter(Boolean).join(" ") || `Outsource ${a.emp_id}`, gender: null,
+      area: "Outsource", cost_center: cc, cc_name: cc ? ccMap.get(cc) ?? null : null, tel: telMap.get(a.emp_id) ?? null,
+      flag_no: null, assembly_point: null, is_leader: false,
+      presence: "outsource", presence_site: a.site, presence_since: a.clock_in, here: hereMap.get(key) ?? true, source: "Outsource (Power Apps)",
+    });
+  }
+
   // คนขับจาก KIOS: หนึ่งคันหนึ่งคน key = ทะเบียนรถ
   for (const v of vehicles) {
     const key = `plate:${v.plate}`;
@@ -157,7 +181,7 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
        AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src)
      ON CONFLICT (incident_id, person_key) DO UPDATE SET
        email = COALESCE(EXCLUDED.email, incident_people.email),
-       presence = CASE WHEN EXCLUDED.presence IN ('div','kiosk') THEN EXCLUDED.presence ELSE incident_people.presence END,
+       presence = CASE WHEN EXCLUDED.presence IN ('div','kiosk','outsource') THEN EXCLUDED.presence ELSE incident_people.presence END,
        presence_site = COALESCE(EXCLUDED.presence_site, incident_people.presence_site),
        presence_since = COALESCE(EXCLUDED.presence_since, incident_people.presence_since),
        still_in_source = true

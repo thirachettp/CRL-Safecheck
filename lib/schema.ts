@@ -250,4 +250,22 @@ export const SCHEMA: string[] = [
    SELECT * FROM (VALUES ('Code 500', NULL::text, 'warn', false, 1), ('Code 500 ด่วนมาก', NULL::text, 'err', false, 2),
                          ('คุณสบายใจ', 'ใช้ปิดเหตุการณ์', 'grey', true, 3)) v
    WHERE NOT EXISTS (SELECT 1 FROM announce_codes)`,
+  // v4 Outsource (Power Apps → SharePoint → Power Automate ส่งเข้า)
+  `CREATE TABLE IF NOT EXISTS outsource_staff (
+    emp_id      text PRIMARY KEY,
+    first_name  text,
+    last_name   text,
+    cost_center text,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS outsource_attendance (
+    item_id     text PRIMARY KEY,
+    emp_id      text NOT NULL,
+    clock_in    timestamptz,
+    clock_out   timestamptz,
+    status      text,
+    site        text,
+    received_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS outsource_attendance_emp ON outsource_attendance (emp_id, clock_in DESC)`,
 ];
