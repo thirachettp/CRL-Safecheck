@@ -63,7 +63,7 @@ a:hover { color: var(--navy-d); }
   display: block; width: 100%; font: inherit; font-size: 15px; min-height: 44px; border: 1px solid var(--line-2);
   border-radius: 8px; padding: 0 10px; background: #fff; color: var(--ink); margin-top: 4px;
 }
-label.lb { font-size: 12px; font-weight: 600; display: block; }
+label.lb, div.lb { font-size: 12px; font-weight: 600; display: block; }
 .pill { font: inherit; font-size: 13px; font-weight: 600; min-height: 40px; padding: 0 12px; border-radius: 999px;
   border: 1px solid var(--line-2); background: #fff; cursor: pointer; color: var(--ink); }
 .pill.on { background: var(--ink); border-color: var(--ink); color: #fff; }

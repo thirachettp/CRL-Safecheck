@@ -226,6 +226,26 @@ export const SCHEMA: string[] = [
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS hospital text`,
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS triage_by text`,
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS done_at timestamptz`,
+  // ---------- v3: บัญชีผู้ใช้ + master Cost Center ----------
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS prefix text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS first_name text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_name text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cost_center text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS profiles_email_unique ON profiles (lower(email)) WHERE email IS NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS cost_centers (
+    code       text PRIMARY KEY,
+    name       text NOT NULL,
+    source     text NOT NULL DEFAULT 'master',
+    created_by text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  // master ตั้งต้นจากชุดธง (ชื่อ = แผนกที่พบบ่อยที่สุดของ Cost Center นั้น)
+  `INSERT INTO cost_centers (code, name, source)
+   SELECT cost_center, COALESCE(mode() WITHIN GROUP (ORDER BY area), cost_center), 'master' FROM evac_plan
+   WHERE cost_center IS NOT NULL AND cost_center <> '' GROUP BY cost_center
+   ON CONFLICT (code) DO NOTHING`,
   `INSERT INTO announce_codes (label, meaning, tone, closes, sort)
    SELECT * FROM (VALUES ('Code 500', NULL::text, 'warn', false, 1), ('Code 500 ด่วนมาก', NULL::text, 'err', false, 2),
                          ('คุณสบายใจ', 'ใช้ปิดเหตุการณ์', 'grey', true, 3)) v

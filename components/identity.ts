@@ -19,11 +19,22 @@ export function useUser() {
     setUser(u);
     return u;
   }, []);
+  /** ลงทะเบียนบัญชีใหม่ แล้วเข้าสู่ระบบทันที */
+  const register = useCallback(async (form: Record<string, unknown>) => {
+    const u = await api<User>("/api/register", { method: "POST", json: form });
+    try { localStorage.setItem("sc_user", JSON.stringify(u)); } catch {}
+    setUser(u);
+    return u;
+  }, []);
+  const remember = useCallback((u: User) => {
+    try { localStorage.setItem("sc_user", JSON.stringify(u)); } catch {}
+    setUser(u);
+  }, []);
   const logout = useCallback(() => {
     try { localStorage.removeItem("sc_user"); } catch {}
     setUser(null);
   }, []);
-  return { user, ready, login, logout, by: user?.name ?? "" };
+  return { user, ready, login, register, remember, logout, by: user?.name ?? "" };
 }
 
 /** Admin / Safety Officer: ใส่รหัส ได้ token อายุ 12 ชม. เก็บเฉพาะแท็บนี้ */

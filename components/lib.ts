@@ -18,7 +18,7 @@ export async function api<T = any>(url: string, init?: RequestInit & { json?: un
     cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `ผิดพลาด (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `ผิดพลาด (${res.status})`), { status: res.status, data });
   return data as T;
 }
 

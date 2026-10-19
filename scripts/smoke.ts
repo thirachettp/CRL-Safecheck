@@ -13,7 +13,7 @@ const j = async (path: string, init: { method?: string; json?: unknown; tok?: st
     body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
   });
   const d = await r.json();
-  if (!r.ok) throw Object.assign(new Error(`${path} ${r.status} ${JSON.stringify(d)}`), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(`${path} ${r.status} ${JSON.stringify(d)}`), { status: r.status, data: d });
   return d;
 };
 const ok = (cond: unknown, label: string) => {
@@ -100,10 +100,28 @@ ok(await fails(j(`/api/incidents/${drill}/people`, { method: "PATCH", json: { pe
 
 // ---------- เหตุจริง: แจ้ง → ยืนยัน ----------
 ok(await fails(j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้" } })), "แจ้งเหตุโดยไม่ระบุตัวตนถูกปฏิเสธ");
-const user = await j("/api/login", { method: "POST", json: { code: "30000100" } });
-ok(user.name === "ชื่อ1-0 สกุล0", "เข้าสู่ระบบด้วยรหัสพนักงาน");
-ok(await fails(j("/api/login", { method: "POST", json: { code: "99999999" } })), "รหัสที่ไม่มีในชุดธงถูกปฏิเสธ");
-await j("/api/profile", { method: "POST", json: { code: "30000100", name: user.name, tel: "081-111-2222", emer_name: "คุณแม่", emer_tel: "089", consent: true, blood: "O" } });
+// ---------- บัญชี: ยังไม่มี → ลงทะเบียน → เข้าสู่ระบบ ----------
+const need = await j("/api/login", { method: "POST", json: { code: "30000100" } }).catch((e) => e);
+ok(need.status === 404 && need.data?.needRegister && need.data.inPlan, "ยังไม่มีบัญชี ระบบให้ลงทะเบียน");
+ok(need.data?.prefill?.first_name === "ชื่อ1-0" && need.data.prefill.cost_center === "82001", "เติมชื่อ / Cost Center จากชุดธงให้");
+const ccs = await j("/api/cost-centers?q=8200");
+ok(ccs.items.length === 3, "master Cost Center ตั้งต้นจากชุดธง ค้นหาได้");
+const reg = { code: "30000100", prefix: "นาย", first_name: "ชื่อ1-0", last_name: "สกุล0", cost_center: "82001",
+  email: "user100@central.co.th", tel: "081-111-2222", gender: "ชาย", emer_name: "คุณแม่", emer_tel: "0899999999", consent: true, blood: "O" };
+ok(await fails(j("/api/register", { method: "POST", json: { ...reg, email: "user100@gmail.com" } })), "อีเมลที่ไม่ใช่ @central.co.th ถูกปฏิเสธ");
+ok(await fails(j("/api/register", { method: "POST", json: { ...reg, last_name: "" } })), "ข้อมูลไม่ครบถูกปฏิเสธ");
+ok(await fails(j("/api/register", { method: "POST", json: { ...reg, cost_center: "NOPE" } })), "Cost Center ที่ไม่มีใน master ถูกปฏิเสธ");
+const user = await j("/api/register", { method: "POST", json: reg });
+ok(user.name === "ชื่อ1-0 สกุล0", "ลงทะเบียนสำเร็จ");
+ok(await fails(j("/api/register", { method: "POST", json: reg })), "ลงทะเบียนซ้ำไม่ได้");
+ok((await j("/api/login", { method: "POST", json: { code: "30000100" } })).name === "ชื่อ1-0 สกุล0", "เข้าสู่ระบบด้วยรหัสพนักงาน");
+ok(await fails(j("/api/register", { method: "POST", json: { ...reg, code: "30000101" } })), "อีเมลซ้ำกับคนอื่นถูกปฏิเสธ");
+const ccAdd = await j("/api/cost-centers", { method: "POST", json: { code: "x9001", name: "แผนกใหม่", by: "99999999" } });
+ok(ccAdd.item.code === "X9001" && ccAdd.item.source === "user", "ผู้ใช้เพิ่ม Cost Center ใหม่ได้");
+const outsider = await j("/api/register", { method: "POST", json: { ...reg, code: "99999999", email: "new@central.co.th", cost_center: "X9001", consent: false } });
+ok(outsider.code === "99999999", "คนที่ไม่อยู่ในชุดธงลงทะเบียนได้");
+const pf = await j("/api/profile?code=30000100");
+ok(pf.profile.email === "user100@central.co.th" && pf.cost_center?.code === "82001" && pf.profile.blood === "O", "โปรไฟล์อ่านข้อมูลที่ลงทะเบียนได้");
 const { id: rep } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้", area: "Sort", by: user.name } });
 let cur = await j("/api/incidents");
 ok(cur.current.id === rep && cur.current.state === "pending", "แจ้งเหตุแล้ว รอยืนยัน");
@@ -114,7 +132,7 @@ ok(await fails(j(`/api/incidents/${real}`, { method: "POST", json: { action: "co
 await j(`/api/incidents/${real}`, { method: "POST", json: { action: "confirm", closedPoints: ["1"] }, tok: safety });
 s = await j(`/api/incidents/${real}`);
 ok(s.incident.state === "active" && s.incident.closed_points?.[0] === "1" && s.incident.confirmed_by === "Safety ทดสอบ", "ยืนยันเหตุจริง ปิดจุดรวมพล 1");
-ok(s.people.length >= 15 && P("emp:30000100")?.emer === "คุณแม่ · 089", "snapshot + ผู้ติดต่อฉุกเฉินจากโปรไฟล์");
+ok(s.people.length >= 15 && P("emp:30000100")?.emer === "คุณแม่ · 0899999999", "snapshot + ผู้ติดต่อฉุกเฉินจากโปรไฟล์");
 ok(new Set(s.people.map((p: any) => p.cost_center)).size >= 3, "มี Cost Center ให้กรองในเหตุจริง");
 ok(await fails(j(`/api/incidents/${real}/roll`, { method: "POST", json: { flag: 1, safe: [], count: 0 } })), "เช็คชื่อทั้งธงใช้ไม่ได้ในเหตุจริง");
 await j(`/api/incidents/${real}/people`, { method: "PATCH", json: { person_key: "emp:30000100", status: "inj", by: "ผู้นำธง" } });

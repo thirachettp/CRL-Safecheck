@@ -67,8 +67,10 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     q<any>(`SELECT * FROM driver_presence`),
     getSetting<number | null>("driver_flag", null),
     q<any>(`SELECT person_key, here FROM attendance WHERE day = $1`, [bangkokDay(now)]),
-    q<any>(`SELECT cost_center, mode() WITHIN GROUP (ORDER BY area) AS name FROM evac_plan
-            WHERE cost_center IS NOT NULL GROUP BY cost_center`),
+    q<any>(`SELECT code AS cost_center, name FROM cost_centers
+            UNION ALL
+            SELECT cost_center, mode() WITHIN GROUP (ORDER BY area) FROM evac_plan
+            WHERE cost_center IS NOT NULL AND cost_center NOT IN (SELECT code FROM cost_centers) GROUP BY cost_center`),
     q<any>(`SELECT code, tel FROM profiles WHERE tel IS NOT NULL`),
   ]);
   const linkMap = new Map<string, string>(links.map((l) => [l.email, l.emp_id]));

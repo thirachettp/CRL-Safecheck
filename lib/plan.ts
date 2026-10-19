@@ -43,6 +43,12 @@ export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, f
     `INSERT INTO assembly_points (code, name, sort)
      SELECT DISTINCT assembly_point, 'จุดรวมพล ' || assembly_point, 0 FROM evac_plan WHERE assembly_point IS NOT NULL
      ON CONFLICT (code) DO NOTHING`);
+  // Cost Center ที่พบใน Excel เข้า master สำหรับหน้าลงทะเบียน
+  await q(
+    `INSERT INTO cost_centers (code, name, source)
+     SELECT cost_center, COALESCE(mode() WITHIN GROUP (ORDER BY area), cost_center), 'master' FROM evac_plan
+     WHERE cost_center IS NOT NULL AND cost_center <> '' GROUP BY cost_center
+     ON CONFLICT (code) DO NOTHING`);
   await q(`DELETE FROM flag_reviews`);
   const v = await saveVersion(`นำเข้าจาก Excel ${fileCount} ไฟล์`, by);
   return { saved: P.length, leaders: L.length, version: v };
