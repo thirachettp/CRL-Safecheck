@@ -51,7 +51,7 @@ export default function SourcesPage() {
             <div>
               <b style={{ fontSize: 16 }}>DIV+ และอื่นๆ (MS Form)</b>
               <p className="muted small" style={{ marginTop: 4 }}>
-                ฟอร์มเช็กอิน → Power Automate เขียนลง SharePoint List → แอพดึงตามรอบ และดึงซ้ำทันทีเมื่อเปิดเหตุการณ์ ระบบอนุมานเข้า/ออกเอง
+                ฟอร์ม Check (In-Out) → Power Automate (HTTP Premium) ส่งเข้าแอพทันทีทุกครั้งที่มีคนตอบ (แถวที่มาจากทางนี้ขึ้นว่า “Power Automate”) ระบบอนุมานเข้า/ออกเอง
                 (ซ้ำใน 10 นาทีนับครั้งเดียว, ส่งครั้งที่สอง = ออก, ต่างไซต์ = ย้ายไซต์, ครบ 14 ชม. = ออกอัตโนมัติ)
               </p>
             </div>
@@ -96,8 +96,8 @@ function GraphSync({ configured, lastError, onDone }: { configured: boolean; las
   }
   return (
     <div className="stack" style={{ gap: 8, borderTop: "1px solid var(--line-3)", paddingTop: 12 }}>
-      <b className="small">ดึงจาก SharePoint List</b>
-      <p className="muted xs">{configured ? "เชื่อมแล้ว กดเพื่อดึงแถวใหม่ทันที" : "ยังไม่ได้ตั้งค่า รอ app registration แบบ Sites.Selected จาก IT แล้วใส่ค่า MS_* และ SP_* ใน Vercel"}</p>
+      <b className="small">ทางเลือก: ดึงจาก SharePoint List</b>
+      <p className="muted xs">{configured ? "เชื่อมแล้ว กดเพื่อดึงแถวใหม่ทันที" : "ไม่จำเป็นตอนนี้ (ใช้ Power Automate ส่งตรงแล้ว) ถ้าต้องการภายหลัง ต้องมี app registration แบบ Sites.Selected จาก IT แล้วใส่ค่า MS_* และ SP_* ใน Vercel"}</p>
       <div><button className="btn btn-pri btn-sm" onClick={run} disabled={busy || !configured}>{busy ? "กำลังดึง…" : "ดึงข้อมูลตอนนี้"}</button></div>
       {msg ? <p className={`notice ${msg.k}`}>{msg.t}</p> : configured && lastError ? <p className="notice warn">{lastError}</p> : null}
     </div>
@@ -121,7 +121,7 @@ function ExcelUpload({ onDone }: { onDone: () => void }) {
   return (
     <div className="stack" style={{ gap: 8, borderTop: "1px solid var(--line-3)", paddingTop: 12 }}>
       <b className="small">นำเข้า Excel ของฟอร์ม</b>
-      <p className="muted xs">ทางสำรองระหว่างรอ IT ดาวน์โหลดไฟล์ Check (In-Out) ที่ sync กับฟอร์มแล้วนำเข้า แถวที่มีอยู่แล้วจะถูกข้าม</p>
+      <p className="muted xs">ทางสำรองถ้า Flow หยุดทำงาน ดาวน์โหลดไฟล์ Check (In-Out) ที่ sync กับฟอร์มแล้วนำเข้า แถวที่มีอยู่แล้วจะถูกข้าม</p>
       <div><button className="btn btn-sm" onClick={() => input.current?.click()}>เลือกไฟล์ Excel</button></div>
       <input ref={input} type="file" accept=".xlsx" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
       {msg && <p className={`notice ${msg.k}`}>{msg.t}</p>}
