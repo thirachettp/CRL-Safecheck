@@ -20,7 +20,9 @@
 5. Deploy — ตารางในฐานข้อมูลสร้างเองตอนเรียกครั้งแรก ไม่ต้องรัน migration
 
 หมายเหตุ:
-- `vercel.json` ตั้ง region เป็น `sin1` และ cron ทุก 15 นาที — **cron ทุก 15 นาทีต้องใช้ Vercel Pro** (Hobby รันได้วันละครั้ง)
+- `vercel.json` ตั้ง region เป็น `sin1` และ cron วันละครั้งตอน 09:00 เวลาไทย (02:00 UTC) เพื่อให้ deploy บน Hobby ได้
+- อยากให้ดึงทุก 15 นาทีโดยไม่ขึ้น Pro: ใช้ตัวตั้งเวลาภายนอกฟรี เช่น cron-job.org เรียก `GET https://<โดเมน>/api/cron/sync` ทุก 15 นาที พร้อม header `Authorization: Bearer <CRON_SECRET>` (ตั้ง `CRON_SECRET` ใน Vercel ก่อน)
+- ถ้าขึ้น Pro ภายหลัง เปลี่ยน schedule ใน `vercel.json` เป็น `*/15 * * * *` แล้วเลิกใช้ตัวตั้งเวลาภายนอก
 - ต้นแบบนี้ใช้ Basic Auth ทั้งเว็บ เบราว์เซอร์มือถือจะถามรหัสครั้งแรกแล้วจำไว้ ระบบจริงควรเปลี่ยนเป็น Sign in with Microsoft
 
 ## ลองใช้ครั้งแรก (ประมาณ 10 นาที)

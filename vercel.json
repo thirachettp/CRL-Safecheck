@@ -1,4 +1,4 @@
 {
   "regions": ["sin1"],
-  "crons": [{ "path": "/api/cron/sync", "schedule": "*/15 * * * *" }]
+  "crons": [{ "path": "/api/cron/sync", "schedule": "0 2 * * *" }]
 }
