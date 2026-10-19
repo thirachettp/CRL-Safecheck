@@ -8,7 +8,7 @@ export const GET = handle(async () => ok({ codes: await q(`SELECT * FROM announc
 
 /** รายการ Code ประกาศ */
 export const POST = handle(async (req: Request) => {
-  requireRole(req, ["admin"]);
+  await requireRole(req, ["admin"]);
   const b = await req.json();
   if (b.action === "delete") {
     await q(`DELETE FROM announce_codes WHERE id = $1`, [Number(b.id)]);

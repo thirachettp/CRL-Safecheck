@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /** จุดรวมพลและจุดสำรอง */
 export const POST = handle(async (req: Request) => {
-  requireRole(req, ["admin"]);
+  await requireRole(req, ["admin"]);
   const b = await req.json();
   if (b.action === "delete") {
     await q(`DELETE FROM assembly_points WHERE code = $1`, [String(b.code)]);

@@ -1,18 +1,27 @@
-import { one } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
 import { prefillFor } from "@/lib/profile";
+import { accountState, login, setupPassword } from "@/lib/account";
 
 export const dynamic = "force-dynamic";
 
 /**
- * เข้าสู่ระบบแบบระบุตัวตน (ต้นแบบ ยังไม่มีรหัสผ่าน):
- * มีบัญชีที่ลงทะเบียนครบแล้ว → เข้าได้เลย, ยังไม่มี → ตอบ needRegister พร้อมค่าตั้งต้นจากแผนอพยพ
+ * เข้าสู่ระบบ: รหัสพนักงาน + รหัสผ่าน
+ * - ส่งแค่ code → บอกขั้นต่อไป (password / setup / register)
+ * - code + password → token อายุ 30 วัน
+ * - action "setup" (บัญชีเก่าที่ยังไม่มีรหัสผ่าน) → ยืนยันอีเมลแล้วตั้งรหัสผ่าน
  */
 export const POST = handle(async (req: Request) => {
-  const code = String((await req.json()).code ?? "").trim();
+  const b = await req.json();
+  const code = String(b.code ?? "").trim();
   if (!code) return fail("กรอกรหัสพนักงาน");
-  const pr = await one<any>(`SELECT code, name FROM profiles WHERE code = $1 AND email IS NOT NULL`, [code]);
-  if (pr) return ok({ code, name: pr.name || code });
-  const { inPlan, prefill } = await prefillFor(code);
-  return Response.json({ error: "ยังไม่มีบัญชี กรุณาลงทะเบียน", needRegister: true, inPlan, prefill }, { status: 404 });
+  if (b.action === "setup") return ok(await setupPassword(code, String(b.email ?? ""), String(b.password ?? "")));
+  if (b.password === undefined || b.password === null || b.password === "") {
+    const next = await accountState(code);
+    if (next === "register") {
+      const { inPlan, prefill } = await prefillFor(code);
+      return Response.json({ error: "ยังไม่มีบัญชี กรุณาลงทะเบียน", needRegister: true, next, inPlan, prefill }, { status: 404 });
+    }
+    return ok({ next });
+  }
+  return ok(await login(code, String(b.password)));
 });

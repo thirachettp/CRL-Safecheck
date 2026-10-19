@@ -268,4 +268,39 @@ export const SCHEMA: string[] = [
     received_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS outsource_attendance_emp ON outsource_attendance (emp_id, clock_in DESC)`,
+  // v5 บัญชีผู้ใช้: รหัสผ่าน + บทบาท (user / safety / admin)
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pass_hash text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS must_change_pw boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS failed_logins int NOT NULL DEFAULT 0`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS locked_until timestamptz`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pw_updated_at timestamptz`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role_by text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_login_at timestamptz`,
+  `DO $$ BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_role_check') THEN
+       ALTER TABLE profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('user','safety','admin'));
+     END IF;
+   END $$`,
+  // v5 บัญชีผู้ใช้: รหัสผ่าน (scrypt) + บทบาท
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS password_hash text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS must_change_pw boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pw_ver int NOT NULL DEFAULT 0`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS failed_logins int NOT NULL DEFAULT 0`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS locked_until timestamptz`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_login_at timestamptz`,
+  `DO $$ BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_role_check') THEN
+       ALTER TABLE profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('user','safety','admin'));
+     END IF;
+   END $$`,
+  `CREATE TABLE IF NOT EXISTS account_log (
+    id         bigserial PRIMARY KEY,
+    code       text NOT NULL,
+    action     text NOT NULL,
+    detail     text,
+    by_code    text,
+    at         timestamptz NOT NULL DEFAULT now()
+  )`,
 ];

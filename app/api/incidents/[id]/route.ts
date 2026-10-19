@@ -36,7 +36,7 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   const id = Number((await params).id);
   const b = await req.json();
   if (b.action === "confirm") {
-    const actor = requireRole(req, ["admin", "safety"]);
+    const actor = await requireRole(req, ["admin", "safety"]);
     await confirmIncident(id, actor, Array.isArray(b.closedPoints) ? b.closedPoints.map(String) : []);
     fanOutSync(25_000).then(() => mergeIntoIncident(id, "sync")).catch(() => {});
     return ok({ id });
@@ -46,7 +46,7 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
     return ok({ cancelled: true });
   }
   if (b.action === "close") {
-    const actor = requireRole(req, ["admin", "safety"]);
+    const actor = await requireRole(req, ["admin", "safety"]);
     return ok(await closeIncident(id, actor));
   }
   return fail("ไม่รู้จักคำสั่ง");

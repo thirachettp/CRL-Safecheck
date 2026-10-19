@@ -1,11 +1,15 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** แนบ token ของ Admin / Safety ที่ใส่รหัสไว้ในแท็บนี้ */
+/** แนบ token: PIN ของ Admin / Safety ในแท็บนี้ หรือ token ของบัญชีที่เข้าสู่ระบบ */
 function adminHeader(): Record<string, string> {
   try {
     const a = JSON.parse(sessionStorage.getItem("sc_admin") ?? "null");
     if (a?.token && a.exp > Date.now()) return { "x-admin-token": a.token };
+  } catch {}
+  try {
+    const u = JSON.parse(localStorage.getItem("sc_user") ?? "null");
+    if (u?.token) return { "x-admin-token": u.token };
   } catch {}
   return {};
 }

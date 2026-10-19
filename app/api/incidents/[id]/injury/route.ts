@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /** Safety เห็นกรุ๊ปเลือดของผู้บาดเจ็บที่ยินยอมไว้ (เฉพาะช่วงเหตุการณ์) */
 export const GET = handle(async (req: Request, { params }: Ctx) => {
-  requireRole(req, ["admin", "safety"]);
+  await requireRole(req, ["admin", "safety"]);
   const id = Number((await params).id);
   const rows = await q(
     `SELECT p.person_key, pr.blood FROM incident_people p JOIN profiles pr ON pr.code = p.emp_id
@@ -18,7 +18,7 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
 
 /** Safety ระบุระดับสี อาการ และโรงพยาบาล */
 export const PATCH = handle(async (req: Request, { params }: Ctx) => {
-  const actor = requireRole(req, ["admin", "safety"]);
+  const actor = await requireRole(req, ["admin", "safety"]);
   const id = Number((await params).id);
   const b = await req.json();
   await setInjury(id, String(b.person_key), { triage: b.triage || null, symptoms: b.symptoms ?? null, hospital: b.hospital ?? null }, actor);

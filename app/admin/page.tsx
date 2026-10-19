@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import PcHeader from "@/components/PcHeader";
 import PinGate from "@/components/PinGate";
+import UsersPanel from "@/components/UsersPanel";
 import { api, usePoll, fmtDateTime, rangeText } from "@/components/lib";
 import { IUpload } from "@/components/Icons";
 import type { MergedPlan } from "@/lib/parsers";
@@ -62,6 +63,7 @@ function Admin() {
           <ImportCard onSaved={() => o.reload()} />
           {o.data && <PointsCard points={o.data.points} onSaved={o.reload} />}
           {o.data && <FlagsCard data={o.data} />}
+          <UsersPanel />
         </section>
         <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
           {o.data && <AccuracyCard a={o.data.accuracy} />}
@@ -350,7 +352,7 @@ function ConfirmersCard() {
   }
   return (
     <div className="card">
-      <div className="card-h">ผู้ยืนยัน Incident ได้</div>
+      <div className="card-h">PIN ผู้ยืนยัน Incident (สำรอง)</div>
       {(c.data?.confirmers ?? []).map((x) => (
         <div key={x.id} className="tr" style={{ gridTemplateColumns: "minmax(0,1fr) auto auto" }}>
           <div>{x.name}{!x.has_pin && <span className="chip err sm" style={{ marginLeft: 6 }}>ยังไม่มีรหัส</span>}</div>

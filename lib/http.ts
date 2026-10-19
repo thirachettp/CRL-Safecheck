@@ -10,7 +10,7 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       return await fn(...args);
     } catch (e: any) {
       if (!e?.status) console.error(e);
-      return fail(e?.message ?? "เกิดข้อผิดพลาด", e?.status ?? 500);
+      return NextResponse.json({ error: e?.message ?? "เกิดข้อผิดพลาด", ...(e?.payload ?? {}) }, { status: e?.status ?? 500 });
     }
   };
 }

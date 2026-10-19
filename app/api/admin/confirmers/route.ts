@@ -5,13 +5,13 @@ import { requireRole, hashPin } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export const GET = handle(async (req: Request) => {
-  requireRole(req, ["admin"]);
+  await requireRole(req, ["admin"]);
   return ok({ confirmers: await q(`SELECT id, name, role, pin_hash IS NOT NULL AS has_pin FROM confirmers ORDER BY role, name`) });
 });
 
 /** เพิ่ม/แก้ผู้ยืนยัน Incident และตั้งรหัส */
 export const POST = handle(async (req: Request) => {
-  requireRole(req, ["admin"]);
+  await requireRole(req, ["admin"]);
   const b = await req.json();
   if (b.action === "delete") {
     await q(`DELETE FROM confirmers WHERE id = $1`, [Number(b.id)]);

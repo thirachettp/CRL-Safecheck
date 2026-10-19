@@ -17,7 +17,7 @@ export default function HomePage() {
 function Home() {
   const router = useRouter();
   const stay = useSearchParams().get("stay") === "1";
-  const { user, login, register } = useUser();
+  const { user } = useUser();
   const { unlock } = useAdmin();
   const cur = usePoll<{ current: any }>("/api/incidents", 4000);
   const plan = usePoll<{ flags: any[]; points: Point[] }>("/api/plan", 0);
@@ -183,7 +183,7 @@ function Home() {
           </>
         )}
       </div>
-      {showLogin && <LoginSheet onLogin={login} onRegister={register} onClose={() => setShowLogin(false)} />}
+      {showLogin && <LoginSheet onClose={() => setShowLogin(false)} />}
     </MobileShell>
   );
 }

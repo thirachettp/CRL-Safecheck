@@ -1,10 +1,14 @@
-// รหัสของผู้ยืนยัน Incident (Admin / Safety Officer)
-// ต้นแบบ: PIN + token ลงลายมือชื่อ HMAC อายุ 12 ชม. ระบบจริงควรเปลี่ยนเป็น Sign in with Microsoft
+// สิทธิ์ใช้งาน
+// 1) บัญชีผู้ใช้ (รหัสพนักงาน + รหัสผ่าน) มีบทบาท user / safety / admin — token อายุ 30 วัน ตรวจบทบาทกับฐานข้อมูลทุกครั้ง
+// 2) PIN ของผู้ยืนยัน (ระบบเดิม) ยังใช้ได้ — token อายุ 12 ชม.
+// ระบบจริงควรเปลี่ยนเป็น Sign in with Microsoft
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { q } from "./db";
+import { q, one } from "./db";
 
 export type Role = "admin" | "safety";
-export type Actor = { id: number; name: string; role: Role };
+export type UserRole = Role | "user";
+export type Actor = { id: number; name: string; role: Role; code?: string };
+export type Session = { code: string; name: string; role: UserRole };
 
 const secret = () => process.env.SESSION_SECRET || process.env.ADMIN_PIN || "dev-only-secret";
 
@@ -26,7 +30,9 @@ function sign(payload: object) {
   return `${body}.${sig}`;
 }
 
-export function verifyToken(token: string | null): Actor | null {
+type Payload = { id: number; name: string; role: UserRole; code?: string; v?: number; exp: number };
+
+function readToken(token: string | null): Payload | null {
   if (!token) return null;
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
@@ -34,7 +40,44 @@ export function verifyToken(token: string | null): Actor | null {
   if (good.length !== sig.length || !timingSafeEqual(Buffer.from(good), Buffer.from(sig))) return null;
   const p = JSON.parse(Buffer.from(body, "base64url").toString());
   if (!p.exp || p.exp < Date.now()) return null;
+  return p;
+}
+
+/** ใช้เฉพาะ token แบบ PIN (ไม่แตะฐานข้อมูล) */
+export function verifyToken(token: string | null): Actor | null {
+  const p = readToken(token);
+  if (!p || p.code || p.role === "user") return null;
   return { id: p.id, name: p.name, role: p.role };
+}
+
+/** รหัสพนักงานที่เป็น Admin เสมอ (ตั้งใน Vercel: ADMIN_CODES=รหัส1,รหัส2) ใช้เปิด Admin คนแรก */
+export const bootstrapAdmins = () =>
+  (process.env.ADMIN_CODES ?? "").split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+export const effectiveRole = (code: string, dbRole: string | null): UserRole =>
+  bootstrapAdmins().includes(code) ? "admin" : (["admin", "safety"].includes(dbRole ?? "") ? (dbRole as Role) : "user");
+
+export function signUser(s: { code: string; name: string; role: UserRole; pw_ver: number }) {
+  return sign({ id: 0, code: s.code, name: s.name, role: s.role, v: s.pw_ver, exp: Date.now() + 30 * 24 * 3600 * 1000 });
+}
+
+/** ตรวจ token ของบัญชีผู้ใช้กับฐานข้อมูล (บทบาทปัจจุบัน และรีเซ็ตรหัสผ่านแล้ว token เก่าใช้ไม่ได้) */
+export async function sessionOf(req: Request): Promise<Session | null> {
+  const p = readToken(req.headers.get("x-admin-token"));
+  if (!p?.code) return null;
+  const r = await one<any>(`SELECT code, name, role, pw_ver, must_change_pw FROM profiles WHERE code = $1 AND password_hash IS NOT NULL`, [p.code]);
+  if (!r || r.pw_ver !== (p.v ?? 0)) return null;
+  // ยังใช้รหัสชั่วคราวจาก Admin อยู่ = ยังไม่ให้สิทธิ์ Admin/Safety จนกว่าจะตั้งรหัสใหม่
+  return { code: r.code, name: r.name || r.code, role: r.must_change_pw ? "user" : effectiveRole(r.code, r.role) };
+}
+
+export async function requireUser(req: Request): Promise<Session> {
+  const s = await sessionOf(req);
+  if (!s) {
+    const e: any = new Error("ต้องเข้าสู่ระบบก่อน");
+    e.status = 401;
+    throw e;
+  }
+  return s;
 }
 
 /** ตรวจ PIN: ผู้ยืนยันในระบบ หรือ ADMIN_PIN จาก env (ใช้ตั้งค่าครั้งแรก) */
@@ -53,9 +96,20 @@ export function actorOf(req: Request) {
   return verifyToken(req.headers.get("x-admin-token"));
 }
 
-/** ต้องเป็นบทบาทที่กำหนด ไม่งั้นโยน error 401 */
-export function requireRole(req: Request, roles: Role[] = ["admin", "safety"]): Actor {
-  const a = actorOf(req);
+/** ต้องเป็นบทบาทที่กำหนด ไม่งั้นโยน error 401/403 (รับทั้ง token PIN และ token บัญชีผู้ใช้) */
+export async function requireRole(req: Request, roles: Role[] = ["admin", "safety"]): Promise<Actor> {
+  let a: Actor | null = actorOf(req);
+  if (!a) {
+    const s = await sessionOf(req);
+    if (s) {
+      if (s.role === "user") {
+        const e: any = new Error("บัญชีนี้ไม่มีสิทธิ์ Admin / Safety");
+        e.status = 403;
+        throw e;
+      }
+      a = { id: 0, name: s.name, role: s.role, code: s.code };
+    }
+  }
   if (!a || !roles.includes(a.role)) {
     const e: any = new Error(a ? "สิทธิ์ไม่พอสำหรับคำสั่งนี้" : "ต้องใส่รหัส Admin / Safety Officer");
     e.status = a ? 403 : 401;
