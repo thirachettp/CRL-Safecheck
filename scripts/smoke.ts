@@ -106,14 +106,13 @@ ok(need.status === 404 && need.data?.needRegister && need.data.inPlan, "ยั�
 ok(need.data?.prefill?.first_name === "ชื่อ1-0" && need.data.prefill.cost_center === "82001", "เติมชื่อ / Cost Center จากชุดธงให้");
 const ccs = await j("/api/cost-centers?q=8200");
 ok(ccs.items.length === 3, "master Cost Center ตั้งต้นจากชุดธง ค้นหาได้");
-const PW = "Safe2026pw";
+const PW = "1234";
 const reg = { password: PW, code: "30000100", prefix: "นาย", first_name: "ชื่อ1-0", last_name: "สกุล0", cost_center: "82001",
   email: "user100@central.co.th", tel: "081-111-2222", gender: "ชาย", emer_name: "คุณแม่", emer_tel: "0899999999", consent: true, blood: "O" };
 ok(await fails(j("/api/register", { method: "POST", json: { ...reg, email: "user100@gmail.com" } })), "อีเมลที่ไม่ใช่ @central.co.th ถูกปฏิเสธ");
 ok(await fails(j("/api/register", { method: "POST", json: { ...reg, last_name: "" } })), "ข้อมูลไม่ครบถูกปฏิเสธ");
 ok(await fails(j("/api/register", { method: "POST", json: { ...reg, cost_center: "NOPE" } })), "Cost Center ที่ไม่มีใน master ถูกปฏิเสธ");
-ok(await fails(j("/api/register", { method: "POST", json: { ...reg, password: "12345678" } })), "รหัสผ่านไม่มีตัวอักษรถูกปฏิเสธ");
-ok(await fails(j("/api/register", { method: "POST", json: { ...reg, password: "x30000100" } })), "รหัสผ่านมีรหัสพนักงานถูกปฏิเสธ");
+ok(await fails(j("/api/register", { method: "POST", json: { ...reg, password: "" } })), "ไม่ใส่รหัสผ่านถูกปฏิเสธ");
 const user = await j("/api/register", { method: "POST", json: reg });
 ok(user.name === "ชื่อ1-0 สกุล0", "ลงทะเบียนสำเร็จ");
 ok(await fails(j("/api/register", { method: "POST", json: reg })), "ลงทะเบียนซ้ำไม่ได้");

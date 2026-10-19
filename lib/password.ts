@@ -20,12 +20,10 @@ export async function verifyPassword(pw: string, stored: string | null) {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
-/** กติการหัสผ่าน: อย่างน้อย 8 ตัว มีทั้งตัวอักษรและตัวเลข ไม่ซ้ำรหัสพนักงาน */
-export function passwordProblem(pw: string, code?: string) {
-  if (typeof pw !== "string" || pw.length < 8) return "รหัสผ่านต้องยาวอย่างน้อย 8 ตัว";
+/** ไม่บังคับรูปแบบรหัสผ่าน (ตามที่ตกลง) แค่ห้ามว่างและห้ามยาวเกิน */
+export function passwordProblem(pw: string, _code?: string) {
+  if (typeof pw !== "string" || !pw.length) return "กรอกรหัสผ่าน";
   if (pw.length > 128) return "รหัสผ่านยาวเกินไป";
-  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return "รหัสผ่านต้องมีทั้งตัวอักษรและตัวเลข";
-  if (code && pw.toLowerCase().includes(code.toLowerCase())) return "รหัสผ่านห้ามมีรหัสพนักงานอยู่ในนั้น";
   return null;
 }
 

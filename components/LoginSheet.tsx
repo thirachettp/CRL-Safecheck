@@ -6,11 +6,10 @@ import { useUser } from "./identity";
 
 type Step = "code" | "password" | "setup" | "register" | "change";
 
-/** กติกาเดียวกับฝั่งเซิร์ฟเวอร์ (เซิร์ฟเวอร์ตรวจซ้ำ) */
-export function pwProblem(pw: string, code: string) {
-  if (pw.length < 8) return "อย่างน้อย 8 ตัว";
-  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return "ต้องมีทั้งตัวอักษรและตัวเลข";
-  if (code && pw.toLowerCase().includes(code.toLowerCase())) return "ห้ามมีรหัสพนักงานอยู่ในรหัสผ่าน";
+/** ไม่บังคับรูปแบบ (เซิร์ฟเวอร์ตรวจซ้ำ) */
+export function pwProblem(pw: string, _code: string) {
+  if (!pw.length) return "กรอกรหัสผ่าน";
+  if (pw.length > 128) return "ยาวเกินไป";
   return null;
 }
 
@@ -26,7 +25,7 @@ export function NewPassword({ code, pw, setPw, pw2, setPw2, show }: {
       <label className="lb" style={{ fontSize: 13 }}>รหัสผ่านใหม่ <span style={{ color: "#9F1239" }}>*</span>
         <input className="in" type={show ? "text" : "password"} autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
       </label>
-      <div className="xs" style={{ marginTop: -6, color: p ? "#9F1239" : "var(--muted)" }}>{p ?? "อย่างน้อย 8 ตัว มีทั้งตัวอักษรและตัวเลข"}</div>
+      <div className="xs" style={{ marginTop: -6, color: p ? "#9F1239" : "var(--muted)" }}>{p ?? "ตั้งอะไรก็ได้ที่จำได้"}</div>
       <label className="lb" style={{ fontSize: 13 }}>ยืนยันรหัสผ่าน <span style={{ color: "#9F1239" }}>*</span>
         <input className="in" type={show ? "text" : "password"} autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
       </label>
