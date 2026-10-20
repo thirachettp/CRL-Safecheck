@@ -85,3 +85,43 @@ test("จำนวนรถลดฮวบ = กักไว้", () => {
   assert.equal(shouldHold(40, 30), false);
   assert.equal(shouldHold(5, 0), false);
 });
+
+test("KIOS: error HTML จาก gateway สรุปสั้น ๆ", async () => {
+  const { kioskError } = await import("../lib/kiosk.ts");
+  const m = kioskError(502, '<!DOCTYPE html><html class="no-js"><head><title>Bad gateway | example.com</title></head><body>...</body></html>');
+  assert.match(m, /^KIOS ไม่ตอบ \(502 Bad Gateway/);
+  assert.ok(m.length < 160 && !m.includes("<"));
+  assert.match(kioskError(400, '{"code":"PGRST202","message":"no fn","hint":"try p_date"}'), /PGRST202 · no fn · คำแนะนำ: try p_date/);
+});
+
+test("KIOS: Body เลื่อนวันได้ {{today-2}}", async () => {
+  const { rpcBody } = await import("../lib/kiosk.ts");
+  process.env.KIOS_RPC_BODY = '{"from":"{{today-2}}","to":"{{today}}","y":"{{yesterday}}"}';
+  const b = JSON.parse(rpcBody(new Date("2026-10-20T03:00:00Z")));
+  assert.deepEqual(b, { from: "2026-10-18", to: "2026-10-20", y: "2026-10-19" });
+  delete process.env.KIOS_RPC_BODY;
+});
+
+test("KIOS: 502 แล้วลองใหม่ 1 ครั้ง", async () => {
+  const http = await import("node:http");
+  let n = 0;
+  const srv = http.createServer((req, res) => {
+    n++;
+    if (n === 1) { res.writeHead(502, { "content-type": "text/html" }); res.end("<html><title>502</title></html>"); return; }
+    res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify([{ license_plate: "1กข1234" }]));
+  });
+  await new Promise<void>((r) => srv.listen(0, r));
+  const port = (srv.address() as any).port;
+  process.env.KIOS_BASE_URL = `http://127.0.0.1:${port}`; process.env.KIOS_API_KEY = "k";
+  const { fetchKiosk } = await import("../lib/kiosk.ts");
+  const rows = await fetchKiosk();
+  assert.equal(n, 2);
+  assert.equal(rows.length, 1);
+  n = -10; // ล้มทั้งสองรอบ
+  const srv2 = http.createServer((req, res) => { res.writeHead(502, { "content-type": "text/html" }); res.end("<html></html>"); });
+  await new Promise<void>((r) => srv2.listen(0, r));
+  process.env.KIOS_BASE_URL = `http://127.0.0.1:${(srv2.address() as any).port}`;
+  await assert.rejects(fetchKiosk(), /KIOS ไม่ตอบ \(502 Bad Gateway\).*ลองใหม่แล้ว 1 ครั้ง/);
+  srv.close(); srv2.close();
+  delete process.env.KIOS_BASE_URL; delete process.env.KIOS_API_KEY;
+});

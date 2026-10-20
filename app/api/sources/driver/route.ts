@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
 import { syncDriver } from "@/lib/sources";
-import { kioskConfigured } from "@/lib/kiosk";
+import { kioskConfigured, rpcBody } from "@/lib/kiosk";
 import { getSetting, setSetting } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,9 @@ export const GET = handle(async (req: Request) => {
     getSetting<number | null>("driver_flag", null),
     getSetting<any>("driver_fields", null),
   ]);
-  return ok({ configured: kioskConfigured(), vehicles, flag, fields });
+  // Body ที่ส่งไป KIOS (ไม่มี apikey) ให้เห็นว่าดึงช่วงวันที่เท่าไร
+  const kios = { template: process.env.KIOS_RPC_BODY || "{}", body: rpcBody(), status: process.env.KIOS_STATUS_ID || "2", rpc: process.env.KIOS_RPC || "vms_dpark_withtransaction_detail" };
+  return ok({ configured: kioskConfigured(), vehicles, flag, fields, kios });
 });
 
 export const POST = handle(async (req: Request) => {

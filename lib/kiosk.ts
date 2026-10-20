@@ -4,42 +4,70 @@ export function kioskConfigured() {
   return Boolean(process.env.KIOS_BASE_URL && process.env.KIOS_API_KEY);
 }
 
-/** เทียบเท่าสูตร Power Query: POST rest/v1/rpc/<fn>?status_id=eq.2 พร้อม header apikey */
+/** สรุป error ให้อ่านง่าย: หน้า HTML จาก gateway → "502 Bad Gateway" แทนการแปะทั้งหน้า */
+export function kioskError(status: number, text: string) {
+  const NAMES: Record<number, string> = { 500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout", 524: "Timeout" };
+  if (/^\s*</.test(text)) {
+    const title = text.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
+    return `KIOS ไม่ตอบ (${status} ${NAMES[status] ?? ""}${title && !title.includes(String(status)) ? ` · ${title.slice(0, 80)}` : ""}) · เซิร์ฟเวอร์ KIOS ล่มหรือประมวลผลนานเกิน`.replace(/\s+\)/, ")");
+  }
+  let msg = text.slice(0, 200);
+  try {
+    const e = JSON.parse(text);
+    // PostgREST บอกพารามิเตอร์ที่ฟังก์ชันต้องการไว้ใน hint
+    msg = [e.code, e.message, e.hint && `คำแนะนำ: ${e.hint}`].filter(Boolean).join(" · ");
+  } catch {}
+  return `KIOS ตอบ ${status}: ${msg}`;
+}
+
+const RETRY = new Set([502, 503, 504, 520, 522, 524]);
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** เทียบเท่าสูตร Power Query: POST rest/v1/rpc/<fn>?status_id=eq.2 (เฉพาะรถที่ยังอยู่ในลาน) พร้อม header apikey
+ *  ได้ 502/503/504 หรือเชื่อมต่อไม่ได้ → ลองใหม่อีก 1 ครั้งหลังรอ 2.5 วินาที */
 export async function fetchKiosk(): Promise<Record<string, unknown>[]> {
   const base = process.env.KIOS_BASE_URL!.replace(/\/+$/, "");
   const fn = process.env.KIOS_RPC || "vms_dpark_withtransaction_detail";
   const status = process.env.KIOS_STATUS_ID || "2";
   const url = `${base}/rest/v1/rpc/${fn}?status_id=eq.${encodeURIComponent(status)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { apikey: process.env.KIOS_API_KEY!, "Content-Type": "application/json" },
-    body: rpcBody(),
-    signal: AbortSignal.timeout(20_000),
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let msg = text.slice(0, 300);
+  const body = rpcBody();
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let res: Response;
     try {
-      const e = JSON.parse(text);
-      // PostgREST บอกพารามิเตอร์ที่ฟังก์ชันต้องการไว้ใน hint
-      msg = [e.code, e.message, e.hint && `คำแนะนำ: ${e.hint}`].filter(Boolean).join(" · ");
-    } catch {}
-    throw new Error(`KIOS ตอบ ${res.status}: ${msg}`);
+      res = await fetch(url, {
+        method: "POST",
+        headers: { apikey: process.env.KIOS_API_KEY!, "Content-Type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(12_000),
+        cache: "no-store",
+      });
+    } catch (e: any) {
+      lastErr = new Error(e?.name === "TimeoutError" ? "KIOS ไม่ตอบภายใน 12 วินาที" : `เชื่อมต่อ KIOS ไม่ได้: ${e?.message ?? e}`);
+      if (attempt === 1) { await wait(2500); continue; }
+      break;
+    }
+    if (res.ok) {
+      const j = await res.json();
+      const rows = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : null;
+      if (!rows) throw new Error("KIOS ส่งข้อมูลกลับมาไม่ใช่รายการ");
+      return rows;
+    }
+    lastErr = new Error(kioskError(res.status, await res.text()));
+    if (attempt === 1 && RETRY.has(res.status)) { await wait(2500); continue; }
+    break;
   }
-  const j = await res.json();
-  const rows = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : null;
-  if (!rows) throw new Error("KIOS ส่งข้อมูลกลับมาไม่ใช่รายการ");
-  return rows;
+  throw new Error(`${lastErr!.message}${lastErr!.message.includes("ลองใหม่") ? "" : " (ลองใหม่แล้ว 1 ครั้ง)"}`);
 }
 
 /**
  * Body ของ RPC จาก KIOS_RPC_BODY (JSON เดียวกับตัวแปร Body ใน Power Query)
- * ใส่วันที่แบบเลื่อนตามวันได้: {{today}} {{yesterday}} {{tomorrow}} (เวลาไทย, YYYY-MM-DD) และ {{now}} (ISO)
+ * ใส่วันที่แบบเลื่อนตามวันได้: {{today}} {{yesterday}} {{tomorrow}} {{today-2}} {{today+1}} (เวลาไทย, YYYY-MM-DD) และ {{now}} (ISO)
  */
 export function rpcBody(now = new Date()) {
   const day = (offset: number) => new Date(now.getTime() + 7 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
   return (process.env.KIOS_RPC_BODY || "{}")
+    .replace(/\{\{today([+-]\d{1,3})\}\}/g, (_, n) => day(Number(n)))
     .replaceAll("{{today}}", day(0))
     .replaceAll("{{yesterday}}", day(-1))
     .replaceAll("{{tomorrow}}", day(1))

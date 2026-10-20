@@ -226,7 +226,7 @@ const FIELD_LABEL: Record<string, string> = {
 };
 
 function DriverPanel({ onDone }: { onDone: () => void }) {
-  const d = usePoll<{ configured: boolean; vehicles: any[]; flag: string | number | null; fields: any }>("/api/sources/driver", 30000);
+  const d = usePoll<{ configured: boolean; vehicles: any[]; flag: string | number | null; fields: any; kios?: { template: string; body: string; status: string; rpc: string } }>("/api/sources/driver", 30000);
   const plan = usePoll<{ leaders: { flag_no: string; leader_name: string }[]; flags: { flag_no: string | null; area: string | null }[] }>("/api/plan", 0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ k: string; t: string; held?: boolean } | null>(null);
@@ -245,6 +245,14 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
         <p className="muted small" style={{ marginTop: 4 }}>เรียก API ของ KIOS ตรง (สูตรเดียวกับใน Power BI) ดึงรถที่อยู่ในลาน ใช้ทะเบียนรถเป็นตัวระบุคน หนึ่งคันนับหนึ่งคน</p>
       </div>
       {d.data && !d.data.configured && <p className="notice warn">ยังไม่ได้ตั้งค่า ใส่ KIOS_BASE_URL และ KIOS_API_KEY ใน Vercel แล้ว Redeploy</p>}
+      {d.data?.kios && (
+        <div className="small" style={{ background: "var(--subtle)", borderRadius: 10, padding: "8px 12px" }}>
+          <div>เรียก <span className="mono">{d.data.kios.rpc}</span> เฉพาะ <span className="mono">status_id = {d.data.kios.status}</span> (รถที่ยังอยู่ในลาน)</div>
+          <div className="muted xs" style={{ marginTop: 4 }}>Body (KIOS_RPC_BODY): <span className="mono">{d.data.kios.template}</span></div>
+          <div className="muted xs">ส่งจริงวันนี้: <span className="mono">{d.data.kios.body}</span></div>
+          {!/\{\{(today|yesterday)/.test(d.data.kios.template) && <div className="xs" style={{ color: "#92400E", marginTop: 4 }}>Body ยังไม่ได้จำกัดช่วงวันที่ ถ้า KIOS ตอบ 502 บ่อย ให้ตั้งให้ดึงแค่ 2 วัน เช่น ใช้ {"{{yesterday}}"} ถึง {"{{today}}"}</div>}
+        </div>
+      )}
       <div className="row">
         <button className="btn btn-pri btn-sm" onClick={() => sync(false)} disabled={busy || !d.data?.configured}>{busy ? "กำลังดึง…" : "ดึงข้อมูลตอนนี้"}</button>
         {msg?.held && <button className="btn btn-sm" onClick={() => sync(true)} disabled={busy}>รับข้อมูลรอบนี้ (รถออกจริง)</button>}
