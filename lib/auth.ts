@@ -129,3 +129,12 @@ export async function requireRole(req: Request, roles: Role[] = ["admin", "safet
   }
   return a;
 }
+
+/** ใครกำลังดู: anon = ไม่ได้เข้าสู่ระบบ · user = บัญชีทั่วไป · staff = Admin / Safety (บัญชีหรือ PIN) */
+export type Viewer = "anon" | "user" | "staff";
+export async function viewerOf(req: Request): Promise<Viewer> {
+  if (actorOf(req)) return "staff";
+  const s = await sessionOf(req);
+  if (!s) return "anon";
+  return s.role === "user" ? "user" : "staff";
+}

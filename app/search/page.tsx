@@ -7,7 +7,7 @@ import { api, usePoll, fmtTime, LBL, ORDER, EVAC, inPool, TRI } from "@/componen
 import { IFlag, IBuilding, IDown, IUp, IClose, ISearch, ICheck } from "@/components/Icons";
 
 type P = any;
-type Data = { incident: any; people: P[]; points: any[]; leaders: any[] };
+type Data = { incident: any; people: P[]; points: any[]; leaders: any[]; viewer?: "anon" | "user" | "staff" };
 
 export default function SearchPage() {
   const cur = usePoll<{ current: any }>("/api/incidents", 5000);
@@ -48,6 +48,8 @@ function SearchIncident({ id }: { id: number }) {
 
   const inc = d.data?.incident;
   const real = inc?.mode === "real";
+  const anon = d.data?.viewer === "anon";
+  const hidden = <span className="muted">เข้าสู่ระบบเพื่อดู</span>;
   const people: P[] = useMemo(
     () => (d.data?.people ?? []).map((p) => (local[p.person_key] ? { ...p, status: local[p.person_key] } : p)),
     [d.data, local]);
@@ -230,11 +232,11 @@ function SearchIncident({ id }: { id: number }) {
                       </button>
                       <div className="kv">
                         <span className="muted">รหัส</span><span className="mono">{p.emp_id ?? p.plate ?? p.email ?? "—"}</span>
-                        <span className="muted">เบอร์โทร</span>{p.tel ? <a href={`tel:${p.tel.replace(/[^\d+]/g, "")}`} style={{ fontWeight: 600 }}>{p.tel}</a> : <span>—</span>}
+                        <span className="muted">เบอร์โทร</span>{anon ? hidden : p.tel ? <a href={`tel:${p.tel.replace(/[^\d+]/g, "")}`} style={{ fontWeight: 600 }}>{p.tel}</a> : <span>—</span>}
                         <span className="muted">ธง</span><span>{p.flag_no != null ? `ธง ${p.flag_no}` : "ไม่ระบุธง"}</span>
                         <span className="muted">จุดรวมพล</span><span>{pointLabel(p)}</span>
                         <span className="muted">ที่มาข้อมูล</span><span>{p.source ?? "—"}{!p.still_in_source && p.presence !== "manual" ? " · หายจากแหล่งข้อมูลล่าสุด" : ""}</span>
-                        <span className="muted">ผู้ติดต่อฉุกเฉิน</span><span>{p.emer ?? "ยังไม่ลงทะเบียน"}</span>
+                        <span className="muted">ผู้ติดต่อฉุกเฉิน</span>{anon ? hidden : <span>{p.emer ?? "ยังไม่ลงทะเบียน"}</span>}
                         <span className="muted">ระบุล่าสุดโดย</span><span>{p.status_by ? `${p.status_by} · ${fmtTime(p.status_at)}` : "–"}</span>
                       </div>
                     </>

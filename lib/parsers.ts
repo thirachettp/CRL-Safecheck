@@ -74,14 +74,23 @@ function rowsOf(ws: WorkSheet): unknown[][] {
   return utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" });
 }
 
-/** หาแถวหัวตารางจากคำที่ต้องมี คืน index แถวและ map ชื่อคอลัมน์ → index */
+/** หัวคอลัมน์ที่สะกดต่างกันในไฟล์จริง → ชื่อมาตรฐาน */
+const HEAD_ALIASES: [RegExp, string][] = [
+  [/รหัสหนักงาน|รหัสพนง\.?|รหัสพนักาน/g, "รหัสพนักงาน"],
+];
+const normHead = (h: string) => HEAD_ALIASES.reduce((x, [re, to]) => x.replace(re, to), clean(h));
+
+/** หาแถวหัวตารางจากคำที่ต้องมี (ปกติคือแถว 4 ที่คอลัมน์แรกเป็น "จุดรวมพล") คืน index แถวและชื่อคอลัมน์ */
 function findHeader(rows: unknown[][], mustHave: string, scan = 15) {
   for (let r = 0; r < Math.min(rows.length, scan); r++) {
-    const heads = rows[r].map((c) => clean(cell(c)));
+    const heads = rows[r].map((c) => normHead(cell(c)));
     if (heads.some((h) => h.includes(clean(mustHave)))) return { row: r, heads };
   }
   return null;
 }
+
+/** ไฟล์ชั่วคราวของ Excel (~$ชื่อไฟล์.xlsx) ไม่ใช่ไฟล์จริง */
+export const isTempExcel = (name: string) => name.split(/[\\/]/).pop()!.startsWith("~$");
 
 function col(heads: string[], ...keys: string[]): number {
   for (const k of keys) {
@@ -390,4 +399,24 @@ export function parseFormWorkbook(wb: WorkBook): { rows: FormCheckin[]; issues: 
     });
   }
   return { rows, issues };
+}
+
+// ---------- ไฟล์รวม (แบบเดียวกับสคริปต์รวมไฟล์ของทีม: ทุกแถว + source file + source sheet) ----------
+export function combinedRows(m: MergedPlan) {
+  const leader = new Map(m.leaders.map((l) => [l.flag_no, l.leader_name]));
+  return m.people.map((p) => ({
+    "จุดรวมพล": p.assembly_point ?? "",
+    "เบอร์ธงอพยพใหม่": p.flag_no ?? "",
+    "เบอร์ธงอพยพเดิม": p.flag_no_old ?? "",
+    "รหัสพนักงาน": p.emp_id,
+    "คำนำหน้า": p.prefix ?? "",
+    "ชื่อ-นามสกุล": `${p.first_name} ${p.last_name}`.trim(),
+    "เพศ": p.gender ?? "",
+    "Cost Center": p.cost_center ?? "",
+    "แผนก/พื้นที่": p.area ?? "",
+    "บทบาทหน้าที่": p.role ?? "",
+    "ผู้นำธง (ชีตผู้นำธง)": p.flag_no != null ? leader.get(p.flag_no) ?? "" : "",
+    "source file": p.source_file,
+    "source sheet": p.sheet ?? "",
+  }));
 }

@@ -107,6 +107,7 @@ function Admin() {
 // ---------- นำเข้าไฟล์ธง ----------
 function ImportCard({ onSaved }: { onSaved: () => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const folder = useRef<HTMLInputElement>(null);
   const mergePlanFn = useRef<typeof import("@/lib/parsers").mergePlan | null>(null);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -120,8 +121,12 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
 
   async function read(files: FileList | File[]) {
-    const list = [...files].filter((f) => /\.xlsx?$/i.test(f.name));
+    const { isTempExcel } = await import("@/lib/parsers");
+    const all = [...files];
+    const list = all.filter((f) => /\.xlsx?$/i.test(f.name) && !isTempExcel(f.name))
+      .sort((a, b) => a.name.localeCompare(b.name, "th"));
     if (!list.length) return setMsg({ k: "warn", t: "เลือกไฟล์ .xlsx ของแผนอพยพ" });
+    const skipped = all.length - list.length;
     setBusy(true); setMsg(null);
     try {
       const XLSX = await import("xlsx");
@@ -132,7 +137,21 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
       setSrc("sheet");
       setName(list.length === 1 ? list[0].name.replace(/\.xlsx?$/i, "") : "");
       setRaw(res);
+      if (skipped) setMsg({ k: "warn", t: `ข้าม ${skipped} ไฟล์ที่ไม่ใช่ .xlsx หรือเป็นไฟล์ชั่วคราว (~$)` });
     } catch (e: any) { setMsg({ k: "err", t: `อ่านไฟล์ไม่สำเร็จ: ${e.message}` }); } finally { setBusy(false); }
+  }
+  async function download() {
+    if (!m) return;
+    const XLSX = await import("xlsx");
+    const { combinedRows } = await import("@/lib/parsers");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(combinedRows(m)), "รวม");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m.leaders.map((l) => ({
+      "จุดรวมพล": l.assembly_point ?? "", "เบอร์ธงอพยพ": l.flag_no, "เบอร์ธงเดิม": l.flag_no_old ?? "", "ผู้นำธงอพยพ": l.leader_name,
+      "Cost Center": l.cost_center ?? "", "แผนก/พื้นที่": l.area ?? "", "หมายเหตุ": l.note ?? "" }))), "รายชื่อผู้นำธง");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m.issues.map((i) => ({
+      "ระดับ": i.level === "error" ? "ต้องแก้" : "เตือน", "ไฟล์": i.file, "ปัญหา": i.message }))), "ปัญหาที่พบ");
+    XLSX.writeFile(wb, `Summary_EmergencyFlags_รวม_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
   async function save() {
     if (!m) return;
@@ -149,7 +168,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
   return (
     <div className="card">
       <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>นำเข้าไฟล์ธง (Excel)</span>
-        <span className="muted xs" style={{ fontWeight: 500 }}>ไฟล์รายแผนก หัวตารางมี “รหัสพนักงาน” + ชีตผู้นำธง</span></div>
+        <span className="muted xs" style={{ fontWeight: 500 }}>ไฟล์รายแผนก หัวตารางแถว 4 (จุดรวมพล … รหัสพนักงาน) + ชีตรายชื่อผู้นำธง · เลือกหลายไฟล์หรือทั้งโฟลเดอร์ได้</span></div>
       <div className="dropzone" data-over={over} role="button" tabIndex={0}
         onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
@@ -158,7 +177,9 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
         <div className="grow"><b>{busy ? "กำลังอ่านไฟล์…" : "ลากไฟล์ .xlsx มาวาง หรือเลือกไฟล์"}</b>
           <div className="muted small">ระบบจะตรวจก่อน · ยังไม่มีผลกับชุดธงจนกว่าจะกดบันทึก</div></div>
         <span className="btn btn-sm">เลือกไฟล์</span>
+        <button type="button" className="btn btn-sm" onClick={(e) => { e.stopPropagation(); folder.current?.click(); }}>เลือกทั้งโฟลเดอร์</button>
         <input ref={input} type="file" accept=".xlsx,.xls" multiple hidden onChange={(e) => e.target.files && read(e.target.files)} />
+        <input ref={folder} type="file" multiple hidden {...({ webkitdirectory: "", directory: "" } as any)} onChange={(e) => e.target.files && read(e.target.files)} />
       </div>
       {msg && <div style={{ padding: "0 18px 14px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
       {m && (
@@ -195,6 +216,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
             <input className="in" style={{ marginTop: 0, width: 260 }} maxLength={80} placeholder="ชื่อเวอร์ชัน (ไม่บังคับ)" value={name} onChange={(e) => setName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
             <button className="btn btn-pri" onClick={save} disabled={busy || !m.people.length}>บันทึกเป็นชุดธงใหม่ ({m.people.length} คน)</button>
             <button className="btn" onClick={() => setRaw(null)} disabled={busy}>ยกเลิก</button>
+            <button className="btn" onClick={download} disabled={busy}>ดาวน์โหลดไฟล์รวม (.xlsx)</button>
             <span className="muted xs">แทนที่ชุดธงปัจจุบันทั้งหมด เหตุการณ์ที่เปิดอยู่ไม่กระทบ</span>
           </div>
         </>

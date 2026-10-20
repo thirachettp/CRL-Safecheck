@@ -1,6 +1,6 @@
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
-import { requireRole } from "@/lib/auth";
+import { requireRole, viewerOf } from "@/lib/auth";
 import { getIncident, getPeople, confirmIncident, cancelIncident, closeIncident, mergeIntoIncident } from "@/lib/incident";
 import { sourceStates, fanOutSync } from "@/lib/sources";
 import { getSetting } from "@/lib/settings";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 type Ctx = { params: Promise<{ id: string }> };
 
-export const GET = handle(async (_req: Request, { params }: Ctx) => {
+export const GET = handle(async (req: Request, { params }: Ctx) => {
   const id = Number((await params).id);
   const incident = await getIncident(id);
   if (!incident) return fail("ไม่พบเหตุการณ์", 404);
@@ -25,11 +25,16 @@ export const GET = handle(async (_req: Request, { params }: Ctx) => {
     getSetting<number>("count_target_sec", 300),
   ]);
   const em = new Map(emer.map((e: any) => [e.code, e]));
+  // ไม่ได้เข้าสู่ระบบ: ไม่เห็นเบอร์โทร ผู้ติดต่อฉุกเฉิน อีเมล · อาการ/รพ. เห็นเฉพาะ Admin / Safety
+  const viewer = await viewerOf(req);
   const ppl = people.map((p: any) => {
     const e: any = p.emp_id ? em.get(p.emp_id) : null;
-    return { ...p, emer: e?.emer_name ? `${e.emer_name}${e.emer_tel ? ` · ${e.emer_tel}` : ""}` : null, tel: p.tel ?? e?.tel ?? null };
+    const full = { ...p, emer: e?.emer_name ? `${e.emer_name}${e.emer_tel ? ` · ${e.emer_tel}` : ""}` : null, tel: p.tel ?? e?.tel ?? null };
+    if (viewer !== "staff") { full.symptoms = null; full.hospital = null; }
+    if (viewer === "anon") { full.tel = null; full.emer = null; full.email = null; }
+    return full;
   });
-  return ok({ incident, people: ppl, points, leaders, announcements, codes, sources, target, now: new Date().toISOString() });
+  return ok({ incident, people: ppl, points, leaders, announcements, codes, sources, target, viewer, now: new Date().toISOString() });
 });
 
 export const POST = handle(async (req: Request, { params }: Ctx) => {

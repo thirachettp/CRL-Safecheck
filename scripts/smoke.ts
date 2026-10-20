@@ -199,6 +199,13 @@ ok(await fails(j("/api/sources/div/test", { method: "POST", json: {}, tok: "x" }
 const pub = await j("/api/plan", { tok: "x" });
 ok(Array.isArray(pub.flags) && !pub.leaders && !pub.versions, "/api/plan สาธารณะไม่มีชื่อผู้นำธง/เวอร์ชัน");
 
+const inA = await j(`/api/incidents/${drill}`, { tok: "x" });
+const inS = await j(`/api/incidents/${drill}`);
+ok(inA.viewer === "anon" && inA.people.every((p: any) => p.tel == null && p.emer == null && p.email == null && p.symptoms == null), "ไม่ได้เข้าสู่ระบบ: ไม่เห็นเบอร์โทร ผู้ติดต่อฉุกเฉิน อีเมล อาการ");
+ok(inS.viewer === "staff" && inS.people.some((p: any) => p.tel || p.emer || p.email), "Admin เห็นเบอร์โทร/ผู้ติดต่อฉุกเฉินตามปกติ");
+const rvA = await j("/api/review", { tok: "x" });
+ok(rvA.viewer === "anon" && rvA.people.every((p: any) => p.tel == null), "หน้าตรวจทานธง: ไม่ได้เข้าสู่ระบบไม่เห็นเบอร์โทร");
+
 // ---------- ตั้งค่า › ชุดธง: เพิ่ม/แก้ ธงและคน ----------
 await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 40, leader_name: "คุณทดสอบ ธงใหม่", area: "MZ9", assembly_point: "2", flag_no_old: 99 } });
 ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 40 } })), "เพิ่มธงซ้ำไม่ได้");

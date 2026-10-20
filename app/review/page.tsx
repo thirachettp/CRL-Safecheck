@@ -15,7 +15,7 @@ type Person = {
 };
 type Data = {
   flag: number | null; people: Person[]; cells: { flag_no: number; n: number; reviewed: boolean }[];
-  review: { reviewed_by: string; reviewed_at: string } | null; leader: any; points: any[];
+  review: { reviewed_by: string; reviewed_at: string } | null; leader: any; points: any[]; viewer?: "anon" | "user" | "staff";
 };
 
 export default function ReviewPage() {
@@ -41,6 +41,7 @@ function Review() {
   const here = (p: Person) => p.here ?? true;
   const point = d.data?.points.find((x) => x.code === (people[0] as any)?.assembly_point);
   const who = by || "ไม่ระบุชื่อ";
+  const anon = d.data?.viewer === "anon";
 
   async function act(json: any) {
     setErr(null);
@@ -71,7 +72,7 @@ function Review() {
                     <label className="lb">เพศ<select className="in" value={draft.gender} onChange={(e) => setDraft({ ...draft, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
                     <label className="lb">ธง<input className="in mono" inputMode="numeric" value={draft.flag_no} onChange={(e) => setDraft({ ...draft, flag_no: e.target.value })} /></label>
                   </div>
-                  <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={draft.tel} onChange={(e) => setDraft({ ...draft, tel: e.target.value })} /></label>
+                  {!anon && <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={draft.tel} onChange={(e) => setDraft({ ...draft, tel: e.target.value })} /></label>}
                   <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
                     <label className="lb">Cost center<input className="in mono" value={draft.cost_center} onChange={(e) => setDraft({ ...draft, cost_center: e.target.value })} /></label>
                     <label className="lb">แผนก/พื้นที่<input className="in" value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value })} /></label>
@@ -145,7 +146,7 @@ function Review() {
                       <td><b>{p.first_name} {p.last_name}</b>{/ผู้นำ/.test(p.role ?? "") && <span className="g" style={{ marginLeft: 6 }}>ผู้นำธง</span>}</td>
                       <td>{p.gender ?? "—"}</td>
                       <td className="small"><span className="mono">{p.cost_center ?? "—"}</span> {p.area ?? ""}</td>
-                      <td className="small">{p.tel ?? "—"}</td>
+                      <td className="small">{anon ? <span className="muted">เข้าสู่ระบบเพื่อดู</span> : p.tel ?? "—"}</td>
                       <td><span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "Excel"}</span>
                         <div className="muted xs">{note}</div></td>
                       <td style={{ textAlign: "center" }}><button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}

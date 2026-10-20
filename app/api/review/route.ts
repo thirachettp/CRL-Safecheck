@@ -1,4 +1,5 @@
 import { q } from "@/lib/db";
+import { viewerOf } from "@/lib/auth";
 import { handle, ok, fail } from "@/lib/http";
 import { reviewFlag, flagCells, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed } from "@/lib/plan";
 
@@ -10,8 +11,12 @@ export const GET = handle(async (req: Request) => {
   const cells = await flagCells();
   const flag = Number.isInteger(f) && f > 0 ? f : cells[0]?.flag_no ?? null;
   const points = await q(`SELECT * FROM assembly_points ORDER BY sort, code`);
-  if (flag == null) return ok({ flag: null, cells, people: [], points });
-  return ok({ flag, cells, points, ...(await reviewFlag(flag)) });
+  const viewer = await viewerOf(req);
+  if (flag == null) return ok({ flag: null, cells, people: [], points, viewer });
+  const r = await reviewFlag(flag);
+  // ไม่ได้เข้าสู่ระบบ = ไม่เห็นเบอร์โทร
+  if (viewer === "anon") r.people = r.people.map((p: any) => ({ ...p, tel: null }));
+  return ok({ flag, cells, points, viewer, ...r });
 });
 
 export const POST = handle(async (req: Request) => {
@@ -23,7 +28,8 @@ export const POST = handle(async (req: Request) => {
       break;
     case "edit":
       await editPerson(String(b.emp_id), {
-        first_name: b.first_name, last_name: b.last_name, gender: b.gender, tel: b.tel,
+        // คนที่ไม่ได้เข้าสู่ระบบไม่เห็นเบอร์เดิม จึงไม่ให้เขียนทับเบอร์โทร
+        first_name: b.first_name, last_name: b.last_name, gender: b.gender, tel: (await viewerOf(req)) === "anon" ? undefined : b.tel,
         cost_center: b.cost_center, area: b.area, flag_no: b.flag_no != null ? Number(b.flag_no) : undefined,
       }, by);
       break;

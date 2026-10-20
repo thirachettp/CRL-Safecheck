@@ -129,3 +129,17 @@ test("ไม่มีชีตผู้นำธง → ใช้คนที่
   assert.equal(m.leaders[0]?.flag_no, 5);
   assert.equal(m.leaders[0]?.leader_name, "สมชาย ทดสอบ");
 });
+
+test("หัวคอลัมน์สะกดผิด 'รหัสหนักงาน' ยังอ่านได้ และไฟล์ ~$ ถูกข้าม", async () => {
+  const { isTempExcel, combinedRows } = await import("../lib/parsers.ts");
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, utils.aoa_to_sheet([["หัว"], ["แผนก"], [],
+    ["จุดรวมพล", "เบอร์ธงอพยพใหม่", "เบอร์ธงอพยพเดิม", "รหัสหนักงาน", "คำนำหน้า", "ชื่อ-นามสกุล", "เพศ", "Cost Center", "แผนก/พื้นที่", "บทบาทหน้าที่"],
+    [1, 3, 12, 20000009, "นาย", "ทดสอบ สะกดผิด", "ชาย", 1, "A", "ผู้อพยพ"]]), "ชีต1");
+  const r = parsePlanWorkbook(wb, "x.xlsx");
+  assert.equal(r.people[0]?.emp_id, "20000009");
+  assert.ok(isTempExcel("~$1.Sort.xlsx") && isTempExcel("folder/~$a.xlsx") && !isTempExcel("1.Sort.xlsx"));
+  const rows = combinedRows(mergePlan([r]));
+  assert.equal(rows[0]["source sheet"], "ชีต1");
+  assert.equal(rows[0]["source file"], "x.xlsx");
+});
