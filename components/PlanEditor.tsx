@@ -294,7 +294,7 @@ function FlagDetail({ flag, row, leader, points, roles, flags, onChanged, onDele
               </tr>
             ) : (
               <tr key={p.emp_id}>
-                <td className="mono">{p.emp_id}{!EMP_OK.test(p.emp_id) && !p.emp_id.startsWith("ADD-") && <div><span className="chip sm warn" title="รหัสพนักงานรูปแบบไม่ถูกต้อง กดแก้ไขเพื่อแก้รหัส">รหัสไม่ถูกต้อง</span></div>}</td>
+                <td className="mono">{p.emp_id.startsWith("ไม่มีรหัส ") ? <span className="muted">—</span> : p.emp_id}{!EMP_OK.test(p.emp_id) && !p.emp_id.startsWith("ADD-") && <div><span className="chip sm warn" title="กดแก้ไขเพื่อใส่รหัสพนักงาน">{p.emp_id.startsWith("ไม่มีรหัส ") ? "ไม่มีรหัส" : "รหัสไม่ถูกต้อง"}</span></div>}</td>
                 <td><b>{p.prefix ? `${p.prefix} ` : ""}{p.first_name} {p.last_name}</b>
                   {p.added_manually && <span className="chip sm grey" style={{ marginLeft: 6 }}>เพิ่มเอง</span>}</td>
                 <td>{p.gender ?? "—"}</td>

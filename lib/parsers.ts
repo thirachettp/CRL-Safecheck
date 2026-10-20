@@ -139,17 +139,21 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
     let lastFlag: number | null = null;
     const lastByOld = new Map<number, number>();
     const filled = new Map<string, number[]>(); // "ธงใหม่|ธงเดิม" → แถวที่เติมให้
+    const noCode: number[] = [];
     for (let r = h.row + 1; r < rows.length; r++) {
       const row = rows[r];
       const rawEmp = cell(row[c.emp]).replace(/\.0$/, "");
       let emp = rawEmp.replace(/\s+/g, "").toUpperCase();
-      if (!emp) {
-        if (++blankRun >= 5) break; // จบตารางเมื่อเจอแถวว่างติดกัน 5 แถว
+      const nameText = [c.prefix, c.name].filter((i) => i >= 0).map((i) => cell(row[i])).filter((x) => x && !PREFIXES.has(x.toLowerCase())).join(" ").replace(/\s+/g, " ").trim();
+      if (!emp && !nameText) {
+        if (++blankRun >= 5) break; // จบตารางเมื่อเจอแถวว่างติดกัน 5 แถว (ไม่มีทั้งรหัสและชื่อ)
         continue;
       }
       blankRun = 0;
-      const badId = !EMP_RE.test(emp);
-      if (badId) {
+      const missing = !emp;
+      if (missing) { emp = `ไม่มีรหัส ${nameText}`.slice(0, 60); noCode.push(r + 1); }
+      const badId = missing || !EMP_RE.test(emp);
+      if (badId && !missing) {
         emp = rawEmp.replace(/\s+/g, " ").trim().slice(0, 60);
         issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัสพนักงาน "${emp}" รูปแบบไม่ถูกต้อง · นำเข้าไว้ก่อน แก้รหัสได้ที่ ตั้งค่า › ชุดธง` });
       }
@@ -203,6 +207,10 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         sheet: name,
         ...(badId ? { bad_id: true } : {}),
       });
+    }
+    if (noCode.length) {
+      issues.push({ file, level: "warn",
+        message: `${S}: ${noCode.length} คนไม่มีรหัสพนักงาน (แถว ${rangeOf(noCode)}) · นำเข้าไว้ก่อนโดยใช้ชื่อแทนรหัส ใส่รหัสภายหลังได้ที่ ตั้งค่า › ชุดธง` });
     }
     for (const [k, rowsFilled] of filled) {
       const [f, o] = k.split("|");

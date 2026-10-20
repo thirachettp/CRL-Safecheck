@@ -170,3 +170,18 @@ test("ผู้ช่วยผู้นำธง ไม่นับเป็น�
   assert.equal(m.leaders.find((l) => l.flag_no === 7)?.leader_name, "หัวหน้า จริง");
   assert.ok(!m.issues.some((i) => /ผู้นำธง 2 คน/.test(i.message)));
 });
+
+test("ไม่มีรหัสพนักงาน (Office Vender): นำเข้าโดยใช้ชื่อแทน พร้อมเตือน", () => {
+  const wb = planBook([
+    [1, 17, 31, "", "นางสาว", "เพ็ญจันทร์ เกษมรักษ์", "หญิง", "", "Office Vender", "ผู้นำธงอพยพ"],
+    [1, 17, 31, "", "นาย", "พัฒนกฤช โพธิ์พยัคฆ์", "ชาย", "", "Office Vender", "ผู้อพยพ"],
+    ["", "", "", "", "", "", "", "", "", ""],
+  ]);
+  const r = parsePlanWorkbook(wb, "17.Office_Vender.xlsx");
+  assert.equal(r.people.length, 2);
+  assert.equal(r.people[0].emp_id, "ไม่มีรหัส เพ็ญจันทร์ เกษมรักษ์");
+  assert.equal(r.people[0].first_name, "เพ็ญจันทร์");
+  assert.ok(r.issues.some((i) => /2 คนไม่มีรหัสพนักงาน \(แถว 5–6\)/.test(i.message)));
+  const m = mergePlan([r]);
+  assert.equal(m.leaders[0]?.leader_name, "เพ็ญจันทร์ เกษมรักษ์");
+});
