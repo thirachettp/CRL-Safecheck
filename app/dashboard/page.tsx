@@ -156,62 +156,32 @@ function IncidentDash({ id }: { id: number }) {
       {err && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className="notice warn">{err}</p></div>}
 
       <div className="wrap">
-        <div className="g3">
-          <section className="card stack" style={{ padding: 18, gap: 10 }}>
-            <div className="muted small" style={{ fontWeight: 700 }}>ฐานข้อมูล · คนทั้งหมด (snapshot)</div>
-            <div className="row" style={{ alignItems: "baseline", gap: 8 }}><span className="mono" style={{ fontSize: 56, fontWeight: 700, lineHeight: 1 }}>{m.pool.length}</span><span style={{ fontSize: 18 }}>คน</span></div>
-            <div className="row" style={{ gap: 16, fontSize: 14 }}><span>ชาย <b className="mono">{m.g(m.pool, "ชาย")}</b></span><span>หญิง <b className="mono">{m.g(m.pool, "หญิง")}</b></span>
-              {m.pool.length - m.g(m.pool, "ชาย") - m.g(m.pool, "หญิง") > 0 && <span className="muted">ไม่ระบุ <b className="mono">{m.pool.length - m.g(m.pool, "ชาย") - m.g(m.pool, "หญิง")}</b></span>}</div>
-            <div className="muted xs" style={{ border: "1px dashed #9CA3AF", borderRadius: 10, padding: "8px 10px", marginTop: "auto" }}>
-              ปลอดภัยตามระบบ (ไม่นับใน %) <b style={{ color: "var(--ink)" }}>{m.absAll}</b> · รอยืนยัน {m.absPend}</div>
-          </section>
-
-          <section className="card" style={{ padding: 18 }}>
-            <div className="row" style={{ gap: 16, flexWrap: "nowrap" }}>
-              <div className="grow"><div className="muted small" style={{ fontWeight: 700 }}>ความคืบหน้าการอพยพ</div>
-                <div className="small" style={{ marginTop: 4 }}>อพยพแล้ว <b className="mono">{m.evac.length}</b> / {m.pool.length} คน<br /><span className="muted xs">รวมกองอำนวยการกลาง และผู้บาดเจ็บ</span></div></div>
-              <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label={`${pct}%`}>
-                <circle cx="56" cy="56" r="44" fill="none" stroke="#ECEAE4" strokeWidth="12" />
-                <circle cx="56" cy="56" r="44" fill="none" stroke="#1F3A5F" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${(pct / 100) * C} ${C}`} transform="rotate(-90 56 56)" />
-                <text x="56" y="62" textAnchor="middle" fontSize="20" fontWeight="700" fill="#17191C" fontFamily="IBM Plex Mono, monospace">{pct}%</text>
-              </svg>
-            </div>
-            {[...m.byPoint.entries()].sort().map(([k, x]) => {
-              const p = x.total.length ? Math.round((x.evac.length / x.total.length) * 100) : 0;
-              const flagsHere = [...new Set(x.total.map((y) => y.flag_no).filter((f) => f != null))].sort((a, b) => a - b);
-              return (
-                <div key={k} className="stack" style={{ gap: 4, padding: "8px 0", borderTop: "1px solid var(--line-3)" }}>
-                  <div className="row" style={{ alignItems: "baseline", gap: 8, flexWrap: "nowrap" }}>
-                    <b className="grow">{k === "ไม่ระบุจุด" ? k : pName(k)}</b><span className="mono" style={{ fontWeight: 600 }}>{x.evac.length} / {x.total.length} คน</span>
-                    <span className="mono muted" style={{ width: 44, textAlign: "right" }}>{p}%</span></div>
-                  <div className="bar"><div style={{ width: `${p}%`, background: "#1F3A5F" }} /></div>
-                  <div className="muted xs">ชาย <b style={{ color: "var(--ink)" }}>{m.g(x.evac, "ชาย")}</b> · หญิง <b style={{ color: "var(--ink)" }}>{m.g(x.evac, "หญิง")}</b>
-                    {!real && flagsHere.length > 0 && ` · ธง ${flagsHere.length > 6 ? `${flagsHere[0]}–${flagsHere[flagsHere.length - 1]}` : flagsHere.join(", ")}`}</div>
-                </div>
-              );
-            })}
-            <div className="stack" style={{ gap: 4, padding: "8px 0", borderTop: "1px solid var(--line-3)" }}>
-              <div className="row" style={{ alignItems: "baseline", gap: 8, flexWrap: "nowrap" }}><b className="grow">กองอำนวยการกลาง</b><span className="mono" style={{ fontWeight: 600 }}>{m.cmd.length} คน</span></div>
-              <div className="muted xs">ชาย <b style={{ color: "var(--ink)" }}>{m.g(m.cmd, "ชาย")}</b> · หญิง <b style={{ color: "var(--ink)" }}>{m.g(m.cmd, "หญิง")}</b> · นับเป็นอพยพแล้ว</div>
-            </div>
-          </section>
-
-          <section className="card stack" style={{ padding: 18, gap: 12 }}>
-            <div className="muted small" style={{ fontWeight: 700 }}>Summary HC · นับได้จริงเทียบฐานข้อมูล</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-              <div style={{ background: "var(--bg)", borderRadius: 12, padding: 12 }}><div className="muted xs" style={{ fontWeight: 600 }}>นับได้จริง</div>
-                <div className="mono" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.1 }}>{m.evac.length}</div><div className="muted xs">จาก {m.pool.length} คน</div></div>
-              <div className="stack" style={{ background: "var(--bg)", borderRadius: 12, padding: 12, justifyContent: "center", gap: 4, fontSize: 14 }}>
-                <div>ชาย <b className="mono" style={{ fontSize: 18 }}>{m.g(m.evac, "ชาย")}</b> <span className="muted">/ {m.g(m.pool, "ชาย")}</span></div>
-                <div>หญิง <b className="mono" style={{ fontSize: 18 }}>{m.g(m.evac, "หญิง")}</b> <span className="muted">/ {m.g(m.pool, "หญิง")}</span></div></div>
-              <div style={{ background: "#FEF2F2", border: "2px solid #B91C1C", borderRadius: 12, padding: 12, color: "#991B1B" }}>
-                <div className="xs" style={{ fontWeight: 700 }}>ผู้สูญหาย</div><div className="mono" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.1 }}>{m.missing.length}</div>
-                <div className="xs">ยังไม่ทราบ {m.missing.filter((p) => p.status === "unk").length} · ในคลัง {m.missing.filter((p) => p.status === "in").length}</div></div>
-              <div style={{ background: "#FFF1F2", borderRadius: 12, padding: 12, color: "#881337" }}>
-                <div className="xs" style={{ fontWeight: 700 }}>ผู้บาดเจ็บ</div><div className="mono" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.1 }}>{m.inj.length}</div>
-                <div className="xs">นับรวมในยอดนับได้แล้ว</div></div>
-            </div>
-          </section>
+        <div className="kpis">
+          <div className="kpi">
+            <div className="kpi-l">ฐานข้อมูล (snapshot)</div>
+            <div className="kpi-n">{m.pool.length}<span className="kpi-u">คน</span></div>
+            <div className="kpi-s">ชาย {m.g(m.pool, "ชาย")} · หญิง {m.g(m.pool, "หญิง")}{m.pool.length - m.g(m.pool, "ชาย") - m.g(m.pool, "หญิง") > 0 ? ` · ไม่ระบุ ${m.pool.length - m.g(m.pool, "ชาย") - m.g(m.pool, "หญิง")}` : ""}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-l">นับได้จริง</div>
+            <div className="kpi-n">{m.evac.length}<span className="kpi-u">/ {m.pool.length}</span><span className="kpi-pct">{pct}%</span></div>
+            <div className="kpi-s">ชาย {m.g(m.evac, "ชาย")}/{m.g(m.pool, "ชาย")} · หญิง {m.g(m.evac, "หญิง")}/{m.g(m.pool, "หญิง")}</div>
+          </div>
+          <div className="kpi danger">
+            <div className="kpi-l">ผู้สูญหาย</div>
+            <div className="kpi-n">{m.missing.length}<span className="kpi-u">คน</span></div>
+            <div className="kpi-s">ยังไม่ทราบ {m.missing.filter((p) => p.status === "unk").length} · ในคลัง {m.missing.filter((p) => p.status === "in").length}</div>
+          </div>
+          <div className={`kpi${m.inj.length ? " inj" : ""}`}>
+            <div className="kpi-l">ผู้บาดเจ็บ</div>
+            <div className="kpi-n">{m.inj.length}<span className="kpi-u">คน</span></div>
+            <div className="kpi-s">{m.inj.length ? `รอ Safety ระบุ ${m.inj.filter((p) => !p.triage).length}` : "นับรวมในยอดนับได้แล้ว"}</div>
+          </div>
+          <div className="kpi quiet">
+            <div className="kpi-l">ปลอดภัยตามระบบ</div>
+            <div className="kpi-n">{m.absAll}<span className="kpi-u">คน</span></div>
+            <div className="kpi-s">รอยืนยัน {m.absPend} · ไม่นับใน %</div>
+          </div>
         </div>
 
         <section className="card row" style={{ padding: "14px 18px", gap: 20, borderColor: over ? "#B91C1C" : "#14532D" }}>
@@ -245,27 +215,60 @@ function IncidentDash({ id }: { id: number }) {
             </table></div>
             {m.missing.length > 100 && <div className="muted xs" style={{ padding: "10px 18px" }}>แสดง 100 จาก {m.missing.length} คน</div>}
           </section>
-          <section className="card" style={{ paddingBottom: 8 }}>
-            <div className="card-h"><span className="grow">รายชื่อผู้ได้รับบาดเจ็บ</span><span className="muted xs" style={{ fontWeight: 500 }}>Safety ระบุระดับ · อาการ · รพ.</span></div>
-            {[TRI[2], TRI[3], TRI[1], TRI[0], null].map((t) => {
-              const rows = m.inj.filter((p) => (t ? p.triage === t.id : !p.triage));
+          <div className="stack" style={{ gap: 20, minWidth: 0 }}>
+          <section className="card" style={{ padding: 18 }}>
+            <div className="row" style={{ gap: 16, flexWrap: "nowrap" }}>
+              <div className="grow"><div className="muted small" style={{ fontWeight: 700 }}>ความคืบหน้าการอพยพ</div>
+                <div className="small" style={{ marginTop: 4 }}>อพยพแล้ว <b className="mono">{m.evac.length}</b> / {m.pool.length} คน<br /><span className="muted xs">รวมกองอำนวยการกลาง และผู้บาดเจ็บ</span></div></div>
+              <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label={`${pct}%`}>
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#ECEAE4" strokeWidth="12" />
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#1F3A5F" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${(pct / 100) * C} ${C}`} transform="rotate(-90 56 56)" />
+                <text x="56" y="62" textAnchor="middle" fontSize="20" fontWeight="700" fill="#17191C" fontFamily="IBM Plex Mono, monospace">{pct}%</text>
+              </svg>
+            </div>
+            {[...m.byPoint.entries()].sort().map(([k, x]) => {
+              const p = x.total.length ? Math.round((x.evac.length / x.total.length) * 100) : 0;
+              const flagsHere = [...new Set(x.total.map((y) => y.flag_no).filter((f) => f != null))].sort((a, b) => a - b);
               return (
-                <div key={t?.id ?? "pend"}>
-                  <div className="row" style={{ gap: 8, padding: "10px 18px 6px", fontWeight: 700, fontSize: 13, color: t ? t.fg : "#4B5058", flexWrap: "nowrap" }}>
-                    <span className="dot" style={{ width: 12, height: 12, background: t ? t.dot : "#9CA3AF" }} />{t ? `${t.label} · ${t.name}` : "รอ Safety ระบุระดับ"}
-                    <span className="mono" style={{ marginLeft: "auto" }}>{rows.length}</span></div>
-                  <table className="tbl"><thead><tr><th style={{ width: "24%" }}>ชื่อ-นามสกุล</th><th style={{ width: "20%" }}>แผนก</th><th style={{ width: "14%" }}>จุดรวมพล</th><th>อาการ</th><th style={{ width: "20%" }}>รพ.ที่นำส่ง</th></tr></thead>
-                    <tbody>
-                      {rows.length === 0 && <tr><td colSpan={5} className="muted">ไม่มี</td></tr>}
-                      {rows.map((p) => (
-                        <tr key={p.person_key}><td><b>{p.name}</b></td><td>{p.cc_name ?? p.area ?? "—"}</td><td>{p.assembly_point ? pName(effPoint(p.assembly_point)) : "—"}</td>
-                          <td>{p.symptoms || (t ? "—" : <span className="muted">คนถือธงกดบาดเจ็บ · รอ Safety</span>)}</td><td>{p.hospital || "—"}</td></tr>
-                      ))}
-                    </tbody></table>
+                <div key={k} className="stack" style={{ gap: 4, padding: "8px 0", borderTop: "1px solid var(--line-3)" }}>
+                  <div className="row" style={{ alignItems: "baseline", gap: 8, flexWrap: "nowrap" }}>
+                    <b className="grow">{k === "ไม่ระบุจุด" ? k : pName(k)}</b><span className="mono" style={{ fontWeight: 600 }}>{x.evac.length} / {x.total.length} คน</span>
+                    <span className="mono muted" style={{ width: 44, textAlign: "right" }}>{p}%</span></div>
+                  <div className="bar"><div style={{ width: `${p}%`, background: "#1F3A5F" }} /></div>
+                  <div className="muted xs">ชาย <b style={{ color: "var(--ink)" }}>{m.g(x.evac, "ชาย")}</b> · หญิง <b style={{ color: "var(--ink)" }}>{m.g(x.evac, "หญิง")}</b>
+                    {!real && flagsHere.length > 0 && ` · ธง ${flagsHere.length > 6 ? `${flagsHere[0]}–${flagsHere[flagsHere.length - 1]}` : flagsHere.join(", ")}`}</div>
                 </div>
               );
             })}
+            <div className="stack" style={{ gap: 4, padding: "8px 0", borderTop: "1px solid var(--line-3)" }}>
+              <div className="row" style={{ alignItems: "baseline", gap: 8, flexWrap: "nowrap" }}><b className="grow">กองอำนวยการกลาง</b><span className="mono" style={{ fontWeight: 600 }}>{m.cmd.length} คน</span></div>
+              <div className="muted xs">ชาย <b style={{ color: "var(--ink)" }}>{m.g(m.cmd, "ชาย")}</b> · หญิง <b style={{ color: "var(--ink)" }}>{m.g(m.cmd, "หญิง")}</b> · นับเป็นอพยพแล้ว</div>
+            </div>
           </section>
+            <section className="card" style={{ paddingBottom: m.inj.length ? 8 : 0 }}>
+              <div className="card-h"><span className="grow">รายชื่อผู้ได้รับบาดเจ็บ</span>
+                <span className={`chip${m.inj.length ? "" : " grey"}`} style={m.inj.length ? { background: "#FFE4E6", color: "#881337" } : undefined}>{m.inj.length} คน</span></div>
+              {m.inj.length === 0 && <div className="muted small" style={{ padding: "0 18px 16px" }}>ยังไม่มีผู้บาดเจ็บ · คนถือธงกด “บาดเจ็บ” แล้วจะขึ้นที่นี่ทันที Safety ระบุระดับ · อาการ · รพ. ต่อได้</div>}
+              {[TRI[2], TRI[3], TRI[1], TRI[0], null].map((t) => {
+                const rows = m.inj.filter((p) => (t ? p.triage === t.id : !p.triage));
+                if (!rows.length) return null;
+                return (
+                  <div key={t?.id ?? "pend"}>
+                    <div className="row" style={{ gap: 8, padding: "10px 18px 6px", fontWeight: 700, fontSize: 14, color: t ? t.fg : "#4B5058", flexWrap: "nowrap" }}>
+                      <span className="dot" style={{ width: 12, height: 12, background: t ? t.dot : "#9CA3AF" }} />{t ? `${t.label} · ${t.name}` : "รอ Safety ระบุระดับ"}
+                      <span className="mono" style={{ marginLeft: "auto" }}>{rows.length}</span></div>
+                    <table className="tbl"><thead><tr><th style={{ width: "26%" }}>ชื่อ-นามสกุล</th><th style={{ width: "20%" }}>แผนก</th><th style={{ width: "16%" }}>จุดรวมพล</th><th>อาการ</th><th style={{ width: "18%" }}>รพ.ที่นำส่ง</th></tr></thead>
+                      <tbody>
+                        {rows.map((p) => (
+                          <tr key={p.person_key}><td><b>{p.name}</b></td><td>{p.cc_name ?? p.area ?? "—"}</td><td>{p.assembly_point ? pName(effPoint(p.assembly_point)) : "—"}</td>
+                            <td>{p.symptoms || (t ? "—" : <span className="muted">คนถือธงกดบาดเจ็บ · รอ Safety</span>)}</td><td>{p.hospital || "—"}</td></tr>
+                        ))}
+                      </tbody></table>
+                  </div>
+                );
+              })}
+            </section>
+          </div>
         </div>
 
         <div className="g2">

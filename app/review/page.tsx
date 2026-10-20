@@ -3,7 +3,7 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
 import { useUser } from "@/components/identity";
-import { api, usePoll } from "@/components/lib";
+import { api, usePoll, useWide } from "@/components/lib";
 import { IBack, IFlag, IDown, IClose } from "@/components/Icons";
 
 const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไม่ได้ทำงานพื้นที่นี้", "อื่นๆ"];
@@ -58,57 +58,11 @@ function Review() {
   }
 
   const reviewed = !!d.data?.review;
-
-  return (
-    <MobileShell>
-      <div className="m-top">
-        <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-          <Link href="/" className="back" aria-label="กลับ"><IBack /></Link>
-          <div className="grow"><b>ตรวจทานธง</b><div className="muted xs">{user ? `คุณ: ${user.name}` : "ไม่ได้เข้าสู่ระบบ · บันทึกเป็นไม่ระบุชื่อ"}</div></div>
-          <button className="lk boxed" onClick={() => setAdding(true)} disabled={flag == null}>+ เพิ่มคน</button>
-        </div>
-        <div className="row" style={{ marginTop: 6, gap: 8, flexWrap: "nowrap" }}>
-          <button className="fbtn" onClick={() => setPicker(true)}><IFlag size={16} />ธง {flag ?? "—"}<IDown size={14} /></button>
-          <div className="muted xs grow">
-            {point?.name ?? (people[0] as any)?.assembly_point ?? ""}{d.data?.leader ? ` · ${d.data.leader.leader_name}` : ""}<br />
-            มา {active.filter(here).length}/{active.length} คน
-          </div>
-        </div>
-      </div>
-
-      <div className="m-body">
-        {d.error && !d.data && <p className="notice err">{d.error}</p>}
-        {d.data && flag == null && <p className="notice warn">ยังไม่มีชุดธง ให้ Admin นำเข้าไฟล์ธงที่หน้าตั้งค่าก่อน</p>}
-        {err && <p className="notice err">{err}</p>}
-
-        {active.map((p) => {
-          const moved = !p.added_manually && p.orig_flag != null && p.orig_flag !== p.flag_no;
-          const edited = moved || p.added_manually || !!p.edited_note;
-          const note = p.added_manually ? "เพิ่มเอง" : moved ? `ย้ายจาก ธง ${p.orig_flag}` : p.edited_note ?? "ตรงกับ Excel";
-          const isOpen = open?.id === p.emp_id;
-          return (
-            <div key={p.emp_id} className="card" style={{ padding: 12 }}>
-              <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
-                <div className="grow" style={{ minWidth: 0 }}>
-                  <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.first_name} {p.last_name}</b>{p.gender && <span className="g">{p.gender}</span>}
-                    {/ผู้นำ/.test(p.role ?? "") && <span className="g">ผู้นำธง</span>}</div>
-                  <div className="muted xs"><span className="mono">{p.emp_id}</span>{p.cost_center && <> · <span className="mono">{p.cost_center}</span></>} {p.area}</div>
-                  <div className="row" style={{ marginTop: 6, gap: 6 }}>
-                    <span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "แผนอพยพ (Excel)"}</span>
-                    <span className="muted" style={{ fontSize: 11 }}>{note}</span>
-                  </div>
-                </div>
-                <button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}
-                  onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button>
-              </div>
-
-              {!isOpen && (
-                <div className="row" style={{ justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
-                  <button className="lk" onClick={() => startEdit(p)}>แก้ไข</button>
-                  <button className="lk del" onClick={() => { setOpen({ id: p.emp_id, mode: "del" }); setReason(REASONS[0]); setReasonNote(""); }}>ลบ</button>
-                </div>
-              )}
-
+  const wide = useWide();
+  const panel = (p: Person) => {
+    const isOpen = open?.id === p.emp_id;
+    return (
+      <>
               {isOpen && open?.mode === "edit" && (
                 <div className="stack" style={{ borderTop: "1px solid var(--line-3)", marginTop: 10, paddingTop: 10, gap: 8 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -143,6 +97,97 @@ function Review() {
                   </div>
                 </div>
               )}
+      </>
+    );
+  };
+  const meta = (p: Person) => {
+    const moved = !p.added_manually && p.orig_flag != null && p.orig_flag !== p.flag_no;
+    const edited = moved || p.added_manually || !!p.edited_note;
+    const note = p.added_manually ? "เพิ่มเอง" : moved ? `ย้ายจาก ธง ${p.orig_flag}` : p.edited_note ?? "ตรงกับ Excel";
+    return { edited, note };
+  };
+  const startDel = (p: Person) => { setOpen({ id: p.emp_id, mode: "del" }); setReason(REASONS[0]); setReasonNote(""); };
+
+
+  return (
+    <MobileShell wide={wide}>
+      <div className="m-top">
+        <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+          <Link href="/" className="back" aria-label="กลับ"><IBack /></Link>
+          <div className="grow"><b>ตรวจทานธง</b><div className="muted xs">{user ? `คุณ: ${user.name}` : "ไม่ได้เข้าสู่ระบบ · บันทึกเป็นไม่ระบุชื่อ"}</div></div>
+          <button className="lk boxed" onClick={() => setAdding(true)} disabled={flag == null}>+ เพิ่มคน</button>
+        </div>
+        <div className="row" style={{ marginTop: 6, gap: 8, flexWrap: "nowrap" }}>
+          <button className="fbtn" onClick={() => setPicker(true)}><IFlag size={16} />ธง {flag ?? "—"}<IDown size={14} /></button>
+          <div className="muted xs grow">
+            {point?.name ?? (people[0] as any)?.assembly_point ?? ""}{d.data?.leader ? ` · ${d.data.leader.leader_name}` : ""}<br />
+            มา {active.filter(here).length}/{active.length} คน
+          </div>
+        </div>
+      </div>
+
+      <div className="m-body">
+        {d.error && !d.data && <p className="notice err">{d.error}</p>}
+        {d.data && flag == null && <p className="notice warn">ยังไม่มีชุดธง ให้ Admin นำเข้าไฟล์ธงที่หน้าตั้งค่าก่อน</p>}
+        {err && <p className="notice err">{err}</p>}
+
+        {wide && active.length > 0 && (
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div className="scroll-x"><table className="tbl rtbl">
+              <thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>เพศ</th><th>Cost Center · แผนก</th><th>เบอร์โทร</th><th>ที่มา</th><th style={{ textAlign: "center" }}>วันนี้</th><th /></tr></thead>
+              <tbody>
+                {active.map((p) => {
+                  const { edited, note } = meta(p);
+                  const isOpen = open?.id === p.emp_id;
+                  return [
+                    <tr key={p.emp_id} className={isOpen ? "editing" : ""}>
+                      <td className="mono">{p.emp_id}</td>
+                      <td><b>{p.first_name} {p.last_name}</b>{/ผู้นำ/.test(p.role ?? "") && <span className="g" style={{ marginLeft: 6 }}>ผู้นำธง</span>}</td>
+                      <td>{p.gender ?? "—"}</td>
+                      <td className="small"><span className="mono">{p.cost_center ?? "—"}</span> {p.area ?? ""}</td>
+                      <td className="small">{p.tel ?? "—"}</td>
+                      <td><span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "Excel"}</span>
+                        <div className="muted xs">{note}</div></td>
+                      <td style={{ textAlign: "center" }}><button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}
+                        onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button></td>
+                      <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                        <button className="lk" onClick={() => (isOpen ? setOpen(null) : startEdit(p))}>{isOpen && open?.mode === "edit" ? "ปิด" : "แก้ไข"}</button>
+                        <button className="lk del" onClick={() => (isOpen ? setOpen(null) : startDel(p))}>{isOpen && open?.mode === "del" ? "ปิด" : "ลบ"}</button>
+                      </td>
+                    </tr>,
+                    isOpen && <tr key={`${p.emp_id}-x`} className="editing"><td colSpan={8} style={{ paddingTop: 0 }}><div style={{ maxWidth: 640 }}>{panel(p)}</div></td></tr>,
+                  ];
+                })}
+              </tbody>
+            </table></div>
+          </div>
+        )}
+
+        {!wide && active.map((p) => {
+          const { edited, note } = meta(p);
+          const isOpen = open?.id === p.emp_id;
+          return (
+            <div key={p.emp_id} className="card" style={{ padding: 12 }}>
+              <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.first_name} {p.last_name}</b>{p.gender && <span className="g">{p.gender}</span>}
+                    {/ผู้นำ/.test(p.role ?? "") && <span className="g">ผู้นำธง</span>}</div>
+                  <div className="muted xs"><span className="mono">{p.emp_id}</span>{p.cost_center && <> · <span className="mono">{p.cost_center}</span></>} {p.area}</div>
+                  <div className="row" style={{ marginTop: 6, gap: 6 }}>
+                    <span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "แผนอพยพ (Excel)"}</span>
+                    <span className="muted" style={{ fontSize: 11 }}>{note}</span>
+                  </div>
+                </div>
+                <button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}
+                  onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button>
+              </div>
+              {!isOpen && (
+                <div className="row" style={{ justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
+                  <button className="lk" onClick={() => startEdit(p)}>แก้ไข</button>
+                  <button className="lk del" onClick={() => startDel(p)}>ลบ</button>
+                </div>
+              )}
+              {panel(p)}
             </div>
           );
         })}

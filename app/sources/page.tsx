@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import PcHeader from "@/components/PcHeader";
 import MaintainPanel from "@/components/MaintainPanel";
+import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, ago, useNow } from "@/components/lib";
 
 type State = { key: string; label: string; ready: boolean; last_ok_at: string | null; last_try_at: string | null; last_error: string | null; record_count: number | null };
@@ -22,6 +23,7 @@ export default function SourcesPage() {
   const d = usePoll<Data>("/api/sources", 10000);
   const now = useNow(5000);
   const div = d.data?.states.find((s) => s.key === "div");
+  const [tab, setTab] = useTab("sources", ["overview", "maintain", "tools"] as const, "overview");
   return (
     <>
       <PcHeader />
@@ -31,6 +33,14 @@ export default function SourcesPage() {
           <h1 style={{ margin: "4px 0 0", fontSize: 28 }}>แหล่งข้อมูล</h1>
         </div>
         {d.error && <p className="notice err">{d.error}</p>}
+        <Tabs tabs={[
+          { id: "overview", label: "ภาพรวม" },
+          { id: "maintain", label: "Maintain · ตรวจอยู่/ไม่อยู่" },
+          { id: "tools", label: "ตั้งค่าแหล่ง & เครื่องมือทดสอบ" },
+        ]} value={tab} onChange={setTab} />
+
+        {tab === "overview" && (
+          <>
 
         <div className="card">
           <div className="card-h">สถานะรายแหล่ง</div>
@@ -50,42 +60,6 @@ export default function SourcesPage() {
             );
           })}
         </div>
-
-        <MaintainPanel />
-
-        <div className="g2">
-          <section className="card stack" style={{ padding: 18 }}>
-            <div>
-              <b style={{ fontSize: 16 }}>DIV+ และอื่นๆ (MS Form)</b>
-              <p className="muted small" style={{ marginTop: 4 }}>
-                ฟอร์ม Check (In-Out) → Power Automate (HTTP Premium) ส่งเข้าแอพทันทีทุกครั้งที่มีคนตอบ (แถวที่มาจากทางนี้ขึ้นว่า “Power Automate”) ระบบอนุมานเข้า/ออกเอง
-                (ซ้ำใน 10 นาทีนับครั้งเดียว, ส่งครั้งที่สอง = ออก, ต่างไซต์ = ย้ายไซต์, ครบ 14 ชม. = ออกอัตโนมัติ)
-              </p>
-            </div>
-            <GraphSync configured={!!d.data?.graph} lastError={div?.last_error ?? null} onDone={d.reload} />
-            <ExcelUpload onDone={d.reload} />
-            <TestCheckin sites={d.data?.sites.map((s) => s.site) ?? []} onDone={d.reload} />
-          </section>
-          <DriverPanel onDone={d.reload} />
-        </div>
-
-        <section className="card">
-          <div className="card-h"><span className="grow">เช็กอินฟอร์มล่าสุด</span>
-            <span className="muted xs" style={{ fontWeight: 500 }}>{d.data?.sites.length ? `ไซต์: ${d.data.sites.map((s) => `${s.site} (${s.n})`).join(", ")}` : ""}</span></div>
-          <div className="scroll-x"><table className="tbl">
-            <thead><tr><th>เวลาส่ง</th><th>ชื่อ</th><th>อีเมล</th><th>เพศ</th><th>ไซต์</th><th>มาจาก</th></tr></thead>
-            <tbody>
-              {!d.data?.recent.length && <tr><td colSpan={6} className="muted">ยังไม่มีข้อมูลเช็กอิน</td></tr>}
-              {d.data?.recent.map((r) => (
-                <tr key={r.response_id}>
-                  <td className="mono">{fmtDateTime(r.submitted_at)} <span className="muted xs">({ago(r.submitted_at)})</span></td>
-                  <td>{r.full_name ?? "—"}</td><td className="small">{r.email}</td><td>{r.gender ?? "—"}</td><td>{r.site ?? "—"}</td>
-                  <td><span className="chip grey sm">{VIA[r.via] ?? r.via}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table></div>
-        </section>
 
         <section className="card">
           <div className="card-h"><span className="grow">Outsource (Power Apps)</span>
@@ -114,7 +88,47 @@ export default function SourcesPage() {
           </table></div>
         </section>
 
+        <section className="card">
+          <div className="card-h"><span className="grow">เช็กอินฟอร์มล่าสุด</span>
+            <span className="muted xs" style={{ fontWeight: 500 }}>{d.data?.sites.length ? `ไซต์: ${d.data.sites.map((s) => `${s.site} (${s.n})`).join(", ")}` : ""}</span></div>
+          <div className="scroll-x"><table className="tbl">
+            <thead><tr><th>เวลาส่ง</th><th>ชื่อ</th><th>อีเมล</th><th>เพศ</th><th>ไซต์</th><th>มาจาก</th></tr></thead>
+            <tbody>
+              {!d.data?.recent.length && <tr><td colSpan={6} className="muted">ยังไม่มีข้อมูลเช็กอิน</td></tr>}
+              {d.data?.recent.map((r) => (
+                <tr key={r.response_id}>
+                  <td className="mono">{fmtDateTime(r.submitted_at)} <span className="muted xs">({ago(r.submitted_at)})</span></td>
+                  <td>{r.full_name ?? "—"}</td><td className="small">{r.email}</td><td>{r.gender ?? "—"}</td><td>{r.site ?? "—"}</td>
+                  <td><span className="chip grey sm">{VIA[r.via] ?? r.via}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </section>
+
         <LinkPanel />
+          </>
+        )}
+
+        {tab === "maintain" && <MaintainPanel />}
+
+        {tab === "tools" && (
+        <div className="g2">
+          <section className="card stack" style={{ padding: 18 }}>
+            <div>
+              <b style={{ fontSize: 16 }}>DIV+ และอื่นๆ (MS Form)</b>
+              <p className="muted small" style={{ marginTop: 4 }}>
+                ฟอร์ม Check (In-Out) → Power Automate (HTTP Premium) ส่งเข้าแอพทันทีทุกครั้งที่มีคนตอบ (แถวที่มาจากทางนี้ขึ้นว่า “Power Automate”) ระบบอนุมานเข้า/ออกเอง
+                (ซ้ำใน 10 นาทีนับครั้งเดียว, ส่งครั้งที่สอง = ออก, ต่างไซต์ = ย้ายไซต์, ครบ 14 ชม. = ออกอัตโนมัติ)
+              </p>
+            </div>
+            <GraphSync configured={!!d.data?.graph} lastError={div?.last_error ?? null} onDone={d.reload} />
+            <ExcelUpload onDone={d.reload} />
+            <TestCheckin sites={d.data?.sites.map((s) => s.site) ?? []} onDone={d.reload} />
+          </section>
+          <DriverPanel onDone={d.reload} />
+        </div>
+        )}
       </div>
     </>
   );

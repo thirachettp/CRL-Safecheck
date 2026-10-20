@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import PcHeader from "@/components/PcHeader";
 import PinGate from "@/components/PinGate";
 import UsersPanel from "@/components/UsersPanel";
+import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, rangeText } from "@/components/lib";
 import { IUpload } from "@/components/Icons";
 import type { MergedPlan } from "@/lib/parsers";
@@ -32,6 +33,7 @@ function Admin() {
   const o = usePoll<Overview>("/api/plan", 0);
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
   const nextV = (o.data?.versions[0]?.id ?? 0) + 1;
+  const [tab, setTab] = useTab("admin", ["plan", "points", "users", "codes", "system"] as const, "plan");
 
   async function run(fn: () => Promise<any>, ok: string) {
     setMsg(null);
@@ -49,7 +51,7 @@ function Admin() {
       <div style={{ maxWidth: 1440, margin: "0 auto", padding: "24px 32px 0", display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <div className="grow">
           <div className="muted small" style={{ fontWeight: 600 }}>เฉพาะ Admin · ใช้บน PC</div>
-          <h1 style={{ margin: "4px 0 0", fontSize: 28 }}>ตั้งค่าธงและผู้มีสิทธิ์</h1>
+          <h1 style={{ margin: "4px 0 0", fontSize: 28 }}>ตั้งค่า</h1>
         </div>
         <button className="btn" onClick={startDrill} disabled={!o.data?.total}>เริ่มซ้อม</button>
         <button className="btn btn-pri" disabled={!o.data?.total}
@@ -58,21 +60,36 @@ function Admin() {
         </button>
       </div>
       {msg && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
-      <div className="wrap layout" style={{ display: "grid" }}>
-        <section className="stack" style={{ gap: 20, minWidth: 0 }}>
-          <ImportCard onSaved={() => o.reload()} />
-          {o.data && <PointsCard points={o.data.points} onSaved={o.reload} />}
-          {o.data && <FlagsCard data={o.data} />}
-          <UsersPanel />
-        </section>
-        <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
-          {o.data && <AccuracyCard a={o.data.accuracy} />}
-          <SourcesCard />
-          {o.data && <VersionsCard versions={o.data.versions} onDone={o.reload} />}
-          <CodesCard />
-          <ConfirmersCard />
-        </aside>
+      <div style={{ maxWidth: 1440, margin: "16px auto 0", padding: "0 32px" }}>
+        <Tabs tabs={[
+          { id: "plan", label: "ชุดธง", badge: o.data ? o.data.total : null },
+          { id: "points", label: "จุดรวมพล", badge: o.data ? o.data.points.length : null },
+          { id: "users", label: "ผู้ใช้และสิทธิ์" },
+          { id: "codes", label: "Code ประกาศ" },
+          { id: "system", label: "แหล่งข้อมูล & PIN สำรอง" },
+        ]} value={tab} onChange={setTab} />
       </div>
+      {tab === "plan" && (
+        <div className="wrap layout" style={{ display: "grid" }}>
+          <section className="stack" style={{ gap: 20, minWidth: 0 }}>
+            <ImportCard onSaved={() => o.reload()} />
+            {o.data && <FlagsCard data={o.data} />}
+          </section>
+          <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
+            {o.data && <AccuracyCard a={o.data.accuracy} />}
+            {o.data && <VersionsCard versions={o.data.versions} onDone={o.reload} />}
+          </aside>
+        </div>
+      )}
+      {tab === "points" && <div className="wrap">{o.data && <PointsCard points={o.data.points} onSaved={o.reload} />}</div>}
+      {tab === "users" && <div className="wrap"><UsersPanel /></div>}
+      {tab === "codes" && <div className="wrap"><div style={{ maxWidth: 760 }}><CodesCard /></div></div>}
+      {tab === "system" && (
+        <div className="wrap g2" style={{ display: "grid", alignItems: "start" }}>
+          <SourcesCard />
+          <ConfirmersCard />
+        </div>
+      )}
     </>
   );
 }

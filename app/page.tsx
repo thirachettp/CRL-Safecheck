@@ -18,7 +18,7 @@ function Home() {
   const router = useRouter();
   const stay = useSearchParams().get("stay") === "1";
   const { user } = useUser();
-  const { unlock } = useAdmin();
+  const { admin, unlock } = useAdmin();
   const cur = usePoll<{ current: any }>("/api/incidents", 4000);
   const plan = usePoll<{ flags: any[]; points: Point[] }>("/api/plan", 0);
   const [showLogin, setShowLogin] = useState(false);
@@ -52,7 +52,7 @@ function Home() {
   async function confirm() {
     setBusy(true); setErr(null);
     try {
-      await unlock(pin);
+      if (!admin) await unlock(pin);
       await api(`/api/incidents/${inc.id}`, { method: "POST", json: { action: "confirm", closedPoints: Object.keys(off).filter((k) => off[k]) } });
       setPin("");
       cur.reload();
@@ -93,6 +93,13 @@ function Home() {
 
         {step === "idle" && (
           <>
+            {!user && (
+              <div className="card stack" style={{ padding: 16, background: "#EEF2F7", borderColor: "#C7D2E0", gap: 8 }}>
+                <b style={{ fontSize: 16 }}>เริ่มใช้งาน</b>
+                <p className="small">ลงทะเบียนครั้งเดียวด้วยรหัสพนักงาน ใช้แจ้งเหตุ และช่วยให้ทีมค้นหาคุณได้เร็วตอนเกิดเหตุ</p>
+                <button className="btn btn-pri btn-block" onClick={() => setShowLogin(true)}>เข้าสู่ระบบ / ลงทะเบียน</button>
+              </div>
+            )}
             <div className="card stack" style={{ padding: 16, borderColor: "#FCA5A5" }}>
               <b style={{ fontSize: 17 }}>แจ้งเหตุฉุกเฉิน</b>
               <p className="muted small">Admin / Safety Officer จะยืนยันก่อนเริ่ม Incident</p>
@@ -120,10 +127,18 @@ function Home() {
               {err && <p className="notice err">{err}</p>}
             </div>
             <div className="stack" style={{ gap: 10 }}>
-              <Tile href="/review" icon={<IFlag color="#1F3A5F" />} bg="#EEF2F7" title="ตรวจทานธง" sub="ไม่ต้อง login · เพิ่ม ลด แก้ไขคนในธง" />
-              <Tile href="/search" icon={<ISearch />} bg="#F3F2EE" title="ค้นหาคน" sub="ระหว่างซ้อม แอพจะเปิดหน้านี้ทันที" />
-              <Tile href="/dashboard" icon={<IChart />} bg="#F3F2EE" title="Dashboard" sub="ติดตามสถานการณ์" />
-              <Tile href="/injury" icon={<IPlus color="#881337" />} bg="#FFE4E6" title="ผู้บาดเจ็บ (Safety)" sub="ระบุระดับสี · อาการ · รพ. · ต้องใส่รหัส" />
+              <Tile href="/review" icon={<IFlag color="#1F3A5F" />} bg="#EEF2F7" title="ตรวจทานธง" sub="ผู้นำธง · เพิ่ม ลด แก้ไขคนในธง และมา/ไม่มาวันนี้" />
+              <Tile href="/search" icon={<ISearch />} bg="#F3F2EE" title="ค้นหาคน" sub="ระหว่างซ้อม / เกิดเหตุ แอพจะเปิดหน้านี้ให้" />
+              <Tile href="/dashboard" icon={<IChart />} bg="#F3F2EE" title="Dashboard" sub="ติดตามสถานการณ์ (เหมาะกับจอใหญ่)" />
+              <Tile href="/injury" icon={<IPlus color="#881337" />} bg="#FFE4E6" title="ผู้บาดเจ็บ (Safety)" sub="ระบุระดับสี · อาการ · รพ. · เฉพาะ Safety / Admin" />
+            </div>
+            <div className="card stack" style={{ padding: 16, gap: 10 }}>
+              <b>ตอนเกิดเหตุ ทำ 3 ขั้น</b>
+              <ol className="steps">
+                <li><b>แจ้งเหตุ</b><span className="muted small">กดปุ่มแดงด้านบน · Admin / Safety ยืนยันแล้วระบบเริ่มนับทันที</span></li>
+                <li><b>ไปจุดรวมพลของธงคุณ</b><span className="muted small">ถ้าจุดเดิมใช้ไม่ได้ แอพจะบอกจุดสำรอง</span></li>
+                <li><b>ผู้นำธงกด “ปลอดภัย”</b><span className="muted small">ทีละคน หรือเช็คชื่อทั้งธงทีเดียว · คนที่ยังไม่ทราบขึ้นบน Dashboard</span></li>
+              </ol>
             </div>
           </>
         )}
@@ -155,12 +170,16 @@ function Home() {
                   );
                 })}
               </div>
-              <label className="small">รหัสยืนยัน
-                <input type="password" inputMode="numeric" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value)}
-                  style={{ display: "block", width: "100%", marginTop: 6, font: "inherit", fontSize: 20, letterSpacing: ".3em", height: 52, borderRadius: 10, border: 0, padding: "0 14px" }} />
-              </label>
+              {admin ? (
+                <div className="small" style={{ background: "rgba(255,255,255,.12)", borderRadius: 8, padding: "8px 10px" }}>ยืนยันในนาม <b>{admin.name}</b> ({admin.role === "admin" ? "Admin" : "Safety Officer"})</div>
+              ) : (
+                <label className="small">PIN ยืนยัน (หรือเข้าสู่ระบบด้วยบัญชี Admin / Safety)
+                  <input type="password" inputMode="numeric" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value)}
+                    style={{ display: "block", width: "100%", marginTop: 6, font: "inherit", fontSize: 20, letterSpacing: ".3em", height: 52, borderRadius: 10, border: 0, padding: "0 14px" }} />
+                </label>
+              )}
               {err && <p className="notice err">{err}</p>}
-              <button className="btn btn-red btn-block" style={{ minHeight: 56 }} onClick={confirm} disabled={busy || pin.length < 4}>ยืนยัน เริ่ม Incident จริง</button>
+              <button className="btn btn-red btn-block" style={{ minHeight: 56 }} onClick={confirm} disabled={busy || (!admin && pin.length < 4)}>ยืนยัน เริ่ม Incident จริง</button>
               <button className="btn btn-block" onClick={cancel} disabled={busy}>ไม่ใช่เหตุจริง · ยกเลิก</button>
             </div>
           </>

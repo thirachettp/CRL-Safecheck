@@ -90,7 +90,7 @@ function SearchIncident({ id }: { id: number }) {
     if (sf !== "all" && (p.status === "cmd" ? "safe" : p.status) !== sf) return false;
     return true;
   }).sort((a, b) => ORDER[a.status] - ORDER[b.status] || (a.flag_no ?? 9999) - (b.flag_no ?? 9999));
-  const LIMIT = 40;
+  const LIMIT = 80;
 
   const n: Record<string, number> = { unk: 0, in: 0, safe: 0, inj: 0 };
   let pool = 0, absPend = 0, absGone = 0;
@@ -188,28 +188,46 @@ function SearchIncident({ id }: { id: number }) {
 
           <div className="m-body">
             {err && <p className="notice err">{err}</p>}
+            {list.length > 0 && <div className="muted xs" style={{ margin: "0 4px" }}>กด “ปลอดภัย” ได้ทันที · แตะชื่อเพื่อเลือกสถานะอื่น / ดูเบอร์โทร</div>}
             {list.slice(0, LIMIT).map((p) => {
               const v = p.status, isOpen = open === p.person_key, fromAbs = !p.here;
               const dim = v === "abs" || v === "gone";
               const t = TRI.find((x) => x.id === p.triage);
               return (
-                <div key={p.person_key} style={{ background: dim ? "var(--subtle)" : "#fff", border: `1px ${dim ? "dashed" : "solid"} var(--line-2)`, borderRadius: 14, padding: 12 }}>
-                  <button className="head-btn" onClick={() => setOpen(isOpen ? null : p.person_key)} aria-expanded={isOpen}>
-                    <div className="grow" style={{ minWidth: 0 }}>
-                      <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.name}</b>{p.gender && <span className="g">{p.gender}</span>}
-                        {p.plate && <span className="g">{p.plate}</span>}
-                        {fromAbs && <span className="tag-abs">เดิม: ปลอดภัยตามระบบ</span>}</div>
-                      <div className="muted xs" style={{ marginTop: 2 }}>
-                        {real ? `${p.cost_center ?? "—"} · ${p.cc_name ?? p.area ?? ""}` : `ธง ${p.flag_no ?? "?"} · ${p.cost_center ?? ""} ${p.area ?? ""}`}
+                <div key={p.person_key} className={`prow${dim ? " dim" : ""}${isOpen ? " open" : ""}`}>
+                  <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                    <button className="head-btn grow" style={{ minWidth: 0 }} onClick={() => setOpen(isOpen ? null : p.person_key)} aria-expanded={isOpen}
+                      aria-label={`${p.name} ${LBL[v]} แตะเพื่อดูรายละเอียดและสถานะอื่น`}>
+                      <div className="grow" style={{ minWidth: 0 }}>
+                        <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                          <b className="ellip" style={{ fontSize: 15 }}>{p.name}</b>
+                          {p.gender && <span className="g">{p.gender}</span>}
+                          {p.plate && <span className="g">{p.plate}</span>}
+                        </div>
+                        <div className="muted xs ellip" style={{ marginTop: 1 }}>
+                          {real ? `${p.cost_center ?? "—"} · ${p.cc_name ?? p.area ?? ""}` : `ธง ${p.flag_no ?? "?"} · ${p.area ?? p.cost_center ?? ""}`}
+                          {fromAbs && <span className="tag-abs" style={{ marginLeft: 6 }}>เดิม: ปลอดภัยตามระบบ</span>}
+                        </div>
                       </div>
-                    </div>
-                    <span className={`chip sm s-${v}`}>{LBL[v]}</span>
-                    {isOpen ? <IUp size={16} color="#5A5F66" /> : <IDown size={16} color="#5A5F66" />}
-                  </button>
+                      {v !== "safe" && <span className={`chip sm s-${v}`}>{LBL[v]}</span>}
+                    </button>
+                    <button className={`qsafe${v === "safe" ? " on" : ""}`} onClick={() => mark(p, "safe")}
+                      aria-pressed={v === "safe"} aria-label={v === "safe" ? `ยกเลิกปลอดภัย ${p.name}` : `ปลอดภัย ${p.name}`}>
+                      {v === "safe" ? <><ICheck size={16} /> ปลอดภัย</> : "ปลอดภัย"}
+                    </button>
+                  </div>
                   {v === "inj" && <span className="injnote">{t ? `Safety ระบุแล้ว · ${t.label}${p.symptoms ? ` · ${p.symptoms}` : ""}` : "รอ Safety ระบุระดับ · อาการ · รพ."}</span>}
                   {v === "in" && p.status_note && <span className="injnote" style={{ color: "#9A3412", background: "#FFF7ED" }}>{p.status_note}</span>}
                   {isOpen && (
                     <>
+                      <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "nowrap" }}>
+                        {fromAbs && <button className={`sb sm${v === "gone" ? " gone-on" : ""}`} onClick={() => mark(p, "gone")}>ไม่อยู่จริง</button>}
+                        <button className={`sb sm${v === "in" ? " in-on" : ""}`} onClick={() => mark(p, "in")}>ยังอยู่ในคลัง</button>
+                        <button className={`sb sm${v === "inj" ? " inj-on" : ""}`} onClick={() => mark(p, "inj")}>บาดเจ็บ</button>
+                      </div>
+                      <button className={`cmdbtn${v === "cmd" ? " on" : ""}`} onClick={() => mark(p, "cmd")}>
+                        {v === "cmd" ? "อยู่กองอำนวยการกลาง (แตะเพื่อยกเลิก)" : "ประจำกองอำนวยการกลาง (นับเป็นอพยพแล้ว)"}
+                      </button>
                       <div className="kv">
                         <span className="muted">รหัส</span><span className="mono">{p.emp_id ?? p.plate ?? p.email ?? "—"}</span>
                         <span className="muted">เบอร์โทร</span>{p.tel ? <a href={`tel:${p.tel.replace(/[^\d+]/g, "")}`} style={{ fontWeight: 600 }}>{p.tel}</a> : <span>—</span>}
@@ -219,17 +237,8 @@ function SearchIncident({ id }: { id: number }) {
                         <span className="muted">ผู้ติดต่อฉุกเฉิน</span><span>{p.emer ?? "ยังไม่ลงทะเบียน"}</span>
                         <span className="muted">ระบุล่าสุดโดย</span><span>{p.status_by ? `${p.status_by} · ${fmtTime(p.status_at)}` : "–"}</span>
                       </div>
-                      <button className={`cmdbtn${v === "cmd" ? " on" : ""}`} onClick={() => mark(p, "cmd")}>
-                        {v === "cmd" ? "อยู่กองอำนวยการกลาง (แตะเพื่อยกเลิก)" : "ประจำกองอำนวยการกลาง (นับเป็นอพยพแล้ว)"}
-                      </button>
                     </>
                   )}
-                  <div className="row" style={{ gap: fromAbs ? 5 : 6, marginTop: 10, flexWrap: "nowrap" }}>
-                    {fromAbs && <button className={`sb sm${v === "gone" ? " gone-on" : ""}`} onClick={() => mark(p, "gone")}>ไม่อยู่จริง</button>}
-                    <button className={`sb${fromAbs ? " sm" : ""}${v === "in" ? " in-on" : ""}`} onClick={() => mark(p, "in")}>{fromAbs ? "ในคลัง" : "ยังอยู่ในคลัง"}</button>
-                    <button className={`sb${fromAbs ? " sm" : ""}${v === "safe" ? " safe-on" : ""}`} onClick={() => mark(p, "safe")}>ปลอดภัย</button>
-                    <button className={`sb${fromAbs ? " sm" : ""}${v === "inj" ? " inj-on" : ""}`} onClick={() => mark(p, "inj")}>บาดเจ็บ</button>
-                  </div>
                 </div>
               );
             })}

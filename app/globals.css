@@ -205,3 +205,63 @@ label.lb, div.lb { font-size: 12px; font-weight: 600; display: block; }
   gap: 16px; flex-wrap: wrap; cursor: pointer; }
 .dropzone[data-over="true"] { border-color: var(--navy); background: var(--navy-soft); }
 .dot { width: 10px; height: 10px; border-radius: 99px; flex: none; }
+
+/* แถวคนแบบกะทัดรัด (หน้าค้นหา) */
+.prow { background: #fff; border: 1px solid var(--line-2); border-radius: 12px; padding: 8px 8px 8px 12px; }
+.prow.dim { background: var(--subtle); border-style: dashed; }
+.prow.open { border-color: var(--ink); padding-bottom: 12px; }
+.prow .head-btn { padding: 2px 0; }
+.ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.qsafe { font: inherit; font-size: 14px; font-weight: 700; flex: none; min-width: 96px; height: 44px; padding: 0 12px; border-radius: 10px;
+  border: 1.5px solid #15803D; background: #fff; color: #14532D; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.qsafe.on { background: #15803D; color: #fff; }
+.qsafe:active { transform: scale(.97); }
+
+/* Dashboard: แถบตัวเลขหลัก */
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.kpi { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kpi-l { font-size: 14px; font-weight: 700; color: #3A3F46; }
+.kpi-n { font-family: "IBM Plex Mono", monospace; font-size: 44px; font-weight: 700; line-height: 1.05; color: var(--ink); display: flex; align-items: baseline; gap: 6px; }
+.kpi-u { font-family: inherit; font-size: 16px; font-weight: 600; color: #4B5058; }
+.kpi-pct { margin-left: auto; font-size: 20px; color: #1F3A5F; }
+.kpi-s { font-size: 13px; color: #3A3F46; }
+.kpi.danger { background: #FEF2F2; border: 2px solid #B91C1C; }
+.kpi.danger .kpi-l, .kpi.danger .kpi-n, .kpi.danger .kpi-s { color: #991B1B; }
+.kpi.inj { background: #FFF1F2; border-color: #FDA4AF; }
+.kpi.inj .kpi-l, .kpi.inj .kpi-n, .kpi.inj .kpi-s { color: #881337; }
+.kpi.quiet { border-style: dashed; border-color: #9CA3AF; }
+@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* อ่านง่ายขึ้นบนจอใหญ่ / กลางแดด */
+.tbl td { font-size: 14px; }
+.chip { font-size: 13px; }
+.chip.sm { font-size: 12px; }
+
+@media (min-width: 900px) { .m-shell.wide { max-width: 1120px; } }
+.rtbl td { vertical-align: middle; }
+.rtbl tr.editing td { background: #F8FAFC; }
+
+/* แท็บ */
+.stabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.stab { font: inherit; font-size: 15px; font-weight: 600; color: #4B5058; background: transparent; border: 0; border-bottom: 3px solid transparent;
+  padding: 10px 14px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; margin-bottom: -1px; }
+.stab:hover { color: var(--ink); }
+.stab.on { color: var(--ink); border-bottom-color: var(--navy); }
+.stab-b { font-size: 12px; font-weight: 700; background: #E5E7EB; color: #1F2937; border-radius: 999px; padding: 1px 8px; }
+
+/* เมนูล่างมือถือ */
+.bnav { display: none; }
+@media (max-width: 899px) {
+  .bnav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: #fff; border-top: 1px solid var(--line);
+    height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+  .bnav-i { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 600;
+    color: #5A5F66; text-decoration: none; min-width: 0; }
+  .bnav-i.on { color: var(--navy); }
+  .bnav-i.on svg { stroke: var(--navy); }
+  .m-shell.has-bnav { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+  .m-shell.has-bnav .m-foot { bottom: calc(56px + env(safe-area-inset-bottom)); }
+}
+
+ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: st; display: flex; flex-direction: column; gap: 10px; }
+ol.steps li { counter-increment: st; display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; }
+ol.steps li::before { content: counter(st); grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; background: var(--navy); color: #fff;
+  font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
