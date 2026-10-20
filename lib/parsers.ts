@@ -16,6 +16,7 @@ export type PlanPerson = {
   flag_no_old: number | null;
   role: string | null;
   source_file: string;
+  sheet?: string;
 };
 
 export type FlagLeader = {
@@ -38,6 +39,21 @@ export type PlanFileResult = {
 };
 
 const PREFIXES = new Set(["นาย", "นาง", "นางสาว", "น.ส.", "นส.", "mr", "mr.", "mrs", "mrs.", "ms", "ms.", "miss"]);
+
+/** รหัสพนักงาน: ตัวเลข หรือรหัส Outsource แบบมีตัวอักษรนำหน้า เช่น KNN250593 */
+export const EMP_RE = /^[A-Z]{0,5}\d{4,12}$/;
+
+function rangeOf(ns: number[]) {
+  const out: string[] = [];
+  for (let i = 0; i < ns.length; i++) {
+    let j = i;
+    while (j + 1 < ns.length && ns[j + 1] === ns[j] + 1) j++;
+    out.push(i === j ? `${ns[i]}` : `${ns[i]}–${ns[j]}`);
+    i = j;
+  }
+  return out.join(", ");
+}
+const stripTitle = (s: string) => s.replace(/^(คุณ|นาย|นางสาว|นาง|น\.ส\.)\s*/, "").replace(/\s+/g, " ").trim();
 
 const cell = (v: unknown) => (v === undefined || v === null ? "" : String(v).trim());
 const clean = (h: string) => h.replace(/\s+/g, "").toLowerCase();
@@ -103,17 +119,21 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
     };
     if (c.flag < 0) issues.push({ file, level: "error", message: `ชีต "${name}" ไม่พบคอลัมน์เบอร์ธงอพยพใหม่` });
 
+    const S = `ชีต "${name}"`;
     let blankRun = 0;
+    let lastFlag: number | null = null;
+    const lastByOld = new Map<number, number>();
+    const filled = new Map<string, number[]>(); // "ธงใหม่|ธงเดิม" → แถวที่เติมให้
     for (let r = h.row + 1; r < rows.length; r++) {
       const row = rows[r];
-      const emp = cell(row[c.emp]).replace(/\.0$/, "");
+      const emp = cell(row[c.emp]).replace(/\.0$/, "").replace(/\s+/g, "").toUpperCase();
       if (!emp) {
         if (++blankRun >= 5) break; // จบตารางเมื่อเจอแถวว่างติดกัน 5 แถว
         continue;
       }
       blankRun = 0;
-      if (!/^\d{5,10}$/.test(emp)) {
-        issues.push({ file, level: "warn", message: `แถว ${r + 1}: รหัสพนักงาน "${emp}" ไม่ใช่ตัวเลข ข้ามแถวนี้` });
+      if (!EMP_RE.test(emp)) {
+        issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัสพนักงาน "${emp}" รูปแบบไม่ถูกต้อง ข้ามแถวนี้` });
         continue;
       }
       // หัวคอลัมน์ในไฟล์จริง: คอลัมน์ "คำนำหน้า" เก็บชื่อจริง และ "ชื่อ-นามสกุล" เก็บนามสกุล
@@ -130,10 +150,25 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         first = a;
         last = b;
       }
-      const flag = c.flag >= 0 ? toInt(row[c.flag]) : null;
-      if (flag === null) issues.push({ file, level: "warn", message: `แถว ${r + 1}: รหัส ${emp} ไม่มีเบอร์ธงใหม่` });
+      const old = c.flagOld >= 0 ? toInt(row[c.flagOld]) : null;
+      let flag = c.flag >= 0 ? toInt(row[c.flag]) : null;
+      if (flag !== null) {
+        lastFlag = flag;
+        if (old !== null) lastByOld.set(old, flag);
+      } else {
+        // ช่องธงใหม่ว่าง (มักกรอกแค่แถวแรกของกลุ่ม) → ใช้ธงใหม่ของแถวก่อนหน้าที่ธงเดิมเดียวกัน
+        const guess = (old !== null ? lastByOld.get(old) : undefined) ?? lastFlag;
+        if (guess != null) {
+          flag = guess;
+          const k = `${guess}|${old ?? "-"}`;
+          filled.set(k, [...(filled.get(k) ?? []), r + 1]);
+        } else issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัส ${emp} ไม่มีเบอร์ธงใหม่` });
+      }
       const gender = c.gender >= 0 ? normalizeGender(row[c.gender]) : null;
-      if (!gender) issues.push({ file, level: "warn", message: `แถว ${r + 1}: รหัส ${emp} ไม่ระบุเพศ` });
+      if (!gender) issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัส ${emp} ไม่ระบุเพศ` });
+      if (prefix && gender && ((prefix === "นาย" && gender === "หญิง") || (/^(นาง|นางสาว|น\.ส\.|นส\.)$/.test(prefix) && gender === "ชาย"))) {
+        issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัส ${emp} คำนำหน้า "${prefix}" แต่เพศ "${gender}" ตรวจอีกครั้ง` });
+      }
 
       people.push({
         emp_id: emp,
@@ -145,10 +180,16 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         area: c.area >= 0 ? cell(row[c.area]) || null : null,
         assembly_point: c.ap >= 0 ? cell(row[c.ap]) || null : null,
         flag_no: flag,
-        flag_no_old: c.flagOld >= 0 ? toInt(row[c.flagOld]) : null,
+        flag_no_old: old,
         role: c.role >= 0 ? cell(row[c.role]) || null : null,
         source_file: file,
+        sheet: name,
       });
+    }
+    for (const [k, rowsFilled] of filled) {
+      const [f, o] = k.split("|");
+      issues.push({ file, level: "warn",
+        message: `${S}: ${rowsFilled.length} คนไม่ได้กรอกเบอร์ธงใหม่ (แถว ${rangeOf(rowsFilled)}) ใช้ธง ${f} ตามแถวก่อนหน้า${o !== "-" ? ` (ธงเดิม ${o})` : ""}` });
     }
   }
   if (!found) issues.push({ file, level: "error", message: "ไม่พบตารางที่มีหัวคอลัมน์ รหัสพนักงาน" });
@@ -157,7 +198,8 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
   for (const name of wb.SheetNames) {
     const rows = rowsOf(wb.Sheets[name]);
     const h = findHeader(rows, "ผู้นำธงอพยพ", 5);
-    if (!h || h.heads.some((x) => x.includes("รหัสพนักงาน"))) continue;
+    // ต้องเป็นหัวตารางจริง (มีคอลัมน์เบอร์ธง) ไม่ใช่บรรทัด "แผนก … ผู้นำธงอพยพ …" ของชีตรายชื่อ
+    if (!h || h.heads.some((x) => x.includes("รหัสพนักงาน")) || !h.heads.some((x) => x.includes("เบอร์ธง"))) continue;
     const H = h.heads;
     const c = {
       ap: col(H, "จุดรวมพล"),
@@ -193,11 +235,22 @@ export type MergedPlan = {
   leaders: FlagLeader[];
   issues: FileIssue[];
   duplicates: { emp_id: string; files: string[] }[];
+  /** จำนวนคนที่เบอร์ธงใหม่ในชีตรายชื่อไม่ตรงกับชีตผู้นำธง (ธงเดิมเดียวกัน) */
+  flagMismatch: number;
 };
 
+/** sheet = ใช้เบอร์ธงใหม่ตามชีตรายชื่อ · leaders = แปลงจากธงเดิมตามชีตผู้นำธง */
+export type FlagSource = "sheet" | "leaders";
+
 /** รวมผลจากหลายไฟล์ ตรวจคนซ้ำข้ามไฟล์ และผู้นำธงที่ขัดกัน */
-export function mergePlan(results: PlanFileResult[]): MergedPlan {
+export function mergePlan(results: PlanFileResult[], flagFrom: FlagSource = "sheet"): MergedPlan {
   const issues = results.flatMap((r) => r.issues);
+  if (flagFrom === "leaders") {
+    const old2new = new Map<number, number>();
+    for (const r of results) for (const l of r.leaders) if (l.flag_no_old != null && !old2new.has(l.flag_no_old)) old2new.set(l.flag_no_old, l.flag_no);
+    results = results.map((r) => ({ ...r, people: r.people.map((p) =>
+      p.flag_no_old != null && old2new.has(p.flag_no_old) ? { ...p, flag_no: old2new.get(p.flag_no_old)! } : p) }));
+  }
   const byEmp = new Map<string, PlanPerson[]>();
   for (const r of results) for (const p of r.people) {
     const list = byEmp.get(p.emp_id) ?? [];
@@ -233,9 +286,40 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
     }
     if (!prev) leaderMap.set(l.flag_no, l);
   }
+  // ตรวจกับชีตผู้นำธง: ธงเดิม → ธงใหม่ ต้องตรงกัน และชื่อผู้นำธงต้องตรงกับคนที่บทบาท "ผู้นำธง"
+  const byOld = new Map<number, FlagLeader>();
+  for (const l of leaderMap.values()) if (l.flag_no_old != null) byOld.set(l.flag_no_old, l);
+  const groups = new Map<string, { file: string; sheet: string; old: number; flag: number; n: number }>();
+  for (const p of people) {
+    if (p.flag_no_old == null || p.flag_no == null) continue;
+    const k = `${p.source_file}|${p.sheet ?? ""}|${p.flag_no_old}|${p.flag_no}`;
+    const g = groups.get(k) ?? { file: p.source_file, sheet: p.sheet ?? "", old: p.flag_no_old, flag: p.flag_no, n: 0 };
+    g.n++; groups.set(k, g);
+  }
+  let flagMismatch = 0;
+  for (const g of groups.values()) {
+    const l = byOld.get(g.old);
+    if (l && l.flag_no !== g.flag) {
+      flagMismatch += g.n;
+      issues.push({ file: g.file, level: "error",
+        message: `ชีต "${g.sheet}": ธงเดิม ${g.old} ในชีตผู้นำธงเป็นธงใหม่ ${l.flag_no} (${l.area ?? l.leader_name}) แต่ชีตรายชื่อใส่ธง ${g.flag} (${g.n} คน) · ระบบใช้ธง ${g.flag} ตามชีตรายชื่อ` });
+    }
+  }
+  for (const p of people) {
+    if (p.flag_no == null || !/ผู้นำ/.test(p.role ?? "")) continue;
+    const name = `${p.first_name} ${p.last_name}`.replace(/\s+/g, " ").trim();
+    const l = leaderMap.get(p.flag_no);
+    if (!l) {
+      leaderMap.set(p.flag_no, { flag_no: p.flag_no, assembly_point: p.assembly_point, flag_no_old: p.flag_no_old,
+        leader_name: name, cost_center: p.cost_center, area: p.area, note: "จากบทบาทในชีตรายชื่อ" });
+    } else if (stripTitle(l.leader_name) !== stripTitle(name)) {
+      issues.push({ file: p.source_file, level: "warn",
+        message: `ธง ${p.flag_no}: ชีต "${p.sheet ?? ""}" ระบุผู้นำธงเป็น "${name}" แต่ชีตผู้นำธงเป็น "${l.leader_name}" · ใช้ตามชีตผู้นำธง` });
+    }
+  }
   const leaders = [...leaderMap.values()].sort((a, b) => a.flag_no - b.flag_no);
   people.sort((a, b) => (a.flag_no ?? 9999) - (b.flag_no ?? 9999) || a.emp_id.localeCompare(b.emp_id));
-  return { people, leaders, issues, duplicates };
+  return { people, leaders, issues, duplicates, flagMismatch };
 }
 
 // ---------------- MS Form (Excel ที่ sync กับฟอร์ม) ----------------

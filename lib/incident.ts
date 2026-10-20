@@ -24,6 +24,7 @@ export type Incident = {
   confirmed_at: string | null;
   closed_points: string[] | null;
   plan_version: number | null;
+  plan_name?: string | null;
   div_sites: string[] | null;
   include_plan: boolean;
   opened_at: string;
@@ -252,13 +253,14 @@ export async function closeIncident(id: number, actor: Actor) {
 }
 
 export async function getIncident(id: number): Promise<Incident | null> {
-  const r = await one<any>(`SELECT * FROM incidents WHERE id = $1`, [id]);
+  const r = await one<any>(`SELECT i.*, v.name AS plan_name FROM incidents i LEFT JOIN plan_versions v ON v.id = i.plan_version WHERE i.id = $1`, [id]);
   return r ? rowToIncident(r) : null;
 }
 
 export async function currentIncident(): Promise<Incident | null> {
   const r = await one<any>(
-    `SELECT * FROM incidents WHERE state IN ('pending','active') ORDER BY (state = 'active') DESC, id DESC LIMIT 1`);
+    `SELECT i.*, v.name AS plan_name FROM incidents i LEFT JOIN plan_versions v ON v.id = i.plan_version
+     WHERE i.state IN ('pending','active') ORDER BY (i.state = 'active') DESC, i.id DESC LIMIT 1`);
   return r ? rowToIncident(r) : null;
 }
 

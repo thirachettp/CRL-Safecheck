@@ -9,10 +9,19 @@ export type Admin = { token: string; name: string; role: "admin" | "safety"; exp
 const EVT = "sc-auth";
 const ping = () => { try { window.dispatchEvent(new Event(EVT)); } catch {} };
 
+/** วันหมดอายุใน token (ไม่ได้ตรวจลายเซ็น ใช้แค่ซ่อนสถานะที่หมดอายุแล้วในเครื่อง) */
+function tokenExp(t: string): number {
+  try {
+    const b = t.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    return Number(JSON.parse(decodeURIComponent(escape(atob(b)))).exp) || 0;
+  } catch { return 0; }
+}
 function readUser(): User | null {
   try {
     const u = JSON.parse(localStorage.getItem("sc_user") ?? "null");
-    return u?.token ? u : null; // ของเก่าที่ไม่มี token = ต้องเข้าสู่ระบบใหม่
+    if (!u?.token) return null; // ของเก่าที่ไม่มี token = ต้องเข้าสู่ระบบใหม่
+    if (tokenExp(u.token) < Date.now()) { localStorage.removeItem("sc_user"); return null; }
+    return u;
   } catch { return null; }
 }
 function saveUser(u: User | null) {
@@ -31,11 +40,16 @@ function useAuthState() {
   const [pin, setPin] = useState<Admin | null>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    const load = () => { setUser(readUser()); setPin(readPinAdmin()); setReady(true); };
+    const same = <T,>(a: T, b: T) => JSON.stringify(a) === JSON.stringify(b);
+    const load = () => {
+      const u = readUser(), p = readPinAdmin();
+      setUser((x) => (same(x, u) ? x : u)); setPin((x) => (same(x, p) ? x : p)); setReady(true);
+    };
     load();
     window.addEventListener(EVT, load);
     window.addEventListener("storage", load);
-    return () => { window.removeEventListener(EVT, load); window.removeEventListener("storage", load); };
+    const t = setInterval(load, 60_000); // หมดอายุระหว่างเปิดหน้าค้างไว้ → ออกจากระบบเอง
+    return () => { clearInterval(t); window.removeEventListener(EVT, load); window.removeEventListener("storage", load); };
   }, []);
   return { user, pin, ready };
 }

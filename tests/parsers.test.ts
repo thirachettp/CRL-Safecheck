@@ -93,3 +93,39 @@ test("เพศจากตัวเลือก MS Form (Man / Female)", async 
   assert.equal(normalizeGender("Man"), "ชาย");
   assert.equal(normalizeGender("Female"), "หญิง");
 });
+
+test("ไฟล์ Template จริง: รหัส Outsource, ช่องธงใหม่ว่าง, ธงไม่ตรงชีตผู้นำธง", () => {
+  const wb = planBook(
+    [
+      [1, 30, 29, 20014597, "นาง", "รัตนา โสดา", "หญิง", 82640, "MZ3 ฝั่ง WH", "ผู้นำธงอพยพ"],
+      [1, 30, 29, 20074567, "นางสาว", "สีตอง พันธ์จันทร์ดี", "หญิง", 82640, "MZ3 ฝั่ง WH", "ผู้อพยพ"],
+      [1, "", 29, 20054825, "นางสาว", "รัตนา ดำกลิ่น", "หญิง", 82640, "MZ3 ฝั่ง WH", "ผู้อพยพ"],
+      [1, "", 29, "KNN250593", "นางสาว", "ยาวียะ หามะ", "หญิง", 82640, "MZ3 ฝั่ง WH", "ผู้อพยพ"],
+      [1, "", 29, 20060579, "นาย", "ปราโมทย์ เมืองจันทร์", "หญิง", 82640, "MZ3 ฝั่ง WH", "ผู้อพยพ"],
+    ],
+    [[1, 14, 29, "คุณรัตนา โสดา", 82640, "MZ3 ฝั่ง WH", ""]],
+  );
+  const r = parsePlanWorkbook(wb, "t.xlsx");
+  assert.equal(r.people.length, 5);
+  assert.ok(r.people.every((p) => p.flag_no === 30));
+  assert.equal(r.people.find((p) => p.emp_id === "KNN250593")?.first_name, "ยาวียะ");
+  assert.equal(r.leaders.length, 1, "บรรทัด 'แผนก … ผู้นำธงอพยพ' ไม่ใช่ชีตผู้นำธง");
+  assert.ok(r.issues.some((i) => /3 คนไม่ได้กรอกเบอร์ธงใหม่/.test(i.message)));
+  assert.ok(r.issues.some((i) => /คำนำหน้า "นาย" แต่เพศ "หญิง"/.test(i.message)));
+
+  const m = mergePlan([r]);
+  assert.equal(m.flagMismatch, 5);
+  assert.ok(m.issues.some((i) => i.level === "error" && /ธงเดิม 29 ในชีตผู้นำธงเป็นธงใหม่ 14/.test(i.message)));
+
+  const m2 = mergePlan([r], "leaders");
+  assert.equal(m2.flagMismatch, 0);
+  assert.ok(m2.people.every((p) => p.flag_no === 14));
+  assert.ok(!m2.issues.some((i) => /ผู้นำธงเป็น/.test(i.message)), "ผู้นำธงตรงกันเมื่อใช้เลขจากชีตผู้นำธง");
+});
+
+test("ไม่มีชีตผู้นำธง → ใช้คนที่บทบาทผู้นำธงเป็นผู้นำ", () => {
+  const wb = planBook([[1, 5, 9, 20000001, "นาย", "สมชาย ทดสอบ", "ชาย", 1, "A", "ผู้นำธงอพยพ"]]);
+  const m = mergePlan([parsePlanWorkbook(wb, "a.xlsx")]);
+  assert.equal(m.leaders[0]?.flag_no, 5);
+  assert.equal(m.leaders[0]?.leader_name, "สมชาย ทดสอบ");
+});

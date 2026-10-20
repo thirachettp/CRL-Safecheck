@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
 import { syncDriver } from "@/lib/sources";
@@ -6,7 +7,8 @@ import { getSetting, setSetting } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-export const GET = handle(async () => {
+export const GET = handle(async (req: Request) => {
+  await requireRole(req, ["admin"]);
   const [vehicles, flag, fields] = await Promise.all([
     q(`SELECT * FROM driver_presence ORDER BY checkin_at DESC NULLS LAST LIMIT 300`),
     getSetting<number | null>("driver_flag", null),
@@ -16,6 +18,7 @@ export const GET = handle(async () => {
 });
 
 export const POST = handle(async (req: Request) => {
+  await requireRole(req, ["admin"]);
   const b = await req.json();
   if (b.action === "sync") return ok(await syncDriver({ force: !!b.force }));
   if (b.action === "flag") {

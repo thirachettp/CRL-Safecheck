@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import PcHeader from "@/components/PcHeader";
+import PinGate from "@/components/PinGate";
 import MaintainPanel from "@/components/MaintainPanel";
 import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, ago, useNow } from "@/components/lib";
@@ -20,13 +21,21 @@ const VIA: Record<string, string> = { graph: "SharePoint", xlsx: "Excel", test: 
 
 /** หน้าตรวจสอบแหล่งข้อมูล: ใครอยู่ในพื้นที่ตอนนี้ มาจากไหน สดแค่ไหน */
 export default function SourcesPage() {
+  return (
+    <>
+      <PcHeader />
+      <PinGate roles={["admin"]} title="แหล่งข้อมูล · เฉพาะ Admin">{() => <Sources />}</PinGate>
+    </>
+  );
+}
+
+function Sources() {
   const d = usePoll<Data>("/api/sources", 10000);
   const now = useNow(5000);
   const div = d.data?.states.find((s) => s.key === "div");
   const [tab, setTab] = useTab("sources", ["overview", "maintain", "tools"] as const, "overview");
   return (
     <>
-      <PcHeader />
       <div className="wrap">
         <div>
           <div className="muted small" style={{ fontWeight: 600 }}>ใช้ตรวจสอบข้อมูล</div>

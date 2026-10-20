@@ -1,21 +1,21 @@
 "use client";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import PcHeader from "@/components/PcHeader";
 import PinGate from "@/components/PinGate";
 import UsersPanel from "@/components/UsersPanel";
+import PlanEditor, { type FlagRow } from "@/components/PlanEditor";
 import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, rangeText } from "@/components/lib";
 import { IUpload } from "@/components/Icons";
-import type { MergedPlan } from "@/lib/parsers";
+import type { MergedPlan, PlanFileResult, FlagSource } from "@/lib/parsers";
 
 type Overview = {
   total: number; files: number; updated_at: string | null;
-  flags: { flag_no: number | null; assembly_point: string | null; people: number; male: number; female: number; area: string | null;
-    reviewed_by: string | null; reviewed_at: string | null; edits_after: number }[];
-  leaders: { flag_no: number; leader_name: string }[];
+  flags: FlagRow[];
+  leaders: { flag_no: number; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: number | null; cost_center: string | null }[];
   points: { code: string; name: string; backup: string | null; sort: number; flags: number[] | null }[];
-  versions: { id: number; note: string; created_by: string; created_at: string; people: number }[];
+  versions: { id: number; name: string | null; note: string; created_by: string; created_at: string; people: number }[];
   accuracy: { imported: number; moved: number; added: number; removed: number; edited: number; unchanged: number; pct: number | null };
 };
 
@@ -34,10 +34,12 @@ function Admin() {
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
   const nextV = (o.data?.versions[0]?.id ?? 0) + 1;
   const [tab, setTab] = useTab("admin", ["plan", "points", "users", "codes", "system"] as const, "plan");
+  const [naming, setNaming] = useState(false);
+  const [vName, setVName] = useState("");
 
   async function run(fn: () => Promise<any>, ok: string) {
     setMsg(null);
-    try { await fn(); setMsg({ k: "ok", t: ok }); o.reload(); } catch (e: any) { setMsg({ k: "err", t: e.message }); }
+    try { await fn(); setMsg({ k: "ok", t: ok }); o.reload(); return true; } catch (e: any) { setMsg({ k: "err", t: e.message }); return false; }
   }
   async function startDrill() {
     try {
@@ -54,10 +56,18 @@ function Admin() {
           <h1 style={{ margin: "4px 0 0", fontSize: 28 }}>ตั้งค่า</h1>
         </div>
         <button className="btn" onClick={startDrill} disabled={!o.data?.total}>เริ่มซ้อม</button>
-        <button className="btn btn-pri" disabled={!o.data?.total}
-          onClick={() => run(() => api("/api/admin/versions", { method: "POST", json: { action: "save", note: "บันทึกหลังตรวจทาน" } }), `บันทึกเป็นชุดธง v${nextV} แล้ว`)}>
-          บันทึกเป็นชุดธง v{nextV}
-        </button>
+        {naming ? (
+          <form className="row" style={{ gap: 8, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault();
+            run(() => api("/api/admin/versions", { method: "POST", json: { action: "save", note: "บันทึกหลังแก้ไข", name: vName } }),
+              `บันทึกเป็นชุดธง v${nextV}${vName.trim() ? ` “${vName.trim()}”` : ""} แล้ว`).then((done) => { if (done) { setNaming(false); setVName(""); } }); }}>
+            <input className="in" style={{ marginTop: 0, width: 280 }} autoFocus maxLength={80} placeholder={`ชื่อเวอร์ชัน เช่น ซ้อมใหญ่ ต.ค. ${new Date().getFullYear() + 543}`}
+              value={vName} onChange={(e) => setVName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
+            <button className="btn btn-pri" type="submit">บันทึก v{nextV}</button>
+            <button className="btn" type="button" onClick={() => setNaming(false)}>ยกเลิก</button>
+          </form>
+        ) : (
+          <button className="btn btn-pri" disabled={!o.data?.total} onClick={() => setNaming(true)}>บันทึกเป็นชุดธงใหม่ (v{nextV})</button>
+        )}
       </div>
       {msg && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
       <div style={{ maxWidth: 1440, margin: "16px auto 0", padding: "0 32px" }}>
@@ -73,7 +83,7 @@ function Admin() {
         <div className="wrap layout" style={{ display: "grid" }}>
           <section className="stack" style={{ gap: 20, minWidth: 0 }}>
             <ImportCard onSaved={() => o.reload()} />
-            {o.data && <FlagsCard data={o.data} />}
+            {o.data && <PlanEditor flags={o.data.flags} leaders={o.data.leaders} points={o.data.points} total={o.data.total} onChanged={o.reload} />}
           </section>
           <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
             {o.data && <AccuracyCard a={o.data.accuracy} />}
@@ -97,9 +107,16 @@ function Admin() {
 // ---------- นำเข้าไฟล์ธง ----------
 function ImportCard({ onSaved }: { onSaved: () => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const mergePlanFn = useRef<typeof import("@/lib/parsers").mergePlan | null>(null);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [m, setM] = useState<(MergedPlan & { files: number }) | null>(null);
+  const [raw, setRaw] = useState<PlanFileResult[] | null>(null);
+  const [src, setSrc] = useState<FlagSource>("sheet");
+  const [name, setName] = useState("");
+  const m: (MergedPlan & { files: number }) | null = useMemo(() => {
+    if (!raw) return null;
+    return { ...mergePlanFn.current!(raw, src), files: raw.length };
+  }, [raw, src]);
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
 
   async function read(files: FileList | File[]) {
@@ -111,16 +128,20 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
       const { parsePlanWorkbook, mergePlan } = await import("@/lib/parsers");
       const res = [];
       for (const f of list) res.push(parsePlanWorkbook(XLSX.read(await f.arrayBuffer(), { type: "array" }), f.name));
-      setM({ ...mergePlan(res), files: list.length });
+      mergePlanFn.current = mergePlan;
+      setSrc("sheet");
+      setName(list.length === 1 ? list[0].name.replace(/\.xlsx?$/i, "") : "");
+      setRaw(res);
     } catch (e: any) { setMsg({ k: "err", t: `อ่านไฟล์ไม่สำเร็จ: ${e.message}` }); } finally { setBusy(false); }
   }
   async function save() {
     if (!m) return;
     setBusy(true);
     try {
-      const r = await api("/api/plan", { method: "POST", json: { people: m.people, leaders: m.leaders, files: m.files } });
-      setMsg({ k: "ok", t: `บันทึกเป็นชุดธง v${r.version} แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
-      setM(null); onSaved();
+      const people = m.people.map(({ sheet, ...p }) => p);
+      const r = await api("/api/plan", { method: "POST", json: { people, leaders: m.leaders, files: m.files, name } });
+      setMsg({ k: "ok", t: `บันทึกเป็นชุดธง v${r.version}${name.trim() ? ` “${name.trim()}”` : ""} แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
+      setRaw(null); onSaved();
     } catch (e: any) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
   const errors = m?.issues.filter((i) => i.level === "error") ?? [];
@@ -146,6 +167,16 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
             <b className="grow">ผลตรวจ: {m.files} ไฟล์ · {m.people.length} คน · {new Set(m.people.map((p) => p.flag_no)).size} ธง</b>
             <span className="chip ok">นำเข้าได้ {m.people.length}</span><span className="chip warn">เตือน {warns.length}</span><span className="chip err">ต้องแก้ {errors.length}</span>
           </div>
+          {(m.flagMismatch > 0 || src === "leaders") && (
+            <div style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)", background: "#FFFBEB" }}>
+              <b className="small">เบอร์ธงใหม่ในชีตรายชื่อไม่ตรงกับชีตผู้นำธง{src === "sheet" ? ` (${m.flagMismatch} คน)` : ""}</b>
+              <div className="muted xs" style={{ margin: "2px 0 8px" }}>เลือกว่าจะใช้เบอร์ธงใหม่จากที่ไหน แล้วตรวจผลด้านล่างอีกครั้ง</div>
+              <div className="row" style={{ gap: 6 }}>
+                <button type="button" className={`pill${src === "sheet" ? " on" : ""}`} onClick={() => setSrc("sheet")}>ตามชีตรายชื่อ (คอลัมน์ธงใหม่)</button>
+                <button type="button" className={`pill${src === "leaders" ? " on" : ""}`} onClick={() => setSrc("leaders")}>แปลงจากธงเดิม ตามชีตผู้นำธง</button>
+              </div>
+            </div>
+          )}
           {m.duplicates.length > 0 && <div className="tr" style={{ gridTemplateColumns: "1fr" }}><span className="small">
             พบ {m.duplicates.length} คนอยู่มากกว่าหนึ่งไฟล์ ระบบใช้ค่าจากไฟล์แรก เช่น {m.duplicates.slice(0, 3).map((d) => `${d.emp_id} (${d.files.join(", ")})`).join("; ")}</span></div>}
           {(errors.length > 0 || warns.length > 0) && (
@@ -161,8 +192,9 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
             </div>
           )}
           <div className="row" style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)" }}>
+            <input className="in" style={{ marginTop: 0, width: 260 }} maxLength={80} placeholder="ชื่อเวอร์ชัน (ไม่บังคับ)" value={name} onChange={(e) => setName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
             <button className="btn btn-pri" onClick={save} disabled={busy || !m.people.length}>บันทึกเป็นชุดธงใหม่ ({m.people.length} คน)</button>
-            <button className="btn" onClick={() => setM(null)} disabled={busy}>ยกเลิก</button>
+            <button className="btn" onClick={() => setRaw(null)} disabled={busy}>ยกเลิก</button>
             <span className="muted xs">แทนที่ชุดธงปัจจุบันทั้งหมด เหตุการณ์ที่เปิดอยู่ไม่กระทบ</span>
           </div>
         </>
@@ -212,40 +244,6 @@ function PointsCard({ points, onSaved }: { points: Overview["points"]; onSaved: 
       </form>
       {err && <div style={{ padding: "0 18px 12px" }}><p className="notice err">{err}</p></div>}
       <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>ตอนยืนยัน Incident ผู้ยืนยันปิดจุดที่ใช้ไม่ได้ → ธงของจุดนั้นย้ายไปจุดสำรองอัตโนมัติ</div>
-    </div>
-  );
-}
-
-// ---------- ธง ----------
-function FlagsCard({ data }: { data: Overview }) {
-  const [all, setAll] = useState(false);
-  const leader = new Map(data.leaders.map((l) => [l.flag_no, l.leader_name]));
-  const pName = (c: string | null) => (c ? data.points.find((p) => p.code === c)?.name ?? c : "—");
-  const flags = data.flags.filter((f) => f.flag_no != null);
-  const rev = flags.filter((f) => f.reviewed_at && !f.edits_after).length;
-  const after = flags.filter((f) => f.reviewed_at && f.edits_after).length;
-  const none = flags.filter((f) => !f.reviewed_at).length;
-  const cols = { gridTemplateColumns: "56px minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) 64px 72px 200px" };
-  return (
-    <div className="card">
-      <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>ธง ({flags.length} ธง · {data.total} คน)</span>
-        <span className="chip ok">ตรวจแล้ว {rev}</span><span className="chip warn">แก้หลังตรวจ {after}</span><span className="chip grey">ยังไม่ตรวจ {none}</span></div>
-      <div className="scroll-x"><div style={{ minWidth: 820 }}>
-        <div className="tr th" style={cols}><div>ธง</div><div>พื้นที่</div><div>จุดรวมพล</div><div>หัวหน้าธง</div><div>สมาชิก</div><div>ชาย/หญิง</div><div>ตรวจทานล่าสุด</div></div>
-        {(all ? flags : flags.slice(0, 10)).map((f) => (
-          <div key={f.flag_no!} className="tr" style={cols}>
-            <b className="mono">{f.flag_no}</b><div>{f.area ?? "—"}</div><div>{pName(f.assembly_point)}</div>
-            <div>{leader.get(f.flag_no!) ?? <span className="chip warn">ไม่มีผู้นำธง</span>}</div>
-            <div className="mono">{f.people}</div><div className="mono small">{f.male}/{f.female}</div>
-            <div>{!f.reviewed_at ? <span className="chip grey">ยังไม่ตรวจ</span>
-              : f.edits_after ? <span className="chip warn">แก้หลังตรวจ {f.edits_after} รายการ</span>
-              : <span className="chip ok">ตรวจแล้ว · {f.reviewed_by}</span>}</div>
-          </div>
-        ))}
-      </div></div>
-      <div className="muted small" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>
-        แสดง {all ? flags.length : Math.min(10, flags.length)} จาก {flags.length} ธง{flags.length > 10 && <> · <button className="lk" style={{ minHeight: 0, padding: 0 }} onClick={() => setAll(!all)}>{all ? "ย่อ" : "ดูทั้งหมด"}</button></>}
-      </div>
     </div>
   );
 }
@@ -302,24 +300,46 @@ function SourcesCard() {
 
 function VersionsCard({ versions, onDone }: { versions: Overview["versions"]; onDone: () => void }) {
   const [arm, setArm] = useState<number | null>(null);
+  const [ren, setRen] = useState<number | null>(null);
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState<string | null>(null);
   async function back(id: number) {
     if (arm !== id) return setArm(id);
     await api("/api/admin/versions", { method: "POST", json: { action: "rollback", id } });
     setArm(null); onDone();
+  }
+  async function rename(id: number) {
+    setErr(null);
+    try { await api("/api/admin/versions", { method: "POST", json: { action: "rename", id, name: val } }); setRen(null); onDone(); }
+    catch (e: any) { setErr(e.message); }
   }
   return (
     <div className="card">
       <div className="card-h">เวอร์ชันชุดธง</div>
       {versions.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มี นำเข้าไฟล์ธงเพื่อสร้าง v1</div>}
       {versions.map((v, i) => (
-        <div key={v.id} className="tr" style={{ gridTemplateColumns: "48px minmax(0,1fr) auto" }}>
+        <div key={v.id} className="tr" style={{ gridTemplateColumns: "40px minmax(0,1fr) auto" }}>
           <b className="mono">v{v.id}</b>
-          <div><div className={i ? "muted small" : ""}>{i === 0 ? "ใช้งานอยู่" : v.note}</div>
-            <div className="muted xs">{fmtDateTime(v.created_at)} · {v.people} คน · {v.created_by ?? "—"}{i === 0 ? ` · ${v.note}` : ""}</div></div>
-          {i === 0 ? <span className="chip ok">ปัจจุบัน</span>
+          {ren === v.id ? (
+            <form className="row" style={{ gap: 6, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault(); rename(v.id); }}>
+              <input className="in" style={{ marginTop: 0 }} autoFocus maxLength={80} value={val} onChange={(e) => setVal(e.target.value)} aria-label={`ชื่อ v${v.id}`} />
+              <button className="btn btn-sm btn-pri" type="submit">บันทึก</button>
+              <button className="lk" type="button" onClick={() => setRen(null)}>ยกเลิก</button>
+            </form>
+          ) : (
+            <div style={{ minWidth: 0 }}>
+              <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                <b className="ellip" style={{ fontWeight: v.name ? 600 : 400, color: v.name ? undefined : "var(--muted)" }}>{v.name ?? "ไม่มีชื่อ"}</b>
+                <button className="lk" style={{ minHeight: 0, padding: 0, fontSize: 12 }} onClick={() => { setRen(v.id); setVal(v.name ?? ""); }}>{v.name ? "แก้ชื่อ" : "ตั้งชื่อ"}</button>
+              </div>
+              <div className="muted xs">{fmtDateTime(v.created_at)} · {v.people} คน · {v.created_by ?? "—"} · {v.note}</div>
+            </div>
+          )}
+          {ren === v.id ? <span /> : i === 0 ? <span className="chip ok">ปัจจุบัน</span>
             : <button className="btn btn-sm" onClick={() => back(v.id)} onBlur={() => setArm(null)}>{arm === v.id ? "กดอีกครั้งเพื่อยืนยัน" : "ย้อนกลับ"}</button>}
         </div>
       ))}
+      {err && <div style={{ padding: "0 18px 12px" }}><p className="notice err">{err}</p></div>}
     </div>
   );
 }

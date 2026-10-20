@@ -303,4 +303,6 @@ export const SCHEMA: string[] = [
     by_code    text,
     at         timestamptz NOT NULL DEFAULT now()
   )`,
+  // v6: ตั้งชื่อเวอร์ชันชุดธง
+  `ALTER TABLE plan_versions ADD COLUMN IF NOT EXISTS name text`,
 ];

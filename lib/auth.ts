@@ -62,8 +62,12 @@ export const bootstrapAdmins = () => {
 export const effectiveRole = (code: string, dbRole: string | null): UserRole =>
   bootstrapAdmins().includes(code) ? "admin" : (["admin", "safety"].includes(dbRole ?? "") ? (dbRole as Role) : "user");
 
+/** อายุการเข้าสู่ระบบ: ผู้ใช้ทั่วไป 30 วัน · Admin / Safety 12 ชม. (กันเครื่อง PC ส่วนกลางค้างสิทธิ์ Admin) */
+export const SESSION_HOURS = { user: 30 * 24, staff: 12 };
+
 export function signUser(s: { code: string; name: string; role: UserRole; pw_ver: number }) {
-  return sign({ id: 0, code: s.code, name: s.name, role: s.role, v: s.pw_ver, exp: Date.now() + 30 * 24 * 3600 * 1000 });
+  const h = s.role === "user" ? SESSION_HOURS.user : SESSION_HOURS.staff;
+  return sign({ id: 0, code: s.code, name: s.name, role: s.role, v: s.pw_ver, exp: Date.now() + h * 3600 * 1000 });
 }
 
 /** ตรวจ token ของบัญชีผู้ใช้กับฐานข้อมูล (บทบาทปัจจุบัน และรีเซ็ตรหัสผ่านแล้ว token เก่าใช้ไม่ได้) */

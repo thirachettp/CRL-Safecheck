@@ -131,7 +131,7 @@ function IncidentDash({ id }: { id: number }) {
       <div style={{ background: real ? "#B91C1C" : "#FCD34D", color: real ? "#fff" : "#422006" }}>
         <div className="row" style={{ maxWidth: 1440, margin: "0 auto", padding: "12px 32px", gap: 16 }}>
           <span className="chip" style={{ background: real ? "#fff" : "#422006", color: real ? "#B91C1C" : "#FCD34D", fontSize: 13, padding: "5px 12px" }}>{real ? "INCIDENT จริง" : "ซ้อม · DRILL"}</span>
-          <b style={{ fontSize: 18 }}>{real ? `${inc.kind ?? ""} ${inc.area ?? ""} · ยืนยันโดย ${inc.confirmed_by ?? "—"}` : `${inc.title ?? "ซ้อมอพยพ"}${inc.plan_version ? ` · ชุดธง v${inc.plan_version}` : ""}`}</b>
+          <b style={{ fontSize: 18 }}>{real ? `${inc.kind ?? ""} ${inc.area ?? ""} · ยืนยันโดย ${inc.confirmed_by ?? "—"}` : `${inc.title ?? "ซ้อมอพยพ"}${inc.plan_version ? ` · ชุดธง v${inc.plan_version}${inc.plan_name ? ` ${inc.plan_name}` : ""}` : ""}`}</b>
           <div className="grow" />
           <span className="small" style={{ background: real ? "rgba(255,255,255,.2)" : "rgba(66,32,6,.12)", borderRadius: 999, padding: "4px 12px" }}>
             {active ? <>อัปเดตล่าสุด <b className="mono">{fmtClock(d.data.now)}</b> · อัปเดตทุก 3 วินาที</> : <>ปิดเมื่อ <b className="mono">{fmtDateTime(inc.closed_at)}</b> โดย {inc.closed_by ?? "—"}</>}

@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { handle, ok } from "@/lib/http";
 import { sourceStates } from "@/lib/sources";
@@ -6,7 +7,8 @@ import { outsourcePresent } from "@/lib/outsource";
 
 export const dynamic = "force-dynamic";
 
-export const GET = handle(async () => {
+export const GET = handle(async (req: Request) => {
+  await requireRole(req, ["admin"]);
   const [states, sites, recent, osRecent, osStaff, osPresent] = await Promise.all([
     sourceStates(),
     q(`SELECT site, count(*)::int AS n FROM div_checkins WHERE site IS NOT NULL GROUP BY site ORDER BY n DESC`),

@@ -191,7 +191,7 @@ function Home() {
               background: inc.mode === "real" ? "#B91C1C" : "#422006", borderColor: inc.mode === "real" ? "#B91C1C" : "#422006" }}>
               <b style={{ fontSize: 20 }}>{inc.mode === "real" ? "Incident เริ่มแล้ว" : "กำลังซ้อมอพยพ"}</b>
               <div>{inc.mode === "real" ? `${inc.kind} · ${inc.area || "ไม่ระบุพื้นที่"}` : inc.title}</div>
-              <div className="small" style={{ opacity: .9 }}>ยืนยันโดย {inc.confirmed_by ?? "—"} · snapshot ชุดธง {inc.plan_version ? `v${inc.plan_version}` : "ปัจจุบัน"} ณ {fmtTime(inc.confirmed_at ?? inc.opened_at)}</div>
+              <div className="small" style={{ opacity: .9 }}>ยืนยันโดย {inc.confirmed_by ?? "—"} · snapshot ชุดธง {inc.plan_version ? `v${inc.plan_version}${inc.plan_name ? ` ${inc.plan_name}` : ""}` : "ปัจจุบัน"} ณ {fmtTime(inc.confirmed_at ?? inc.opened_at)}</div>
               <div className="small" style={{ fontWeight: 600, background: "rgba(255,255,255,.15)", borderRadius: 8, padding: "8px 10px" }}>{closedNote}</div>
             </div>
             <Link className="btn btn-dark btn-block" style={{ minHeight: 56, fontSize: 17 }} href="/search">ไปหน้าค้นหาคน</Link>

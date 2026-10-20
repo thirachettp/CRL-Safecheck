@@ -4,7 +4,12 @@ import { q, one } from "./db";
 import { bangkokDay } from "./incident";
 import type { PlanPerson, FlagLeader } from "./parsers";
 
-export async function saveVersion(note: string, by: string) {
+const vname = (n?: string | null) => {
+  const t = String(n ?? "").trim().slice(0, 80);
+  return t || null;
+};
+
+export async function saveVersion(note: string, by: string, name?: string | null) {
   const [people, leaders, points] = await Promise.all([
     q(`SELECT * FROM evac_plan`),
     q(`SELECT * FROM flag_leaders`),
@@ -12,13 +17,13 @@ export async function saveVersion(note: string, by: string) {
   ]);
   const active = people.filter((p: any) => !p.removed).length;
   const r = await one<{ id: number }>(
-    `INSERT INTO plan_versions (note, created_by, people, data) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [note, by, active, JSON.stringify({ people, leaders, points })]);
+    `INSERT INTO plan_versions (note, created_by, people, data, name) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [note, by, active, JSON.stringify({ people, leaders, points }), vname(name)]);
   return r!.id;
 }
 
 /** นำเข้าแผนจาก Excel แทนที่ชุดเดิม เก็บธงจาก Excel ไว้เทียบความแม่นยำ แล้วบันทึกเป็นเวอร์ชันใหม่ */
-export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, fileCount: number) {
+export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, fileCount: number, name?: string | null) {
   await q(`DELETE FROM evac_plan`);
   await q(
     `INSERT INTO evac_plan (emp_id, prefix, first_name, last_name, gender, cost_center, area,
@@ -50,8 +55,13 @@ export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, f
      WHERE cost_center IS NOT NULL AND cost_center <> '' GROUP BY cost_center
      ON CONFLICT (code) DO NOTHING`);
   await q(`DELETE FROM flag_reviews`);
-  const v = await saveVersion(`นำเข้าจาก Excel ${fileCount} ไฟล์`, by);
+  const v = await saveVersion(`นำเข้าจาก Excel ${fileCount} ไฟล์`, by, name);
   return { saved: P.length, leaders: L.length, version: v };
+}
+
+export async function renameVersion(id: number, name: string) {
+  const r = await one(`UPDATE plan_versions SET name = $2 WHERE id = $1 RETURNING id`, [id, vname(name)]);
+  if (!r) throw new UserError("ไม่พบเวอร์ชันนี้");
 }
 
 export async function rollback(versionId: number, by: string) {
@@ -66,24 +76,31 @@ export async function rollback(versionId: number, by: string) {
   if (leaders.length) {
     await q(`INSERT INTO flag_leaders SELECT * FROM jsonb_populate_recordset(null::flag_leaders, $1::jsonb)`, [JSON.stringify(leaders)]);
   }
-  return saveVersion(`ย้อนกลับไป v${versionId}`, by);
+  return saveVersion(`ย้อนกลับไป v${versionId}`, by, v.name);
 }
 
 /** ภาพรวมสำหรับหน้าตั้งค่า */
 export async function planOverview() {
   const [flags, leaders, points, versions, acc, total] = await Promise.all([
     q<any>(`
-      SELECT p.flag_no, max(p.assembly_point) AS assembly_point, count(*)::int AS people,
-        count(*) FILTER (WHERE p.gender = 'ชาย')::int AS male, count(*) FILTER (WHERE p.gender = 'หญิง')::int AS female,
-        mode() WITHIN GROUP (ORDER BY p.area) AS area,
-        r.reviewed_by, r.reviewed_at,
-        count(*) FILTER (WHERE r.reviewed_at IS NOT NULL AND p.edited_at > r.reviewed_at)::int AS edits_after
-      FROM evac_plan p LEFT JOIN flag_reviews r ON r.flag_no = p.flag_no
-      WHERE NOT p.removed GROUP BY p.flag_no, r.reviewed_by, r.reviewed_at ORDER BY p.flag_no NULLS LAST`),
+      WITH f AS (
+        SELECT p.flag_no, max(p.assembly_point) AS assembly_point, count(*)::int AS people,
+          count(*) FILTER (WHERE p.gender = 'ชาย')::int AS male, count(*) FILTER (WHERE p.gender = 'หญิง')::int AS female,
+          mode() WITHIN GROUP (ORDER BY p.area) AS area,
+          count(*) FILTER (WHERE r.reviewed_at IS NOT NULL AND p.edited_at > r.reviewed_at)::int AS edits_after
+        FROM evac_plan p LEFT JOIN flag_reviews r ON r.flag_no = p.flag_no
+        WHERE NOT p.removed GROUP BY p.flag_no)
+      SELECT COALESCE(f.flag_no, l.flag_no) AS flag_no, COALESCE(f.assembly_point, l.assembly_point) AS assembly_point,
+        COALESCE(f.people, 0) AS people, COALESCE(f.male, 0) AS male, COALESCE(f.female, 0) AS female,
+        COALESCE(l.area, f.area) AS area, l.flag_no_old, COALESCE(f.edits_after, 0) AS edits_after,
+        r.reviewed_by, r.reviewed_at
+      FROM f FULL JOIN flag_leaders l ON l.flag_no = f.flag_no
+      LEFT JOIN flag_reviews r ON r.flag_no = COALESCE(f.flag_no, l.flag_no)
+      ORDER BY 1 NULLS LAST`),
     q<any>(`SELECT * FROM flag_leaders ORDER BY flag_no`),
     q<any>(`SELECT a.*, (SELECT array_agg(DISTINCT flag_no ORDER BY flag_no) FROM evac_plan
               WHERE assembly_point = a.code AND NOT removed) AS flags FROM assembly_points a ORDER BY sort, code`),
-    q<any>(`SELECT id, note, created_by, created_at, people FROM plan_versions ORDER BY id DESC LIMIT 10`),
+    q<any>(`SELECT id, name, note, created_by, created_at, people FROM plan_versions ORDER BY id DESC LIMIT 10`),
     one<any>(`SELECT
         count(*) FILTER (WHERE NOT added_manually)::int AS imported,
         count(*) FILTER (WHERE NOT added_manually AND NOT removed AND flag_no IS DISTINCT FROM orig_flag)::int AS moved,
@@ -136,12 +153,12 @@ export async function setAttendance(personKey: string, here: boolean, by: string
 
 export async function editPerson(
   empId: string,
-  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: number; tel?: string; cost_center?: string; area?: string },
+  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: number; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string },
   by: string,
 ) {
   const p = await one<any>(`SELECT * FROM evac_plan WHERE emp_id = $1`, [empId]);
   if (!p) throw new UserError("ไม่พบรายชื่อ");
-  const personal = ["first_name", "last_name", "gender", "tel", "cost_center", "area"].some(
+  const personal = ["first_name", "last_name", "gender", "tel", "cost_center", "area", "role", "prefix"].some(
     (k) => (f as any)[k] !== undefined && ((f as any)[k] ?? "") !== (p[k] ?? ""));
   const flag = f.flag_no ?? p.flag_no;
   const ap = flag !== p.flag_no
@@ -150,10 +167,12 @@ export async function editPerson(
   await q(
     `UPDATE evac_plan SET first_name = $2, last_name = $3, gender = $4, flag_no = $5, tel = $6, cost_center = $7, area = $8,
        assembly_point = $9, edited_by = $10, edited_at = now(), updated_at = now(),
-       edited_note = CASE WHEN $11 THEN 'แก้ข้อมูลส่วนตัว' ELSE edited_note END
+       edited_note = CASE WHEN $11 THEN 'แก้ข้อมูลส่วนตัว' ELSE edited_note END,
+       role = $12, prefix = $13
      WHERE emp_id = $1`,
     [empId, f.first_name ?? p.first_name, f.last_name ?? p.last_name, f.gender ?? p.gender, flag, f.tel ?? p.tel,
-     f.cost_center ?? p.cost_center, f.area ?? p.area, ap, by || null, personal]);
+     f.cost_center ?? p.cost_center, f.area ?? p.area, ap, by || null, personal,
+     f.role !== undefined ? f.role || null : p.role, f.prefix !== undefined ? f.prefix || null : p.prefix]);
 }
 
 export async function removePerson(empId: string, reason: string, by: string, restore = false) {
@@ -164,19 +183,23 @@ export async function removePerson(empId: string, reason: string, by: string, re
 }
 
 export async function addPlanPerson(
-  f: { first_name: string; last_name?: string; gender?: string; flag_no: number; tel?: string; cost_center?: string; area?: string; emp_id?: string },
+  f: { first_name: string; last_name?: string; gender?: string; flag_no: number; tel?: string; cost_center?: string; area?: string; emp_id?: string; role?: string; prefix?: string },
   by: string,
 ) {
   if (!f.first_name?.trim()) throw new UserError("กรอกชื่อก่อน");
   if (!Number.isInteger(f.flag_no)) throw new UserError("ระบุธง");
-  const id = f.emp_id?.trim() || `ADD-${Date.now().toString(36).toUpperCase()}`;
-  const ap = (await one<{ ap: string }>(`SELECT max(assembly_point) AS ap FROM evac_plan WHERE flag_no = $1`, [f.flag_no]))?.ap ?? null;
+  const id = f.emp_id?.trim().toUpperCase() || `ADD-${Date.now().toString(36).toUpperCase()}`;
+  const dup = await one<any>(`SELECT flag_no, removed FROM evac_plan WHERE emp_id = $1`, [id]);
+  if (dup) throw new UserError(dup.removed ? `รหัส ${id} เคยอยู่ในชุดธงแล้วถูกลบ ไปที่ธง ${dup.flag_no ?? "—"} แล้วกดคืนค่า` : `รหัส ${id} อยู่ในธง ${dup.flag_no ?? "—"} แล้ว ใช้แก้ไข/ย้ายธงแทน`);
+  const ap = (await one<{ ap: string }>(
+    `SELECT COALESCE((SELECT max(assembly_point) FROM evac_plan WHERE flag_no = $1), (SELECT assembly_point FROM flag_leaders WHERE flag_no = $1)) AS ap`,
+    [f.flag_no]))?.ap ?? null;
   await q(
     `INSERT INTO evac_plan (emp_id, first_name, last_name, gender, flag_no, tel, cost_center, area, assembly_point,
-       added_manually, edited_by, edited_at, role)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, now(), 'ผู้อพยพ')`,
+       added_manually, edited_by, edited_at, role, prefix)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, now(), $11, $12)`,
     [id, f.first_name.trim(), f.last_name?.trim() || null, f.gender || null, f.flag_no, f.tel || null,
-     f.cost_center || null, f.area || null, ap, by || null]);
+     f.cost_center || null, f.area || null, ap, by || null, f.role || "ผู้อพยพ", f.prefix || null]);
   return id;
 }
 
@@ -185,4 +208,37 @@ export async function markReviewed(flag: number, by: string) {
     `INSERT INTO flag_reviews (flag_no, reviewed_by) VALUES ($1, $2)
      ON CONFLICT (flag_no) DO UPDATE SET reviewed_by = EXCLUDED.reviewed_by, reviewed_at = now()`,
     [flag, by || null]);
+}
+
+// ---------- ธง (Admin) ----------
+export type FlagInput = { flag_no: number; leader_name?: string; area?: string; assembly_point?: string; flag_no_old?: number | null; cost_center?: string };
+
+/** เพิ่ม/แก้ข้อมูลธง เปลี่ยนจุดรวมพลแล้วคนในธงย้ายจุดตามด้วย */
+export async function saveFlag(f: FlagInput, isNew: boolean) {
+  if (!Number.isInteger(f.flag_no) || f.flag_no <= 0) throw new UserError("เบอร์ธงต้องเป็นตัวเลขมากกว่า 0");
+  if (isNew) {
+    const used = await one<any>(
+      `SELECT 1 FROM flag_leaders WHERE flag_no = $1 UNION SELECT 1 FROM evac_plan WHERE flag_no = $1 AND NOT removed LIMIT 1`, [f.flag_no]);
+    if (used) throw new UserError(`ธง ${f.flag_no} มีอยู่แล้ว`);
+  }
+  const t = (v?: string | null) => (String(v ?? "").trim() || null);
+  await q(
+    `INSERT INTO flag_leaders (flag_no, leader_name, area, assembly_point, flag_no_old, cost_center)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (flag_no) DO UPDATE SET leader_name = EXCLUDED.leader_name, area = EXCLUDED.area,
+       assembly_point = EXCLUDED.assembly_point, flag_no_old = EXCLUDED.flag_no_old, cost_center = EXCLUDED.cost_center`,
+    [f.flag_no, t(f.leader_name), t(f.area), t(f.assembly_point), f.flag_no_old ?? null, t(f.cost_center)]);
+  if (t(f.assembly_point)) {
+    await q(`INSERT INTO assembly_points (code, name, sort) VALUES ($1, 'จุดรวมพล ' || $1, 0) ON CONFLICT (code) DO NOTHING`, [t(f.assembly_point)]);
+    await q(`UPDATE evac_plan SET assembly_point = $2, updated_at = now() WHERE flag_no = $1 AND assembly_point IS DISTINCT FROM $2`,
+      [f.flag_no, t(f.assembly_point)]);
+  }
+}
+
+/** ลบธงได้เมื่อไม่มีคนเหลือในธง */
+export async function deleteFlag(flag: number) {
+  const n = await one<{ n: number }>(`SELECT count(*)::int AS n FROM evac_plan WHERE flag_no = $1 AND NOT removed`, [flag]);
+  if (n && n.n > 0) throw new UserError(`ธง ${flag} ยังมี ${n.n} คน ย้ายหรือลบคนออกก่อน`);
+  await q(`DELETE FROM flag_leaders WHERE flag_no = $1`, [flag]);
+  await q(`DELETE FROM flag_reviews WHERE flag_no = $1`, [flag]);
 }
