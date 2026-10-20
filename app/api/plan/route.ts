@@ -12,7 +12,7 @@ export const GET = handle(async (req: Request) => {
   if (admin) return ok(await planOverview());
   const [flags, points] = await Promise.all([
     q(`SELECT flag_no, max(assembly_point) AS assembly_point, mode() WITHIN GROUP (ORDER BY area) AS area, count(*)::int AS people
-       FROM evac_plan WHERE NOT removed AND flag_no IS NOT NULL GROUP BY flag_no ORDER BY flag_no`),
+       FROM evac_plan WHERE NOT removed AND flag_no IS NOT NULL GROUP BY flag_no ORDER BY flag_key(flag_no), flag_no`),
     q(`SELECT code, name, backup, sort FROM assembly_points ORDER BY sort, code`),
   ]);
   return ok({ flags, points });

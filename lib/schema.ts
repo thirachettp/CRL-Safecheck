@@ -307,4 +307,18 @@ export const SCHEMA: string[] = [
   `ALTER TABLE plan_versions ADD COLUMN IF NOT EXISTS name text`,
   // v7: เวอร์ชันชุดธง แก้/บันทึกทับได้
   `ALTER TABLE plan_versions ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
+  // v8: เบอร์ธงเป็นข้อความได้ (เช่น 17A) · แปลงคอลัมน์ int → text ครั้งเดียว
+  `CREATE OR REPLACE FUNCTION flag_key(t text) RETURNS int LANGUAGE sql IMMUTABLE AS
+     $f$ SELECT CASE WHEN t ~ '^[0-9]+' THEN least(substring(t from '^[0-9]+')::numeric, 2000000000)::int ELSE 2000000001 END $f$`,
+  `DO $m$ BEGIN
+     IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'evac_plan' AND column_name = 'flag_no') = 'integer' THEN
+       ALTER TABLE evac_plan ALTER COLUMN flag_no TYPE text USING flag_no::text;
+       ALTER TABLE evac_plan ALTER COLUMN flag_no_old TYPE text USING flag_no_old::text;
+       ALTER TABLE evac_plan ALTER COLUMN orig_flag TYPE text USING orig_flag::text;
+       ALTER TABLE flag_leaders ALTER COLUMN flag_no TYPE text USING flag_no::text;
+       ALTER TABLE flag_leaders ALTER COLUMN flag_no_old TYPE text USING flag_no_old::text;
+       ALTER TABLE flag_reviews ALTER COLUMN flag_no TYPE text USING flag_no::text;
+       ALTER TABLE incident_people ALTER COLUMN flag_no TYPE text USING flag_no::text;
+     END IF;
+   END $m$`,
 ];

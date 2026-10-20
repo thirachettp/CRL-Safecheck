@@ -25,7 +25,7 @@ export type PersonCheck = {
   cost_center?: string | null;
   cc_name?: string | null;
   area?: string | null;
-  flag_no?: number | null;
+  flag_no?: string | null;
   assembly_point?: string | null;
   in_plan?: boolean;
   status_text?: string | null;

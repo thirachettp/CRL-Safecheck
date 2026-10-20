@@ -1,4 +1,5 @@
 "use client";
+import { flagRange } from "@/lib/flag";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** แนบ token: PIN ของ Admin / Safety ในแท็บนี้ หรือ token ของบัญชีที่เข้าสู่ระบบ */
@@ -111,17 +112,9 @@ export function useNow(ms = 1000) {
   return now;
 }
 
-/** [1,2,3,5,7,8] → "1–3, 5, 7–8" */
-export function rangeText(ns: number[]) {
-  const s = [...ns].sort((a, b) => a - b);
-  const out: string[] = [];
-  for (let i = 0; i < s.length; i++) {
-    let j = i;
-    while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++;
-    out.push(i === j ? `${s[i]}` : `${s[i]}–${s[j]}`);
-    i = j;
-  }
-  return out.join(", ");
+/** ["1","2","3","5","10A"] → "1–3, 5, 10A" (เบอร์ธงเป็นข้อความได้) */
+export function rangeText(ns: (string | number | null | undefined)[]) {
+  return flagRange(ns.map((x) => (x == null ? null : String(x))));
 }
 
 /** จอกว้าง (PC) — ใช้สลับเลย์เอาต์การ์ด ↔ ตาราง */

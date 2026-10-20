@@ -1,3 +1,4 @@
+import { normFlag } from "@/lib/flag";
 import { requireRole } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
@@ -22,7 +23,7 @@ export const POST = handle(async (req: Request) => {
   const b = await req.json();
   if (b.action === "sync") return ok(await syncDriver({ force: !!b.force }));
   if (b.action === "flag") {
-    const flag = b.flag === "" || b.flag == null ? null : Number(b.flag);
+    const flag = normFlag(b.flag);
     if (flag !== null && !Number.isInteger(flag)) return fail("เบอร์ธงไม่ถูกต้อง");
     await setSetting("driver_flag", flag);
     return ok({ flag });

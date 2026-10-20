@@ -1,4 +1,5 @@
 "use client";
+import { cmpFlag } from "@/lib/flag";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
@@ -91,7 +92,7 @@ function SearchIncident({ id }: { id: number }) {
     if (sf === "abs") return !p.here;
     if (sf !== "all" && (p.status === "cmd" ? "safe" : p.status) !== sf) return false;
     return true;
-  }).sort((a, b) => ORDER[a.status] - ORDER[b.status] || (a.flag_no ?? 9999) - (b.flag_no ?? 9999));
+  }).sort((a, b) => ORDER[a.status] - ORDER[b.status] || cmpFlag(a.flag_no, b.flag_no));
   const LIMIT = 80;
 
   const n: Record<string, number> = { unk: 0, in: 0, safe: 0, inj: 0 };
@@ -111,7 +112,7 @@ function SearchIncident({ id }: { id: number }) {
       if (inPool(p.status)) { x.mem++; if (EVAC.includes(p.status)) x.done++; }
       m.set(g, x);
     }
-    return [...m.values()].sort((a, b) => (a.id === "none" ? 1 : b.id === "none" ? -1 : real ? a.id.localeCompare(b.id) : Number(a.id) - Number(b.id)));
+    return [...m.values()].sort((a, b) => (a.id === "none" ? 1 : b.id === "none" ? -1 : real ? a.id.localeCompare(b.id) : cmpFlag(a.id, b.id)));
   }, [people, real]);
 
   // ---------- เช็คชื่อทั้งธง ----------
@@ -140,7 +141,7 @@ function SearchIncident({ id }: { id: number }) {
     setErr(null);
     try {
       await api(`/api/incidents/${id}/roll`, { method: "POST", json: {
-        flag: Number(f), count: cntN, by: who,
+        flag: f, count: cntN, by: who,
         safe: ticked.filter((m) => !m.injOn).map((m) => m.person_key), inj: ticked.filter((m) => m.injOn).map((m) => m.person_key) } });
       setRoll(false);
       d.reload();
@@ -387,7 +388,7 @@ function AddOutside({ defaultFlag, onClose, onSave }: { defaultFlag: string; onC
         <label className="lb">ชื่อ-สกุล<input className="in" required value={x.name} onChange={(e) => setX({ ...x, name: e.target.value })} /></label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <label className="lb">เพศ<select className="in" value={x.gender} onChange={(e) => setX({ ...x, gender: e.target.value })}><option value="">ไม่ระบุ</option><option>ชาย</option><option>หญิง</option></select></label>
-          <label className="lb">ธง<input className="in mono" inputMode="numeric" value={x.flag_no} onChange={(e) => setX({ ...x, flag_no: e.target.value })} /></label>
+          <label className="lb">ธง<input className="in mono" value={x.flag_no} onChange={(e) => setX({ ...x, flag_no: e.target.value })} /></label>
         </div>
         <label className="lb">บริษัท / หมายเหตุ<input className="in" value={x.note} onChange={(e) => setX({ ...x, note: e.target.value })} /></label>
         {err && <p className="notice err">{err}</p>}

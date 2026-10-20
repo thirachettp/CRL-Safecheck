@@ -8,7 +8,7 @@ type Person = {
   source: "div" | "outsource" | "driver"; key: string; name: string; verdict: "in" | "out" | "unknown"; site: string | null; since: string | null;
   reason: string; flags: string[]; events: number; in_at: string | null; out_at: string | null;
   emp_id?: string | null; email?: string | null; plate?: string | null; gender?: string | null; phone?: string | null; company?: string | null;
-  cost_center?: string | null; cc_name?: string | null; area?: string | null; flag_no?: number | null; assembly_point?: string | null;
+  cost_center?: string | null; cc_name?: string | null; area?: string | null; flag_no?: string | null; assembly_point?: string | null;
   in_plan?: boolean; status_text?: string | null;
 };
 type Count = { in: number; out: number; unknown: number; flagged: number };

@@ -9,12 +9,12 @@ import { IBack, IFlag, IDown, IClose } from "@/components/Icons";
 const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไม่ได้ทำงานพื้นที่นี้", "อื่นๆ"];
 
 type Person = {
-  emp_id: string; first_name: string; last_name: string | null; gender: string | null; flag_no: number; orig_flag: number | null;
+  emp_id: string; first_name: string; last_name: string | null; gender: string | null; flag_no: string; orig_flag: string | null;
   tel: string | null; cost_center: string | null; area: string | null; role: string | null; here: boolean | null;
   added_manually: boolean; edited_note: string | null; edited_by: string | null; removed: boolean; removed_reason: string | null; removed_by: string | null;
 };
 type Data = {
-  flag: number | null; people: Person[]; cells: { flag_no: number; n: number; reviewed: boolean }[];
+  flag: string | null; people: Person[]; cells: { flag_no: string; n: number; reviewed: boolean }[];
   review: { reviewed_by: string; reviewed_at: string } | null; leader: any; points: any[]; viewer?: "anon" | "user" | "staff";
 };
 
@@ -24,8 +24,8 @@ export default function ReviewPage() {
 
 function Review() {
   const { user, by } = useUser();
-  const [sel, setSel] = useState<number | null>(null);
-  const d = usePoll<Data>(`/api/review${sel ? `?flag=${sel}` : ""}`, 15000);
+  const [sel, setSel] = useState<string | null>(null);
+  const d = usePoll<Data>(`/api/review${sel ? `?flag=${encodeURIComponent(sel)}` : ""}`, 15000);
   const [picker, setPicker] = useState(false);
   const [open, setOpen] = useState<{ id: string; mode: "edit" | "del" } | null>(null);
   const [draft, setDraft] = useState<any>({});
@@ -70,7 +70,7 @@ function Review() {
                     <label className="lb">ชื่อ<input className="in" value={draft.first_name} onChange={(e) => setDraft({ ...draft, first_name: e.target.value })} /></label>
                     <label className="lb">นามสกุล<input className="in" value={draft.last_name} onChange={(e) => setDraft({ ...draft, last_name: e.target.value })} /></label>
                     <label className="lb">เพศ<select className="in" value={draft.gender} onChange={(e) => setDraft({ ...draft, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
-                    <label className="lb">ธง<input className="in mono" inputMode="numeric" value={draft.flag_no} onChange={(e) => setDraft({ ...draft, flag_no: e.target.value })} /></label>
+                    <label className="lb">ธง<input className="in mono" value={draft.flag_no} onChange={(e) => setDraft({ ...draft, flag_no: e.target.value })} /></label>
                   </div>
                   {!anon && <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={draft.tel} onChange={(e) => setDraft({ ...draft, tel: e.target.value })} /></label>}
                   <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
@@ -80,7 +80,7 @@ function Review() {
                   <div className="muted" style={{ fontSize: 11 }}>รหัส <span className="mono">{p.emp_id}</span> แก้ไขไม่ได้</div>
                   <div className="row" style={{ flexWrap: "nowrap" }}>
                     <button className="btn grow" onClick={() => setOpen(null)}>ยกเลิก</button>
-                    <button className="btn btn-pri grow" onClick={() => act({ action: "edit", emp_id: p.emp_id, ...draft, flag_no: parseInt(draft.flag_no, 10) || p.flag_no })}>บันทึก</button>
+                    <button className="btn btn-pri grow" onClick={() => act({ action: "edit", emp_id: p.emp_id, ...draft, flag_no: String(draft.flag_no ?? "").trim() || p.flag_no })}>บันทึก</button>
                   </div>
                 </div>
               )}
@@ -241,7 +241,7 @@ function Review() {
   );
 }
 
-function AddSheet({ flag, onClose, onSave }: { flag: number; onClose: () => void; onSave: (f: any) => Promise<void> }) {
+function AddSheet({ flag, onClose, onSave }: { flag: string; onClose: () => void; onSave: (f: any) => Promise<void> }) {
   const [f, setF] = useState({ first_name: "", last_name: "", gender: "ชาย", flag_no: String(flag), tel: "", cost_center: "", area: "", emp_id: "" });
   return (
     <div className="sheet-bg" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -252,7 +252,7 @@ function AddSheet({ flag, onClose, onSave }: { flag: number; onClose: () => void
           <label className="lb">ชื่อ<input className="in" required value={f.first_name} onChange={(e) => setF({ ...f, first_name: e.target.value })} /></label>
           <label className="lb">นามสกุล<input className="in" value={f.last_name} onChange={(e) => setF({ ...f, last_name: e.target.value })} /></label>
           <label className="lb">เพศ<select className="in" value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
-          <label className="lb">ธง<input className="in mono" inputMode="numeric" value={f.flag_no} onChange={(e) => setF({ ...f, flag_no: e.target.value })} /></label>
+          <label className="lb">ธง<input className="in mono" value={f.flag_no} onChange={(e) => setF({ ...f, flag_no: e.target.value })} /></label>
         </div>
         <label className="lb">รหัสพนักงาน (ถ้ามี)<input className="in mono" value={f.emp_id} onChange={(e) => setF({ ...f, emp_id: e.target.value })} /></label>
         <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={f.tel} onChange={(e) => setF({ ...f, tel: e.target.value })} /></label>

@@ -1,3 +1,4 @@
+import { normFlag } from "./flag";
 import { UserError } from "./errors";
 import { q, one } from "./db";
 import { outsourcePresent } from "./outsource";
@@ -52,7 +53,7 @@ export const bangkokDay = (d = new Date()) => new Date(d.getTime() + 7 * 3600e3)
 type Candidate = {
   person_key: string; emp_id: string | null; email: string | null; plate: string | null;
   name: string; gender: string | null; area: string | null; cost_center: string | null; cc_name: string | null;
-  tel: string | null; flag_no: number | null; assembly_point: string | null; is_leader: boolean;
+  tel: string | null; flag_no: string | null; assembly_point: string | null; is_leader: boolean;
   presence: string; presence_site: string | null; presence_since: string | null; here: boolean; source: string;
 };
 
@@ -67,7 +68,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       [now.toISOString()],
     ),
     q<any>(`SELECT * FROM driver_presence`),
-    getSetting<number | null>("driver_flag", null),
+    getSetting<string | number | null>("driver_flag", null).then((v) => normFlag(v)),
     q<any>(`SELECT person_key, here FROM attendance WHERE day = $1`, [bangkokDay(now)]),
     q<any>(`SELECT code AS cost_center, name FROM cost_centers
             UNION ALL
@@ -82,7 +83,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
   const hereMap = new Map<string, boolean>(att.map((a) => [a.person_key, a.here]));
   const ccMap = new Map<string, string>(ccNames.map((c) => [c.cost_center, c.name]));
   const telMap = new Map<string, string>(profiles.map((p) => [p.code, p.tel]));
-  const flagPoint = new Map<number, string>();
+  const flagPoint = new Map<string, string>();
   for (const p of plan) if (p.flag_no != null && p.assembly_point && !flagPoint.has(p.flag_no)) flagPoint.set(p.flag_no, p.assembly_point);
   const sites = (inc.div_sites ?? []).map((s) => s.toUpperCase());
 
@@ -178,7 +179,7 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
        tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by)
      SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20
      FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
-       $11::text[], $12::int[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[])
+       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[])
        AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src)
      ON CONFLICT (incident_id, person_key) DO UPDATE SET
        email = COALESCE(EXCLUDED.email, incident_people.email),
@@ -279,7 +280,7 @@ export async function listIncidents() {
 
 export async function getPeople(incidentId: number) {
   const rows = await q<any>(
-    `SELECT * FROM incident_people WHERE incident_id = $1 ORDER BY flag_no NULLS LAST, is_leader DESC, name`, [incidentId]);
+    `SELECT * FROM incident_people WHERE incident_id = $1 ORDER BY flag_key(flag_no) NULLS LAST, flag_no, is_leader DESC, name`, [incidentId]);
   return rows.map((r) => ({
     ...r,
     incident_id: Number(r.incident_id),
@@ -328,7 +329,7 @@ export async function setStatus(incidentId: number, key: string, status: Status,
  * เช็คชื่อทั้งธง (ซ้อมเท่านั้น): จำนวนที่นับได้ต้องตรงกับ ติ๊ก + คนที่ระบุไปแล้วที่จุดรวมพล
  * ติ๊ก = ปลอดภัย (หรือบาดเจ็บ) ไม่ติ๊ก = คงสถานะเดิม
  */
-export async function rollCall(incidentId: number, o: { flag: number; safe: string[]; inj: string[]; count: number; by: string }) {
+export async function rollCall(incidentId: number, o: { flag: string; safe: string[]; inj: string[]; count: number; by: string }) {
   const inc = await assertActive(incidentId);
   if (inc.mode !== "drill") throw new UserError("เช็คชื่อทั้งธงใช้ได้เฉพาะการซ้อม");
   const members = await q<any>(
@@ -360,7 +361,7 @@ export async function setInjury(incidentId: number, key: string, o: { triage?: s
 
 export async function addManualPerson(
   incidentId: number,
-  p: { name: string; gender?: string | null; flag_no?: number | null; note?: string; by?: string },
+  p: { name: string; gender?: string | null; flag_no?: string | null; note?: string; by?: string },
 ) {
   await assertActive(incidentId);
   const key = `manual:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;

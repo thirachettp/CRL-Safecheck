@@ -37,11 +37,11 @@ test("อ่านไฟล์แผนอพยพตามโครงจร�
   assert.equal(r.people.length, 2);
   assert.equal(r.people[0].first_name, "สมชาย");
   assert.equal(r.people[0].last_name, "ทดสอบ");
-  assert.equal(r.people[0].flag_no, 1);
+  assert.equal(r.people[0].flag_no, "1");
   assert.equal(r.people[1].gender, "หญิง");
   assert.equal(r.leaders.length, 0, "ไม่อ่านชีตรายชื่อผู้นำธง");
   const m = mergePlan([r]);
-  assert.deepEqual(m.leaders.map((l) => [l.flag_no, l.leader_name]), [[1, "สมชาย ทดสอบ"]], "ผู้นำธงจากแถวข้อมูลเท่านั้น ธง 2 ในชีตผู้นำธงไม่ถูกสร้าง");
+  assert.deepEqual(m.leaders.map((l) => [l.flag_no, l.leader_name]), [["1", "สมชาย ทดสอบ"]], "ผู้นำธงจากแถวข้อมูลเท่านั้น ธง 2 ในชีตผู้นำธงไม่ถูกสร้าง");
   assert.equal(r.issues.filter((i) => i.level === "error").length, 0);
 });
 
@@ -63,7 +63,7 @@ test("คนซ้ำข้ามไฟล์คนละธง ถูกรา�
   const m = mergePlan([a, b]);
   assert.equal(m.people.length, 1);
   assert.equal(m.duplicates.length, 1);
-  assert.ok(m.issues.some((i) => i.level === "error" && i.message.includes("คนละธง")));
+  assert.ok(m.issues.some((i) => i.level === "warn" && i.message.includes("คนละธง")), "คนยังถูกนำเข้า = สีเหลือง");
 });
 
 test("วันที่ Excel เป็นเวลาไทย แปลงเป็น UTC", () => {
@@ -109,26 +109,26 @@ test("ไฟล์ Template จริง: รหัส Outsource, ช่อง�
   );
   const r = parsePlanWorkbook(wb, "t.xlsx");
   assert.equal(r.people.length, 5);
-  assert.ok(r.people.every((p) => p.flag_no === 30));
+  assert.ok(r.people.every((p) => p.flag_no === "30"));
   assert.equal(r.people.find((p) => p.emp_id === "KNN250593")?.first_name, "ยาวียะ");
   assert.equal(r.leaders.length, 0, "ไม่อ่านชีตรายชื่อผู้นำธง");
   assert.ok(r.issues.some((i) => /3 คนไม่ได้กรอกเบอร์ธงใหม่/.test(i.message)));
   assert.ok(r.issues.some((i) => /คำนำหน้า "นาย" แต่เพศ "หญิง"/.test(i.message)));
 
   const m = mergePlan([r]);
-  assert.ok(m.people.every((p) => p.flag_no === 30), "เบอร์ธงยึดตามแถวข้อมูล");
+  assert.ok(m.people.every((p) => p.flag_no === "30"), "เบอร์ธงยึดตามแถวข้อมูล");
   assert.ok(!m.issues.some((i) => i.level === "error"), "ไม่เทียบเบอร์ธงกับชีตผู้นำธง");
-  const l30 = m.leaders.find((l) => l.flag_no === 30);
+  const l30 = m.leaders.find((l) => l.flag_no === "30");
   assert.equal(l30?.leader_name, "รัตนา โสดา", "ผู้นำธงจากบทบาทในแถวข้อมูล");
   assert.equal(l30?.area, "MZ3 ฝั่ง WH");
-  assert.equal(l30?.flag_no_old, 29);
-  assert.deepEqual(m.leaders.map((l) => l.flag_no), [30], "มีแค่ธงจากแถวข้อมูล");
+  assert.equal(l30?.flag_no_old, "29");
+  assert.deepEqual(m.leaders.map((l) => l.flag_no), ["30"], "มีแค่ธงจากแถวข้อมูล");
 });
 
 test("ไม่มีชีตผู้นำธง → ใช้คนที่บทบาทผู้นำธงเป็นผู้นำ", () => {
   const wb = planBook([[1, 5, 9, 20000001, "นาย", "สมชาย ทดสอบ", "ชาย", 1, "A", "ผู้นำธงอพยพ"]]);
   const m = mergePlan([parsePlanWorkbook(wb, "a.xlsx")]);
-  assert.equal(m.leaders[0]?.flag_no, 5);
+  assert.equal(m.leaders[0]?.flag_no, "5");
   assert.equal(m.leaders[0]?.leader_name, "สมชาย ทดสอบ");
 });
 
@@ -167,7 +167,7 @@ test("ผู้ช่วยผู้นำธง ไม่นับเป็น�
     [1, 7, 17, 20000021, "นาย", "หัวหน้า จริง", "ชาย", 1, "A", "ผู้นำธงอพยพ"],
   ]);
   const m = mergePlan([parsePlanWorkbook(wb, "a.xlsx")]);
-  assert.equal(m.leaders.find((l) => l.flag_no === 7)?.leader_name, "หัวหน้า จริง");
+  assert.equal(m.leaders.find((l) => l.flag_no === "7")?.leader_name, "หัวหน้า จริง");
   assert.ok(!m.issues.some((i) => /ผู้นำธง 2 คน/.test(i.message)));
 });
 
@@ -184,4 +184,22 @@ test("ไม่มีรหัสพนักงาน (Office Vender): นำ�
   assert.ok(r.issues.some((i) => /2 คนไม่มีรหัสพนักงาน \(แถว 5–6\)/.test(i.message)));
   const m = mergePlan([r]);
   assert.equal(m.leaders[0]?.leader_name, "เพ็ญจันทร์ เกษมรักษ์");
+});
+
+test("เบอร์ธงเป็นข้อความได้: 17A, OS-1, 'ธง 5', 07 → 7", async () => {
+  const { normFlag, cmpFlag, flagRange } = await import("../lib/flag.ts");
+  assert.equal(normFlag("17A"), "17A");
+  assert.equal(normFlag("ธง 5"), "5");
+  assert.equal(normFlag("07"), "7");
+  assert.equal(normFlag(17), "17");
+  assert.equal(normFlag("  "), null);
+  assert.deepEqual(["10", "2", "OS-1", "1", "10A"].sort(cmpFlag), ["1", "2", "10", "10A", "OS-1"]);
+  assert.equal(flagRange(["1", "2", "3", "5", "10A"]), "1–3, 5, 10A");
+  const wb = planBook([
+    [1, "17A", 31, 20000030, "นาย", "ทดสอบ ข้อความ", "ชาย", 1, "A", "ผู้นำธงอพยพ"],
+    [1, "OS-1", "", 20000031, "นาย", "ทดสอบ สอง", "ชาย", 1, "A", "ผู้อพยพ"],
+  ]);
+  const m = mergePlan([parsePlanWorkbook(wb, "t.xlsx")]);
+  assert.deepEqual(m.people.map((p) => p.flag_no), ["17A", "OS-1"]);
+  assert.ok(!m.issues.some((i) => /ไม่มีเบอร์ธงใหม่/.test(i.message)));
 });

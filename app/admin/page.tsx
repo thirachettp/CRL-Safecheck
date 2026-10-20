@@ -13,8 +13,8 @@ import type { MergedPlan, PlanFileResult } from "@/lib/parsers";
 type Overview = {
   total: number; files: number; updated_at: string | null;
   flags: FlagRow[];
-  leaders: { flag_no: number; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: number | null; cost_center: string | null }[];
-  points: { code: string; name: string; backup: string | null; sort: number; flags: number[] | null }[];
+  leaders: { flag_no: string; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: string | null; cost_center: string | null }[];
+  points: { code: string; name: string; backup: string | null; sort: number; flags: string[] | null }[];
   versions: { id: number; name: string | null; note: string; created_by: string; created_at: string; updated_at: string; people: number; used: number }[];
   version: { active: number | null; dirty: boolean; changed_at: string | null };
   roles: string[];
@@ -155,7 +155,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(combinedRows(m)), "รวม");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m.issues.map((i) => ({
-      "ระดับ": i.level === "error" ? "ต้องแก้" : "เตือน", "ไฟล์": i.file, "ปัญหา": i.message }))), "ปัญหาที่พบ");
+      "ระดับ": i.level === "error" ? "เอาเข้าไม่ได้" : "เตือน (นำเข้าแล้ว)", "ไฟล์": i.file, "ปัญหา": i.message }))), "ปัญหาที่พบ");
     XLSX.writeFile(wb, `Summary_EmergencyFlags_รวม_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
   async function save() {
@@ -191,18 +191,20 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
         <>
           <div className="row" style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)", background: "var(--subtle)" }}>
             <b className="grow">ผลตรวจ: {m.files} ไฟล์ · {m.people.length} คน · {new Set(m.people.map((p) => p.flag_no)).size} ธง</b>
-            <span className="chip ok">นำเข้าได้ {m.people.length}</span><span className="chip warn">เตือน {warns.length}</span><span className="chip err">ต้องแก้ {errors.length}</span>
+            <span className="chip ok">นำเข้าได้ {m.people.length} คน</span>
+            <span className="chip warn" title="นำเข้าแล้ว แจ้งเตือนไว้ให้ตรวจ">เตือน {warns.length}</span>
+            <span className="chip err" title="ส่วนนี้นำเข้าไม่ได้">เอาเข้าไม่ได้ {errors.length}</span>
           </div>
           {m.duplicates.length > 0 && <div className="tr" style={{ gridTemplateColumns: "1fr" }}><span className="small">
             พบ {m.duplicates.length} คนอยู่มากกว่าหนึ่งไฟล์ ระบบใช้ค่าจากไฟล์แรก เช่น {m.duplicates.slice(0, 3).map((d) => `${d.emp_id} (${d.files.join(", ")})`).join("; ")}</span></div>}
           {(errors.length > 0 || warns.length > 0) && (
             <div style={{ maxHeight: 320, overflowY: "auto" }}>
-              <div className="tr th" style={{ gridTemplateColumns: "minmax(0,180px) minmax(0,1fr) 200px" }}><div>ไฟล์</div><div>ปัญหา</div><div>ผลเมื่อบันทึก</div></div>
+              <div className="tr th" style={{ gridTemplateColumns: "minmax(0,180px) minmax(0,1fr) 200px" }}><div>ไฟล์</div><div>รายละเอียด · <span style={{ color: "#92400E" }}>เหลือง = นำเข้าแล้ว แจ้งเตือนไว้</span> · <span style={{ color: "#9F1239" }}>แดง = เอาเข้าไม่ได้</span></div><div>ผลเมื่อบันทึก</div></div>
               {[...errors, ...warns].slice(0, 300).map((i, k) => (
                 <div key={k} className="tr" style={{ gridTemplateColumns: "minmax(0,180px) minmax(0,1fr) 200px" }}>
                   <div className="mono xs">{i.file}</div>
                   <div><span className={`chip ${i.level === "error" ? "err" : "warn"}`} style={{ whiteSpace: "normal" }}>{i.message}</span></div>
-                  <div className="muted small">{i.level === "error" ? "ตรวจไฟล์ต้นทางแล้วนำเข้าใหม่" : "นำเข้า · แก้ภายหลังที่หน้าตรวจทานได้"}</div>
+                  <div className="small" style={{ color: i.level === "error" ? "#9F1239" : "var(--muted)", fontWeight: i.level === "error" ? 700 : 400 }}>{i.level === "error" ? "ไม่ได้นำเข้า · แก้ไฟล์แล้วนำเข้าใหม่" : "นำเข้าแล้ว · แจ้งเตือนไว้"}</div>
                 </div>
               ))}
             </div>
@@ -222,9 +224,9 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
 
 // ---------- จุดรวมพล ----------
 function PointsCard({ points, flags, onSaved }: { points: Overview["points"]; flags: Overview["flags"]; onSaved: () => void }) {
-  const [pick, setPick] = useState<{ code: string; sel: number[] } | null>(null);
+  const [pick, setPick] = useState<{ code: string; sel: string[] } | null>(null);
   const allFlags = flags.filter((f) => f.flag_no != null);
-  const pointOf = (n: number) => allFlags.find((f) => f.flag_no === n)?.assembly_point ?? null;
+  const pointOf = (n: string) => allFlags.find((f) => f.flag_no === n)?.assembly_point ?? null;
   const pName = (c: string | null) => (c ? points.find((x) => x.code === c)?.name ?? c : "ไม่ระบุจุด");
   const noPoint = allFlags.filter((f) => !f.assembly_point || !points.some((x) => x.code === f.assembly_point)).map((f) => f.flag_no!);
   const [draft, setDraft] = useState<Record<string, { name: string; backup: string; sort: number }>>({});

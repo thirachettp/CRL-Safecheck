@@ -4,13 +4,13 @@ import { Fragment, useMemo, useState } from "react";
 import { api, usePoll } from "./lib";
 
 export type FlagRow = {
-  flag_no: number | null; assembly_point: string | null; people: number; male: number; female: number; area: string | null;
-  flag_no_old: number | null; reviewed_by: string | null; reviewed_at: string | null; edits_after: number;
+  flag_no: string | null; assembly_point: string | null; people: number; male: number; female: number; area: string | null;
+  flag_no_old: string | null; reviewed_by: string | null; reviewed_at: string | null; edits_after: number;
 };
-type Leader = { flag_no: number; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: number | null; cost_center: string | null };
+type Leader = { flag_no: string; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: string | null; cost_center: string | null };
 type Point = { code: string; name: string };
 type Person = {
-  emp_id: string; prefix: string | null; first_name: string; last_name: string | null; gender: string | null; flag_no: number;
+  emp_id: string; prefix: string | null; first_name: string; last_name: string | null; gender: string | null; flag_no: string;
   tel: string | null; cost_center: string | null; area: string | null; role: string | null; added_manually: boolean;
   removed: boolean; removed_reason: string | null; removed_by: string | null; edited_by: string | null;
 };
@@ -29,13 +29,13 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
   flags: FlagRow[]; leaders: Leader[]; points: Point[]; total: number; roles?: string[]; onChanged: () => void;
 }) {
   const roleList = [...new Set([...ROLES, ...roles])];
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const [term, setTerm] = useState("");
   const [adding, setAdding] = useState(false);
   const [all, setAll] = useState(false);
-  const [del, setDel] = useState<number | null>(null);
+  const [del, setDel] = useState<string | null>(null);
   const [delMode, setDelMode] = useState<"move" | "remove">("move");
-  const [moveTo, setMoveTo] = useState<number | "">("");
+  const [moveTo, setMoveTo] = useState<string>("");
   const [delErr, setDelErr] = useState<string | null>(null);
   const [delMsg, setDelMsg] = useState<string | null>(null);
   async function doDelete(f: FlagRow) {
@@ -58,7 +58,7 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
   const after = list.filter((f) => f.reviewed_at && f.edits_after).length;
   const none = list.filter((f) => !f.reviewed_at).length;
   const limit = all || t ? shown : shown.slice(0, 15);
-  const nextFlag = Math.max(0, ...list.map((f) => f.flag_no!)) + 1;
+  const nextFlag = String(Math.max(0, ...list.map((f) => parseInt(f.flag_no!, 10)).filter(Number.isFinite)) + 1);
 
   return (
     <div className="card">
@@ -109,7 +109,7 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
                           <>
                             <span className="small">ธงนี้มี {f.people} คน</span>
                             <label className="row small" style={{ gap: 4 }}><input type="radio" checked={delMode === "move"} onChange={() => setDelMode("move")} />ย้ายคนไปธง</label>
-                            <select className="in" style={{ marginTop: 0, width: 110 }} value={moveTo} disabled={delMode !== "move"} onChange={(e) => setMoveTo(Number(e.target.value))} aria-label="ย้ายไปธง">
+                            <select className="in" style={{ marginTop: 0, width: 110 }} value={moveTo} disabled={delMode !== "move"} onChange={(e) => setMoveTo(e.target.value)} aria-label="ย้ายไปธง">
                               {list.filter((x) => x.flag_no !== n).map((x) => <option key={x.flag_no!} value={x.flag_no!}>ธง {x.flag_no}</option>)}
                             </select>
                             <label className="row small" style={{ gap: 4 }}><input type="radio" checked={delMode === "remove"} onChange={() => setDelMode("remove")} />เอาคนออกจากชุดธงด้วย</label>
@@ -142,10 +142,10 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
   );
 }
 
-type FlagDraft = { flag_no: number; leader_name: string; area: string; assembly_point: string; flag_no_old: number | null; cost_center: string };
+type FlagDraft = { flag_no: string; leader_name: string; area: string; assembly_point: string; flag_no_old: string | null; cost_center: string };
 
 function FlagForm({ init, isNew, points, onDone, onDelete, canDelete }: {
-  init: FlagDraft; isNew?: boolean; points: Point[]; onDone: (flag?: number) => void; onDelete?: () => void; canDelete?: boolean;
+  init: FlagDraft; isNew?: boolean; points: Point[]; onDone: (flag?: string) => void; onDelete?: () => void; canDelete?: boolean;
 }) {
   const [f, setF] = useState(init);
   const [err, setErr] = useState<string | null>(null);
@@ -161,9 +161,9 @@ function FlagForm({ init, isNew, points, onDone, onDelete, canDelete }: {
     <form onSubmit={save} style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-3)", background: isNew ? "#F0FDFA" : undefined }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8, alignItems: "end" }}>
         <label className="lb xs">เบอร์ธง
-          <input className="in mono" type="number" min={1} value={f.flag_no} disabled={!isNew} onChange={(e) => setF({ ...f, flag_no: Number(e.target.value) })} /></label>
+          <input className="in mono" maxLength={20} value={f.flag_no} disabled={!isNew} onChange={(e) => setF({ ...f, flag_no: e.target.value })} placeholder="เช่น 17 หรือ 17A" /></label>
         <label className="lb xs">ธงเดิม
-          <input className="in mono" type="number" min={0} value={f.flag_no_old ?? ""} onChange={(e) => setF({ ...f, flag_no_old: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+          <input className="in mono" maxLength={20} value={f.flag_no_old ?? ""} onChange={(e) => setF({ ...f, flag_no_old: e.target.value === "" ? null : e.target.value })} /></label>
         <label className="lb xs">พื้นที่ / แผนก
           <input className="in" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} placeholder="เช่น MZ3 ฝั่ง WH" /></label>
         <label className="lb xs">ผู้นำธง
@@ -191,7 +191,7 @@ function FlagForm({ init, isNew, points, onDone, onDelete, canDelete }: {
 }
 
 function FlagDetail({ flag, row, leader, points, roles, flags, onChanged, onDeleted }: {
-  flag: number; row: FlagRow; leader?: Leader; points: Point[]; roles: string[]; flags: number[]; onChanged: () => void; onDeleted: () => void;
+  flag: string; row: FlagRow; leader?: Leader; points: Point[]; roles: string[]; flags: string[]; onChanged: () => void; onDeleted: () => void;
 }) {
   const d = usePoll<{ people: Person[] }>(`/api/admin/flags?flag=${flag}`, 0);
   const [edit, setEdit] = useState<string | null>(null);
@@ -236,7 +236,7 @@ function FlagDetail({ flag, row, leader, points, roles, flags, onChanged, onDele
         </div>
       </td>
       <td><input className="in mono" style={{ marginTop: 0 }} placeholder="เบอร์โทร" value={v.tel} onChange={(e) => set({ ...v, tel: e.target.value })} aria-label="เบอร์โทร" /></td>
-      <td><select className="in mono" style={{ marginTop: 0 }} value={v.flag_no} onChange={(e) => set({ ...v, flag_no: Number(e.target.value) })} aria-label="ธง">
+      <td><select className="in mono" style={{ marginTop: 0 }} value={v.flag_no} onChange={(e) => set({ ...v, flag_no: e.target.value })} aria-label="ธง">
         {flags.map((x) => <option key={x} value={x}>ธง {x}</option>)}</select></td>
     </>
   );

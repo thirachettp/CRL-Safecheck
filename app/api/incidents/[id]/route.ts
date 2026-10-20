@@ -16,7 +16,7 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
   const [people, points, leaders, announcements, codes, sources, emer, target] = await Promise.all([
     getPeople(id),
     q(`SELECT * FROM assembly_points ORDER BY sort, code`),
-    q(`SELECT flag_no, leader_name, assembly_point, area FROM flag_leaders ORDER BY flag_no`),
+    q(`SELECT flag_no, leader_name, assembly_point, area FROM flag_leaders ORDER BY flag_key(flag_no), flag_no`),
     q(`SELECT * FROM incident_announcements WHERE incident_id = $1 ORDER BY at`, [id]),
     q(`SELECT * FROM announce_codes ORDER BY sort, id`),
     sourceStates(),

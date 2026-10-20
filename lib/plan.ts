@@ -3,6 +3,7 @@ import { UserError } from "./errors";
 import { q, one } from "./db";
 import { bangkokDay } from "./incident";
 import { getSetting, setSetting } from "./settings";
+import { normFlag } from "./flag";
 import type { PlanPerson, FlagLeader } from "./parsers";
 
 const vname = (n?: string | null) => {
@@ -86,18 +87,18 @@ export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, f
     `INSERT INTO evac_plan (emp_id, prefix, first_name, last_name, gender, cost_center, area,
        assembly_point, flag_no, flag_no_old, role, source_file, orig_flag)
      SELECT a, b, c, d, e, f, g, h, i, j, k, l, i FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[],
-       $6::text[], $7::text[], $8::text[], $9::int[], $10::int[], $11::text[], $12::text[]) AS x(a,b,c,d,e,f,g,h,i,j,k,l)
+       $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[], $12::text[]) AS x(a,b,c,d,e,f,g,h,i,j,k,l)
      ON CONFLICT (emp_id) DO NOTHING`,
     [P.map((p) => p.emp_id), P.map((p) => p.prefix), P.map((p) => p.first_name), P.map((p) => p.last_name),
      P.map((p) => p.gender), P.map((p) => p.cost_center), P.map((p) => p.area), P.map((p) => p.assembly_point),
-     P.map((p) => p.flag_no), P.map((p) => p.flag_no_old), P.map((p) => p.role), P.map((p) => p.source_file)]);
+     P.map((p) => normFlag(p.flag_no)), P.map((p) => normFlag(p.flag_no_old)), P.map((p) => p.role), P.map((p) => p.source_file)]);
   await q(`DELETE FROM flag_leaders`);
   if (L.length) {
     await q(
       `INSERT INTO flag_leaders (flag_no, assembly_point, flag_no_old, leader_name, cost_center, area, note)
-       SELECT * FROM unnest($1::int[], $2::text[], $3::int[], $4::text[], $5::text[], $6::text[], $7::text[])
+       SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
        ON CONFLICT (flag_no) DO NOTHING`,
-      [L.map((l) => l.flag_no), L.map((l) => l.assembly_point), L.map((l) => l.flag_no_old),
+      [L.map((l) => normFlag(l.flag_no)), L.map((l) => l.assembly_point), L.map((l) => normFlag(l.flag_no_old)),
        L.map((l) => l.leader_name), L.map((l) => l.cost_center), L.map((l) => l.area), L.map((l) => l.note)]);
   }
   // จุดรวมพลที่พบใน Excel แต่ยังไม่มีในระบบ
@@ -143,10 +144,10 @@ export async function planOverview() {
         r.reviewed_by, r.reviewed_at
       FROM f FULL JOIN flag_leaders l ON l.flag_no = f.flag_no
       LEFT JOIN flag_reviews r ON r.flag_no = COALESCE(f.flag_no, l.flag_no)
-      ORDER BY 1 NULLS LAST`),
-    q<any>(`SELECT * FROM flag_leaders ORDER BY flag_no`),
-    q<any>(`SELECT a.*, (SELECT array_agg(DISTINCT flag_no ORDER BY flag_no) FROM evac_plan
-              WHERE assembly_point = a.code AND NOT removed) AS flags FROM assembly_points a ORDER BY sort, code`),
+      ORDER BY flag_key(COALESCE(f.flag_no, l.flag_no)), 1 NULLS LAST`),
+    q<any>(`SELECT * FROM flag_leaders ORDER BY flag_key(flag_no), flag_no`),
+    q<any>(`SELECT a.*, (SELECT array_agg(x.f ORDER BY flag_key(x.f), x.f) FROM (SELECT DISTINCT flag_no AS f FROM evac_plan
+              WHERE assembly_point = a.code AND NOT removed AND flag_no IS NOT NULL) x) AS flags FROM assembly_points a ORDER BY sort, code`),
     q<any>(`SELECT v.id, v.name, v.note, v.created_by, v.created_at, v.updated_at, v.people,
               (SELECT count(*)::int FROM incidents i WHERE i.plan_version = v.id) AS used
             FROM plan_versions v ORDER BY v.id DESC LIMIT 100`),
@@ -172,7 +173,7 @@ export async function planOverview() {
 }
 
 /** คนในธง (สำหรับหน้าตรวจทาน) พร้อม มา/ไม่มา วันนี้ */
-export async function reviewFlag(flag: number) {
+export async function reviewFlag(flag: string) {
   const day = bangkokDay();
   const [people, review, leader] = await Promise.all([
     q<any>(
@@ -191,7 +192,7 @@ export async function flagCells() {
   return q<any>(
     `SELECT p.flag_no, count(*) FILTER (WHERE NOT p.removed)::int AS n, (r.flag_no IS NOT NULL) AS reviewed
      FROM evac_plan p LEFT JOIN flag_reviews r ON r.flag_no = p.flag_no
-     WHERE p.flag_no IS NOT NULL GROUP BY p.flag_no, r.flag_no ORDER BY p.flag_no`);
+     WHERE p.flag_no IS NOT NULL GROUP BY p.flag_no, r.flag_no ORDER BY flag_key(p.flag_no), p.flag_no`);
 }
 
 export async function setAttendance(personKey: string, here: boolean, by: string) {
@@ -203,7 +204,7 @@ export async function setAttendance(personKey: string, here: boolean, by: string
 
 export async function editPerson(
   empId: string,
-  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: number; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string; new_emp_id?: string },
+  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: string; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string; new_emp_id?: string },
   by: string,
 ) {
   let p = await one<any>(`SELECT * FROM evac_plan WHERE emp_id = $1`, [empId]);
@@ -221,7 +222,7 @@ export async function editPerson(
   }
   const personal = ["first_name", "last_name", "gender", "tel", "cost_center", "area", "role", "prefix"].some(
     (k) => (f as any)[k] !== undefined && ((f as any)[k] ?? "") !== (p[k] ?? ""));
-  const flag = f.flag_no ?? p.flag_no;
+  const flag = (f.flag_no !== undefined ? normFlag(f.flag_no) : null) ?? p.flag_no;
   const ap = flag !== p.flag_no
     ? (await one<{ ap: string }>(`SELECT max(assembly_point) AS ap FROM evac_plan WHERE flag_no = $1 AND NOT removed`, [flag]))?.ap ?? p.assembly_point
     : p.assembly_point;
@@ -251,11 +252,12 @@ export async function removePerson(empId: string, reason: string, by: string, re
 }
 
 export async function addPlanPerson(
-  f: { first_name: string; last_name?: string; gender?: string; flag_no: number; tel?: string; cost_center?: string; area?: string; emp_id?: string; role?: string; prefix?: string },
+  f: { first_name: string; last_name?: string; gender?: string; flag_no: string; tel?: string; cost_center?: string; area?: string; emp_id?: string; role?: string; prefix?: string },
   by: string,
 ) {
   if (!f.first_name?.trim()) throw new UserError("กรอกชื่อก่อน");
-  if (!Number.isInteger(f.flag_no)) throw new UserError("ระบุธง");
+  f = { ...f, flag_no: normFlag(f.flag_no) ?? "" };
+  if (!f.flag_no) throw new UserError("ระบุธง");
   const id = f.emp_id?.trim().toUpperCase() || `ADD-${Date.now().toString(36).toUpperCase()}`;
   const dup = await one<any>(`SELECT flag_no, removed FROM evac_plan WHERE emp_id = $1`, [id]);
   if (dup) throw new UserError(dup.removed ? `รหัส ${id} เคยอยู่ในชุดธงแล้วถูกลบ ไปที่ธง ${dup.flag_no ?? "—"} แล้วกดคืนค่า` : `รหัส ${id} อยู่ในธง ${dup.flag_no ?? "—"} แล้ว ใช้แก้ไข/ย้ายธงแทน`);
@@ -271,7 +273,7 @@ export async function addPlanPerson(
   return id;
 }
 
-export async function markReviewed(flag: number, by: string) {
+export async function markReviewed(flag: string, by: string) {
   await q(
     `INSERT INTO flag_reviews (flag_no, reviewed_by) VALUES ($1, $2)
      ON CONFLICT (flag_no) DO UPDATE SET reviewed_by = EXCLUDED.reviewed_by, reviewed_at = now()`,
@@ -279,11 +281,12 @@ export async function markReviewed(flag: number, by: string) {
 }
 
 // ---------- ธง (Admin) ----------
-export type FlagInput = { flag_no: number; leader_name?: string; area?: string; assembly_point?: string; flag_no_old?: number | null; cost_center?: string };
+export type FlagInput = { flag_no: string; leader_name?: string; area?: string; assembly_point?: string; flag_no_old?: string | null; cost_center?: string };
 
 /** เพิ่ม/แก้ข้อมูลธง เปลี่ยนจุดรวมพลแล้วคนในธงย้ายจุดตามด้วย */
 export async function saveFlag(f: FlagInput, isNew: boolean) {
-  if (!Number.isInteger(f.flag_no) || f.flag_no <= 0) throw new UserError("เบอร์ธงต้องเป็นตัวเลขมากกว่า 0");
+  f = { ...f, flag_no: normFlag(f.flag_no) ?? "", flag_no_old: normFlag(f.flag_no_old) };
+  if (!f.flag_no) throw new UserError("ระบุเบอร์ธง");
   if (isNew) {
     const used = await one<any>(
       `SELECT 1 FROM flag_leaders WHERE flag_no = $1 UNION SELECT 1 FROM evac_plan WHERE flag_no = $1 AND NOT removed LIMIT 1`, [f.flag_no]);
@@ -304,7 +307,7 @@ export async function saveFlag(f: FlagInput, isNew: boolean) {
 }
 
 /** ลบธง · ถ้ายังมีคน: ย้ายไปธงอื่น (moveTo) หรือเอาคนออกจากชุดธงด้วย (removePeople) */
-export async function deleteFlag(flag: number, o: { moveTo?: number | null; removePeople?: boolean } = {}, by = "") {
+export async function deleteFlag(flag: string, o: { moveTo?: string | null; removePeople?: boolean } = {}, by = "") {
   const n = (await one<{ n: number }>(`SELECT count(*)::int AS n FROM evac_plan WHERE flag_no = $1 AND NOT removed`, [flag]))?.n ?? 0;
   if (n > 0) {
     if (o.moveTo != null) {

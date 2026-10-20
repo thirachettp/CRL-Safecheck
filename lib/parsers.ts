@@ -2,6 +2,7 @@
 // ทำงานได้ทั้งในเบราว์เซอร์และใน Node (รับ workbook ของ SheetJS)
 import type { WorkBook, WorkSheet } from "xlsx";
 import { utils } from "xlsx";
+import { normFlag, cmpFlag } from "./flag.ts";
 
 export type PlanPerson = {
   emp_id: string;
@@ -12,8 +13,8 @@ export type PlanPerson = {
   cost_center: string | null;
   area: string | null;
   assembly_point: string | null;
-  flag_no: number | null;
-  flag_no_old: number | null;
+  flag_no: string | null;
+  flag_no_old: string | null;
   role: string | null;
   source_file: string;
   sheet?: string;
@@ -22,9 +23,9 @@ export type PlanPerson = {
 };
 
 export type FlagLeader = {
-  flag_no: number;
+  flag_no: string;
   assembly_point: string | null;
-  flag_no_old: number | null;
+  flag_no_old: string | null;
   leader_name: string;
   cost_center: string | null;
   area: string | null;
@@ -59,10 +60,6 @@ const stripTitle = (s: string) => s.replace(/^(คุณ|นาย|นางส�
 
 const cell = (v: unknown) => (v === undefined || v === null ? "" : String(v).trim());
 const clean = (h: string) => h.replace(/\s+/g, "").toLowerCase();
-const toInt = (v: unknown): number | null => {
-  const n = parseInt(cell(v), 10);
-  return Number.isFinite(n) ? n : null;
-};
 
 export function normalizeGender(v: unknown): string | null {
   const s = cell(v).toLowerCase();
@@ -132,12 +129,12 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
       area: col(H, "แผนก/พื้นที่", "แผนก", "พื้นที่"),
       role: col(H, "บทบาท"),
     };
-    if (c.flag < 0) issues.push({ file, level: "error", message: `ชีต "${name}" ไม่พบคอลัมน์เบอร์ธงอพยพใหม่` });
+    if (c.flag < 0) issues.push({ file, level: "warn", message: `ชีต "${name}" ไม่พบคอลัมน์เบอร์ธงอพยพใหม่ · นำเข้าโดยไม่มีเบอร์ธง` });
 
     const S = `ชีต "${name}"`;
     let blankRun = 0;
-    let lastFlag: number | null = null;
-    const lastByOld = new Map<number, number>();
+    let lastFlag: string | null = null;
+    const lastByOld = new Map<string, string>();
     const filled = new Map<string, number[]>(); // "ธงใหม่|ธงเดิม" → แถวที่เติมให้
     const noCode: number[] = [];
     for (let r = h.row + 1; r < rows.length; r++) {
@@ -171,8 +168,8 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         first = a;
         last = b;
       }
-      const old = c.flagOld >= 0 ? toInt(row[c.flagOld]) : null;
-      let flag = c.flag >= 0 ? toInt(row[c.flag]) : null;
+      const old = c.flagOld >= 0 ? normFlag(row[c.flagOld]) : null;
+      let flag = c.flag >= 0 ? normFlag(row[c.flag]) : null;
       if (flag !== null) {
         lastFlag = flag;
         if (old !== null) lastByOld.set(old, flag);
@@ -218,7 +215,7 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         message: `${S}: ${rowsFilled.length} คนไม่ได้กรอกเบอร์ธงใหม่ (แถว ${rangeOf(rowsFilled)}) ใช้ธง ${f} ตามแถวก่อนหน้า${o !== "-" ? ` (ธงเดิม ${o})` : ""}` });
     }
   }
-  if (!found) issues.push({ file, level: "error", message: "ไม่พบตารางที่มีหัวคอลัมน์ รหัสพนักงาน" });
+  if (!found) issues.push({ file, level: "error", message: "ไม่พบตารางที่มีหัวคอลัมน์ รหัสพนักงาน · ไฟล์นี้นำเข้าไม่ได้" });
 
   // ชีต "รายชื่อผู้นำธง" ไม่นำมาใช้ · ผู้นำธงและข้อมูลธงมาจากแถวข้อมูลเท่านั้น
   return { file, people, leaders, issues };
@@ -259,24 +256,25 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
       const flags = new Set(list.map((p) => p.flag_no));
       duplicates.push({ emp_id: emp, files: list.map((p) => p.source_file) });
       if (flags.size > 1) {
+        // คนนี้ยังถูกนำเข้า (ใช้แถวแรก) จึงเป็นสีเหลือง
         issues.push({
           file: list.map((p) => p.source_file).join(", "),
-          level: "error",
-          message: `รหัส ${emp} อยู่หลายไฟล์และคนละธง (${[...flags].join(" / ")}) ใช้ค่าจากไฟล์แรก`,
+          level: "warn",
+          message: `รหัส ${emp} (${list[0].first_name}) อยู่หลายไฟล์และคนละธง: ${list.map((p) => `ธง ${p.flag_no ?? "—"} ใน ${p.source_file}`).join(" / ")} · นำเข้าธง ${list[0].flag_no ?? "—"} จากไฟล์แรก`,
         });
       }
     }
     people.push(list[0]);
   }
 
-  const leaderMap = new Map<number, FlagLeader>();
+  const leaderMap = new Map<string, FlagLeader>();
   // ข้อมูลธงจากแถวข้อมูล: ผู้นำธง = คนที่บทบาท "ผู้นำธง" · พื้นที่/จุดรวมพล/ธงเดิม/Cost Center = ค่าที่พบมากที่สุดในธง
   const mode = (xs: (string | number | null)[]) => {
     const c = new Map<string | number, number>();
     for (const x of xs) if (x != null && x !== "") c.set(x, (c.get(x) ?? 0) + 1);
     return [...c].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   };
-  const byFlag = new Map<number, PlanPerson[]>();
+  const byFlag = new Map<string, PlanPerson[]>();
   for (const p of people) if (p.flag_no != null) byFlag.set(p.flag_no, [...(byFlag.get(p.flag_no) ?? []), p]);
   for (const [flag, list] of byFlag) {
     const leadsP = list.filter((p) => /^\s*ผู้นำ/.test(p.role ?? ""));
@@ -290,14 +288,14 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
       leader_name: name ?? "",
       area: (mode(list.map((p) => p.area)) as string | null),
       assembly_point: (mode(list.map((p) => p.assembly_point)) as string | null),
-      flag_no_old: (mode(list.map((p) => p.flag_no_old)) as number | null),
+      flag_no_old: (mode(list.map((p) => p.flag_no_old)) as string | null),
       cost_center: (mode(list.map((p) => p.cost_center)) as string | null),
       note: null,
     });
     if (!name) issues.push({ file: list[0].source_file, level: "warn", message: `ธง ${flag} ไม่มีผู้นำธง (ไม่มีคนที่บทบาท "ผู้นำธงอพยพ")` });
   }
-  const leaders = [...leaderMap.values()].sort((a, b) => a.flag_no - b.flag_no);
-  people.sort((a, b) => (a.flag_no ?? 9999) - (b.flag_no ?? 9999) || a.emp_id.localeCompare(b.emp_id));
+  const leaders = [...leaderMap.values()].sort((a, b) => cmpFlag(a.flag_no, b.flag_no));
+  people.sort((a, b) => cmpFlag(a.flag_no, b.flag_no) || a.emp_id.localeCompare(b.emp_id));
   return { people, leaders, issues, duplicates };
 }
 

@@ -1,3 +1,4 @@
+import { normFlag } from "@/lib/flag";
 import { handle, ok } from "@/lib/http";
 import { rollCall } from "@/lib/incident";
 
@@ -9,7 +10,7 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   const id = Number((await params).id);
   const b = await req.json();
   return ok(await rollCall(id, {
-    flag: Number(b.flag), safe: (b.safe ?? []).map(String), inj: (b.inj ?? []).map(String),
+    flag: normFlag(b.flag) ?? "", safe: (b.safe ?? []).map(String), inj: (b.inj ?? []).map(String),
     count: Number(b.count), by: String(b.by ?? "").trim(),
   }));
 });

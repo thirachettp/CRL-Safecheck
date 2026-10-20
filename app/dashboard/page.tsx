@@ -1,10 +1,11 @@
 "use client";
+import { cmpFlag } from "@/lib/flag";
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PcHeader from "@/components/PcHeader";
 import { useAdmin } from "@/components/identity";
-import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI } from "@/components/lib";
+import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI, rangeText } from "@/components/lib";
 import { IClock } from "@/components/Icons";
 
 export default function DashboardPage() {
@@ -228,7 +229,7 @@ function IncidentDash({ id }: { id: number }) {
             </div>
             {[...m.byPoint.entries()].sort().map(([k, x]) => {
               const p = x.total.length ? Math.round((x.evac.length / x.total.length) * 100) : 0;
-              const flagsHere = [...new Set(x.total.map((y) => y.flag_no).filter((f) => f != null))].sort((a, b) => a - b);
+              const flagsHere = [...new Set(x.total.map((y) => y.flag_no).filter((f) => f != null))].map(String).sort(cmpFlag);
               return (
                 <div key={k} className="stack" style={{ gap: 4, padding: "8px 0", borderTop: "1px solid var(--line-3)" }}>
                   <div className="row" style={{ alignItems: "baseline", gap: 8, flexWrap: "nowrap" }}>
@@ -236,7 +237,7 @@ function IncidentDash({ id }: { id: number }) {
                     <span className="mono muted" style={{ width: 44, textAlign: "right" }}>{p}%</span></div>
                   <div className="bar"><div style={{ width: `${p}%`, background: "#1F3A5F" }} /></div>
                   <div className="muted xs">ชาย <b style={{ color: "var(--ink)" }}>{m.g(x.evac, "ชาย")}</b> · หญิง <b style={{ color: "var(--ink)" }}>{m.g(x.evac, "หญิง")}</b>
-                    {!real && flagsHere.length > 0 && ` · ธง ${flagsHere.length > 6 ? `${flagsHere[0]}–${flagsHere[flagsHere.length - 1]}` : flagsHere.join(", ")}`}</div>
+                    {!real && flagsHere.length > 0 && ` · ธง ${rangeText(flagsHere)}`}</div>
                 </div>
               );
             })}

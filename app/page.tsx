@@ -8,7 +8,7 @@ import { useUser, useAdmin } from "@/components/identity";
 import { api, usePoll, fmtTime, initials, KINDS, rangeText } from "@/components/lib";
 import { IFlag, ISearch, IChart, IPlus, IUser, IAlert, ILock } from "@/components/Icons";
 
-type Point = { code: string; name: string; backup: string | null; flags: number[] | null };
+type Point = { code: string; name: string; backup: string | null; flags: string[] | null };
 
 export default function HomePage() {
   return <Suspense><Home /></Suspense>;

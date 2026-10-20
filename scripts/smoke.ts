@@ -74,7 +74,7 @@ const P = (k: string) => s.people.find((p: any) => p.person_key === k);
 ok(P("emp:30000101")?.status === "abs", "คนที่ไม่มา = ปลอดภัยตามระบบ");
 ok(!P("emp:30000103"), "คนที่ลบออกไม่เข้า snapshot");
 ok(P(`emp:${added.emp_id}`)?.status === "unk", "คนที่เพิ่มเองเข้า snapshot");
-ok(P("emp:30000102")?.flag_no === 2, "คนที่ย้ายธงอยู่ธงใหม่");
+ok(P("emp:30000102")?.flag_no === "2", "คนที่ย้ายธงอยู่ธงใหม่");
 ok(await fails(j(`/api/incidents/${drill}/roll`, { method: "POST", json: { flag: 1, safe: ["emp:30000100", "emp:30000104", "emp:30000105"], count: 5, by: "ผู้นำธง" } })), "เช็คชื่อทั้งธงจำนวนไม่ตรงถูกปฏิเสธ");
 await j(`/api/incidents/${drill}/roll`, { method: "POST", json: { flag: 1, safe: ["emp:30000100", "emp:30000104"], inj: ["emp:30000105"], count: 3, by: "ผู้นำธง" } });
 s = await j(`/api/incidents/${drill}`);
@@ -210,7 +210,7 @@ ok(rvA.viewer === "anon" && rvA.people.every((p: any) => p.tel == null), "หน
 await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 40, leader_name: "คุณทดสอบ ธงใหม่", area: "MZ9", assembly_point: "2", flag_no_old: 99 } });
 ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 40 } })), "เพิ่มธงซ้ำไม่ได้");
 let fo = await j("/api/plan");
-ok(fo.flags.some((f: any) => f.flag_no === 40 && f.people === 0 && f.area === "MZ9"), "ธงใหม่ที่ยังไม่มีคนแสดงในรายการ");
+ok(fo.flags.some((f: any) => f.flag_no === "40" && f.people === 0 && f.area === "MZ9"), "ธงใหม่ที่ยังไม่มีคนแสดงในรายการ");
 await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 40, emp_id: "knn250593", prefix: "นางสาว", first_name: "ยาวียะ", last_name: "หามะ", gender: "หญิง", role: "ผู้นำธงอพยพ" } });
 ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 40, emp_id: "KNN250593", first_name: "ซ้ำ" } })), "เพิ่มรหัสซ้ำไม่ได้");
 let fd = await j("/api/admin/flags?flag=40");
@@ -225,7 +225,7 @@ ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "flag-del
 await j("/api/admin/flags", { method: "POST", json: { action: "person-remove", emp_id: "KNN250593", reason: "ย้ายสาขา" } });
 await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: 40 } });
 fo = await j("/api/plan");
-ok(!fo.flags.some((f: any) => f.flag_no === 40), "ลบธงว่างได้");
+ok(!fo.flags.some((f: any) => f.flag_no === "40"), "ลบธงว่างได้");
 ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 41 }, tok: "x" })), "แก้ชุดธงต้องเป็น Admin");
 
 // ---------- ตั้งชื่อเวอร์ชัน ----------
@@ -249,10 +249,10 @@ ok(!fo.version.dirty, "บันทึกทับแล้วไม่มีแ
 await j("/api/admin/versions", { method: "POST", json: { action: "activate", id: vOld } });
 fo = await j("/api/plan");
 ok(fo.version.active === vOld && fo.versions.length === nVers, "เลือกใช้เวอร์ชันเก่าโดยไม่สร้างเวอร์ชันใหม่");
-ok(!fo.flags.some((f: any) => f.flag_no === 50), "เลือกใช้เวอร์ชันเก่าแล้วได้ชุดธงของเวอร์ชันนั้น");
+ok(!fo.flags.some((f: any) => f.flag_no === "50"), "เลือกใช้เวอร์ชันเก่าแล้วได้ชุดธงของเวอร์ชันนั้น");
 await j("/api/admin/versions", { method: "POST", json: { action: "activate", id: sv.version } });
 fo = await j("/api/plan");
-ok(fo.flags.some((f: any) => f.flag_no === 50), "สลับกลับมาเวอร์ชันที่บันทึกทับไว้ ได้ธง 50 คืน");
+ok(fo.flags.some((f: any) => f.flag_no === "50"), "สลับกลับมาเวอร์ชันที่บันทึกทับไว้ ได้ธง 50 คืน");
 const nBefore = fo.versions.length;
 await j("/api/admin/versions", { method: "POST", json: { action: "delete", id: vOld } });
 fo = await j("/api/plan");
@@ -284,10 +284,19 @@ fo = await j("/api/plan");
 const f3 = await j("/api/admin/flags?flag=3");
 ok(!fo.points.some((p: any) => p.code === "9") && f3.people.every((p: any) => p.assembly_point === "2"), "ลบจุดแล้วธงย้ายไปจุดที่เลือก");
 
+// ---------- เบอร์ธงเป็นข้อความ ----------
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: "17A", area: "ข้อความ" } });
+await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: "17A", emp_id: "17000001", first_name: "ธงข้อความ" } });
+fo = await j("/api/plan");
+const order = fo.flags.map((f: any) => f.flag_no);
+ok(order.includes("17A") && order.indexOf("17A") > order.indexOf("3"), "เบอร์ธงข้อความ 17A ได้ และเรียงต่อจากเลขล้วน");
+ok((await j("/api/admin/flags?flag=17A")).people.some((p: any) => p.emp_id === "17000001"), "เพิ่มคนเข้าธง 17A ได้");
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: "17A", remove_people: true } });
+
 // ---------- ธงที่ใช้จุดรวมพล ----------
 await j("/api/admin/points", { method: "POST", json: { action: "set-flags", code: "2", flags: [1, 3] } });
 fo = await j("/api/plan");
-const ap = (n: number) => fo.flags.find((f: any) => f.flag_no === n)?.assembly_point;
+const ap = (n: number) => fo.flags.find((f: any) => f.flag_no === String(n))?.assembly_point;
 ok(ap(1) === "2" && ap(3) === "2", "กำหนดธงที่ใช้จุดรวมพล: ธง 1 ย้ายมาจุด 2");
 await j("/api/admin/points", { method: "POST", json: { action: "set-flags", code: "2", flags: [3] } });
 fo = await j("/api/plan");
@@ -314,7 +323,7 @@ await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_n
 await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 61, emp_id: "61000001", first_name: "ออก" } });
 const dr = await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: 61, remove_people: true } });
 fo = await j("/api/plan");
-ok(dr.removed === 1 && !fo.flags.some((f: any) => f.flag_no === 61), "ลบธงพร้อมเอาคนออกจากชุดธง");
+ok(dr.removed === 1 && !fo.flags.some((f: any) => f.flag_no === "61"), "ลบธงพร้อมเอาคนออกจากชุดธง");
 
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);

@@ -220,8 +220,8 @@ const FIELD_LABEL: Record<string, string> = {
 };
 
 function DriverPanel({ onDone }: { onDone: () => void }) {
-  const d = usePoll<{ configured: boolean; vehicles: any[]; flag: number | null; fields: any }>("/api/sources/driver", 30000);
-  const plan = usePoll<{ leaders: { flag_no: number; leader_name: string }[]; flags: { flag_no: number | null; area: string | null }[] }>("/api/plan", 0);
+  const d = usePoll<{ configured: boolean; vehicles: any[]; flag: string | number | null; fields: any }>("/api/sources/driver", 30000);
+  const plan = usePoll<{ leaders: { flag_no: string; leader_name: string }[]; flags: { flag_no: string | null; area: string | null }[] }>("/api/plan", 0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ k: string; t: string; held?: boolean } | null>(null);
   async function sync(force = false) {
@@ -243,7 +243,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
         <button className="btn btn-pri btn-sm" onClick={() => sync(false)} disabled={busy || !d.data?.configured}>{busy ? "กำลังดึง…" : "ดึงข้อมูลตอนนี้"}</button>
         {msg?.held && <button className="btn btn-sm" onClick={() => sync(true)} disabled={busy}>รับข้อมูลรอบนี้ (รถออกจริง)</button>}
         <label className="lb" style={{ marginLeft: "auto", minWidth: 200 }}>คนขับไปรวมที่ธง
-          <select className="in" value={d.data?.flag ?? ""} onChange={(e) => setFlag(e.target.value)}>
+          <select className="in" value={d.data?.flag != null ? String(d.data.flag) : ""} onChange={(e) => setFlag(e.target.value)}>
             <option value="">ไม่ระบุธง</option>
             {flags.map((x) => <option key={x.flag_no!} value={x.flag_no!}>ธง {x.flag_no} {x.area ?? ""}</option>)}
           </select>
