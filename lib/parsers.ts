@@ -296,6 +296,8 @@ export function mergePlan(results: PlanFileResult[], flagFrom: FlagSource = "she
     if (!prev) leaderMap.set(l.flag_no, l);
   }
   // ตรวจกับชีตผู้นำธง: ธงเดิม → ธงใหม่ ต้องตรงกัน และชื่อผู้นำธงต้องตรงกับคนที่บทบาท "ผู้นำธง"
+  const byNew = new Map<number, string>();
+  for (const l of leaderMap.values()) byNew.set(l.flag_no, l.area ?? l.leader_name);
   const byOld = new Map<number, FlagLeader>();
   for (const l of leaderMap.values()) if (l.flag_no_old != null) byOld.set(l.flag_no_old, l);
   const groups = new Map<string, { file: string; sheet: string; old: number; flag: number; n: number }>();
@@ -311,7 +313,7 @@ export function mergePlan(results: PlanFileResult[], flagFrom: FlagSource = "she
     if (l && l.flag_no !== g.flag) {
       flagMismatch += g.n;
       issues.push({ file: g.file, level: "error",
-        message: `ชีต "${g.sheet}": ธงเดิม ${g.old} ในชีตผู้นำธงเป็นธงใหม่ ${l.flag_no} (${l.area ?? l.leader_name}) แต่ชีตรายชื่อใส่ธง ${g.flag} (${g.n} คน) · ระบบใช้ธง ${g.flag} ตามชีตรายชื่อ` });
+        message: `เบอร์ธงไม่ตรงกัน ${g.n} คน (ธงเดิม ${g.old} ${l.area ?? ""}): ชีต "${g.sheet.trim()}" ใส่ธงใหม่ ${g.flag}${byNew.get(g.flag) ? ` ซึ่งในชีตผู้นำธงคือ ${byNew.get(g.flag)}` : ""} · แต่ชีตผู้นำธงบอกว่าธงเดิม ${g.old} = ธงใหม่ ${l.flag_no} · ตอนนี้ใช้ธง ${g.flag} ถ้าชีตผู้นำธงถูก ให้กด “แปลงจากธงเดิม ตามชีตผู้นำธง”` });
     }
   }
   for (const p of people) {

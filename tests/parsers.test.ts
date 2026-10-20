@@ -115,7 +115,7 @@ test("ไฟล์ Template จริง: รหัส Outsource, ช่อง�
 
   const m = mergePlan([r]);
   assert.equal(m.flagMismatch, 5);
-  assert.ok(m.issues.some((i) => i.level === "error" && /ธงเดิม 29 ในชีตผู้นำธงเป็นธงใหม่ 14/.test(i.message)));
+  assert.ok(m.issues.some((i) => i.level === "error" && /ธงเดิม 29 = ธงใหม่ 14/.test(i.message)));
 
   const m2 = mergePlan([r], "leaders");
   assert.equal(m2.flagMismatch, 0);
