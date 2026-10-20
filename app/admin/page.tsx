@@ -224,45 +224,75 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
 
 // ---------- จุดรวมพล ----------
 function PointsCard({ points, onSaved }: { points: Overview["points"]; onSaved: () => void }) {
-  const [draft, setDraft] = useState<Record<string, { name: string; backup: string }>>({});
+  const [draft, setDraft] = useState<Record<string, { name: string; backup: string; sort: number }>>({});
   const [add, setAdd] = useState({ code: "", name: "" });
-  const [err, setErr] = useState<string | null>(null);
-  async function save(code: string, name: string, backup: string | null, sort = 0) {
-    setErr(null);
-    try { await api("/api/admin/points", { method: "POST", json: { code, name, backup, sort } }); onSaved(); }
-    catch (e: any) { setErr(e.message); }
+  const [del, setDel] = useState<string | null>(null);
+  const [moveTo, setMoveTo] = useState("");
+  const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
+  async function call(json: any, okText: string) {
+    setMsg(null);
+    try { await api("/api/admin/points", { method: "POST", json }); setMsg({ k: "ok", t: okText }); onSaved(); return true; }
+    catch (e: any) { setMsg({ k: "err", t: e.message }); return false; }
   }
-  const cols = { gridTemplateColumns: "56px minmax(0,1fr) 160px 170px 90px" };
+  const cols = { gridTemplateColumns: "64px minmax(0,1fr) 140px 170px 70px 150px" };
   return (
     <div className="card">
-      <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>จุดรวมพล</span></div>
-      <div className="tr th" style={cols}><div>จุด</div><div>ชื่อ / ตำแหน่ง</div><div>ธงที่ใช้จุดนี้</div><div>จุดสำรอง</div><div /></div>
-      {points.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มีจุดรวมพล ระบบสร้างให้จากคอลัมน์ “จุดรวมพล” เมื่อนำเข้าไฟล์ธง</div>}
+      <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>จุดรวมพล</span><span className="muted xs" style={{ fontWeight: 500 }}>{points.length} จุด</span></div>
+      <div className="tr th" style={cols}><div>รหัส</div><div>ชื่อ / ตำแหน่ง</div><div>ธงที่ใช้จุดนี้</div><div>จุดสำรอง</div><div>ลำดับ</div><div /></div>
+      {points.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มีจุดรวมพล เพิ่มด้านล่าง หรือระบบสร้างให้จากคอลัมน์ “จุดรวมพล” เมื่อนำเข้าไฟล์ธง</div>}
       {points.map((p) => {
-        const dr = draft[p.code] ?? { name: p.name, backup: p.backup ?? "" };
-        const dirty = dr.name !== p.name || dr.backup !== (p.backup ?? "");
+        const dr = draft[p.code] ?? { name: p.name, backup: p.backup ?? "", sort: p.sort };
+        const dirty = dr.name !== p.name || dr.backup !== (p.backup ?? "") || dr.sort !== p.sort;
+        const set = (x: Partial<typeof dr>) => setDraft({ ...draft, [p.code]: { ...dr, ...x } });
+        const others = points.filter((x) => x.code !== p.code);
         return (
-          <div key={p.code} className="tr" style={cols}>
-            <b className="mono">{p.code}</b>
-            <input className="in" style={{ marginTop: 0 }} value={dr.name} onChange={(e) => setDraft({ ...draft, [p.code]: { ...dr, name: e.target.value } })} aria-label={`ชื่อจุด ${p.code}`} />
-            <div className="mono small">{p.flags?.length ? rangeText(p.flags) : "—"}</div>
-            <select className="in" style={{ marginTop: 0 }} value={dr.backup} onChange={(e) => setDraft({ ...draft, [p.code]: { ...dr, backup: e.target.value } })} aria-label={`จุดสำรองของ ${p.code}`}>
-              <option value="">ไม่มี</option>
-              {points.filter((x) => x.code !== p.code).map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
-            </select>
-            <button className="btn btn-sm" disabled={!dirty} onClick={() => save(p.code, dr.name, dr.backup || null, p.sort)}>บันทึก</button>
+          <div key={p.code}>
+            <div className="tr" style={{ ...cols, background: del === p.code ? "#FFF1F2" : undefined }}>
+              <b className="mono">{p.code}</b>
+              <input className="in" style={{ marginTop: 0 }} value={dr.name} onChange={(e) => set({ name: e.target.value })} aria-label={`ชื่อจุด ${p.code}`} />
+              <div className="mono small">{p.flags?.length ? rangeText(p.flags) : "—"}</div>
+              <select className="in" style={{ marginTop: 0 }} value={dr.backup} onChange={(e) => set({ backup: e.target.value })} aria-label={`จุดสำรองของ ${p.code}`}>
+                <option value="">ไม่มี</option>
+                {others.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+              </select>
+              <input className="in mono" style={{ marginTop: 0 }} type="number" value={dr.sort} onChange={(e) => set({ sort: Number(e.target.value) })} aria-label={`ลำดับ ${p.code}`} />
+              <div className="row" style={{ gap: 6, flexWrap: "nowrap", justifyContent: "flex-end" }}>
+                <button className="btn btn-sm" disabled={!dirty || !dr.name.trim()}
+                  onClick={async () => { if (await call({ code: p.code, name: dr.name.trim(), backup: dr.backup || null, sort: dr.sort }, `บันทึกจุด ${p.code} แล้ว`)) { const d = { ...draft }; delete d[p.code]; setDraft(d); } }}>บันทึก</button>
+                <button className="lk del" onClick={() => { setDel(del === p.code ? null : p.code); setMoveTo(others[0]?.code ?? ""); }}>ลบ</button>
+              </div>
+            </div>
+            {del === p.code && (
+              <div className="tr" style={{ gridTemplateColumns: "1fr", background: "#FFF1F2" }}>
+                <div className="row" style={{ gap: 10 }}>
+                  <b>ลบ {p.name}?</b>
+                  {p.flags?.length ? (
+                    <>
+                      <span className="small">ธง {rangeText(p.flags)} ใช้จุดนี้อยู่ · ย้ายไป</span>
+                      <select className="in" style={{ marginTop: 0, width: 220 }} value={moveTo} onChange={(e) => setMoveTo(e.target.value)} aria-label="ย้ายไปจุด">
+                        {others.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+                      </select>
+                    </>
+                  ) : <span className="muted small">ไม่มีธงใช้จุดนี้</span>}
+                  <span className="grow" />
+                  <button className="btn btn-sm" style={{ color: "#9F1239", borderColor: "#FCA5A5" }} disabled={!!p.flags?.length && !moveTo}
+                    onClick={async () => { if (await call({ action: "delete", code: p.code, move_to: p.flags?.length ? moveTo : null }, `ลบ ${p.name} แล้ว`)) setDel(null); }}>ยืนยันลบ</button>
+                  <button className="lk" onClick={() => setDel(null)}>ยกเลิก</button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
-      <div className="tr" style={{ ...cols, background: "#F0FDFA" }}><b>–</b><div>กองอำนวยการกลาง</div><div className="muted small">ใครก็ได้ที่ไปประจำวันนั้น</div><div className="muted small">นับเป็นอพยพแล้ว</div><div /></div>
-      <form className="tr" style={cols} onSubmit={(e) => { e.preventDefault(); save(add.code.trim(), add.name.trim(), null); setAdd({ code: "", name: "" }); }}>
+      <div className="tr" style={{ ...cols, background: "#F0FDFA" }}><b>–</b><div>กองอำนวยการกลาง</div><div className="muted small">ใครก็ได้ที่ไปประจำวันนั้น</div><div className="muted small">นับเป็นอพยพแล้ว</div><div /><div /></div>
+      <form className="tr" style={cols} onSubmit={async (e) => { e.preventDefault(); if (await call({ code: add.code.trim(), name: add.name.trim(), backup: null, sort: points.length + 1 }, `เพิ่มจุด ${add.code.trim()} แล้ว`)) setAdd({ code: "", name: "" }); }}>
         <input className="in mono" style={{ marginTop: 0 }} placeholder="รหัส" value={add.code} onChange={(e) => setAdd({ ...add, code: e.target.value })} aria-label="รหัสจุดใหม่" />
         <input className="in" style={{ marginTop: 0 }} placeholder="ชื่อ / ตำแหน่งจุดรวมพลใหม่" value={add.name} onChange={(e) => setAdd({ ...add, name: e.target.value })} aria-label="ชื่อจุดใหม่" />
-        <div /><div />
-        <button className="btn btn-sm" type="submit" disabled={!add.code.trim() || !add.name.trim()}>+ เพิ่มจุด</button>
+        <div /><div /><div />
+        <button className="btn btn-sm btn-pri" type="submit" disabled={!add.code.trim() || !add.name.trim() || points.some((x) => x.code === add.code.trim())}>+ เพิ่มจุด</button>
       </form>
-      {err && <div style={{ padding: "0 18px 12px" }}><p className="notice err">{err}</p></div>}
-      <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>ตอนยืนยัน Incident ผู้ยืนยันปิดจุดที่ใช้ไม่ได้ → ธงของจุดนั้นย้ายไปจุดสำรองอัตโนมัติ</div>
+      {msg && <div style={{ padding: "0 18px 12px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
+      <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>ตอนยืนยัน Incident ผู้ยืนยันปิดจุดที่ใช้ไม่ได้ → ธงของจุดนั้นย้ายไปจุดสำรองอัตโนมัติ · ลบจุดที่มีธงใช้อยู่ ต้องเลือกจุดที่จะย้ายธงไป</div>
     </div>
   );
 }
@@ -383,33 +413,57 @@ function VersionsCard({ versions, state, onDone }: { versions: Overview["version
 
 function CodesCard() {
   const c = usePoll<{ codes: any[] }>("/api/admin/codes", 0);
-  const [f, setF] = useState({ label: "", meaning: "", tone: "warn" });
-  const [open, setOpen] = useState(false);
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    await api("/api/admin/codes", { method: "POST", json: f });
-    setF({ label: "", meaning: "", tone: "warn" }); setOpen(false); c.reload();
+  const blank = { label: "", meaning: "", tone: "warn", closes: false };
+  const [f, setF] = useState<any>(blank);
+  const [edit, setEdit] = useState<number | "new" | null>(null);
+  const [del, setDel] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function call(json: any) {
+    setErr(null);
+    try { await api("/api/admin/codes", { method: "POST", json }); setEdit(null); setDel(null); c.reload(); }
+    catch (e: any) { setErr(e.message); }
   }
+  const TONES: [string, string][] = [["warn", "เหลือง"], ["err", "แดง"], ["grey", "เทา"]];
+  const form = (id?: number) => (
+    <form className="tr" style={{ gridTemplateColumns: "1fr", background: "#F8FAFC" }} onSubmit={(e) => { e.preventDefault(); call({ ...f, id }); }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.6fr)", gap: 8 }}>
+        <input className="in" style={{ marginTop: 0 }} placeholder="ชื่อ Code เช่น Code 500" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} required autoFocus aria-label="ชื่อ Code" />
+        <input className="in" style={{ marginTop: 0 }} placeholder="ความหมาย" value={f.meaning ?? ""} onChange={(e) => setF({ ...f, meaning: e.target.value })} aria-label="ความหมาย" />
+      </div>
+      <div className="row" style={{ gap: 8 }}>
+        {TONES.map(([t, l]) => <button type="button" key={t} className={`pill${f.tone === t ? " on" : ""}`} onClick={() => setF({ ...f, tone: t })}>{l}</button>)}
+        <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={!!f.closes} onChange={(e) => setF({ ...f, closes: e.target.checked })} />ใช้ปิดเหตุการณ์</label>
+        <span className="grow" />
+        <button className="btn btn-sm btn-pri" type="submit" disabled={!f.label.trim()}>{id ? "บันทึก" : "เพิ่ม"}</button>
+        <button className="lk" type="button" onClick={() => setEdit(null)}>ยกเลิก</button>
+      </div>
+    </form>
+  );
   return (
     <div className="card">
-      <div className="card-h"><span className="grow">รายการ Code ประกาศ</span><button className="btn btn-sm" onClick={() => setOpen(!open)}>+ เพิ่ม</button></div>
-      {(c.data?.codes ?? []).map((x) => (
-        <div key={x.id} className="tr" style={{ gridTemplateColumns: "auto minmax(0,1fr) auto" }}>
+      <div className="card-h"><span className="grow">รายการ Code ประกาศ</span>
+        <button className="btn btn-sm" onClick={() => { setF(blank); setEdit(edit === "new" ? null : "new"); }}>{edit === "new" ? "ยกเลิก" : "+ เพิ่ม"}</button></div>
+      {edit === "new" && form()}
+      {(c.data?.codes ?? []).length === 0 && edit !== "new" && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มี Code กด + เพิ่ม</div>}
+      {(c.data?.codes ?? []).map((x) => edit === x.id ? <div key={x.id}>{form(x.id)}</div> : (
+        <div key={x.id} className="tr" style={{ gridTemplateColumns: "auto minmax(0,1fr) auto", background: del === x.id ? "#FFF1F2" : undefined }}>
           <span className={`chip ${x.tone}`}>{x.label}</span>
-          <div className="muted small">{x.meaning ?? "[ความหมาย]"}{x.closes ? " · ใช้ปิดเหตุการณ์" : ""}</div>
-          <button className="lk del" onClick={async () => { await api("/api/admin/codes", { method: "POST", json: { action: "delete", id: x.id } }); c.reload(); }}>ลบ</button>
+          <div className="muted small">{x.meaning || "—"}{x.closes && !/ปิดเหตุการณ์/.test(x.meaning ?? "") ? " · ใช้ปิดเหตุการณ์" : ""}</div>
+          {del === x.id ? (
+            <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+              <button className="btn btn-sm" style={{ color: "#9F1239", borderColor: "#FCA5A5" }} onClick={() => call({ action: "delete", id: x.id })}>ยืนยันลบ</button>
+              <button className="lk" onClick={() => setDel(null)}>ยกเลิก</button>
+            </div>
+          ) : (
+            <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
+              <button className="lk" onClick={() => { setF({ label: x.label, meaning: x.meaning ?? "", tone: x.tone, closes: !!x.closes }); setEdit(x.id); setDel(null); }}>แก้ไข</button>
+              <button className="lk del" onClick={() => { setDel(x.id); setEdit(null); }}>ลบ</button>
+            </div>
+          )}
         </div>
       ))}
-      {open && (
-        <form className="tr" style={{ gridTemplateColumns: "1fr" }} onSubmit={add}>
-          <input className="in" placeholder="ชื่อ Code เช่น Code 500" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} required />
-          <input className="in" placeholder="ความหมาย" value={f.meaning} onChange={(e) => setF({ ...f, meaning: e.target.value })} />
-          <div className="row">{[["warn", "เหลือง"], ["err", "แดง"], ["grey", "เทา"]].map(([t, l]) => (
-            <button type="button" key={t} className={`pill${f.tone === t ? " on" : ""}`} onClick={() => setF({ ...f, tone: t })}>{l}</button>))}
-            <button className="btn btn-sm btn-pri" type="submit">บันทึก</button></div>
-        </form>
-      )}
-      <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>Safety / Admin กดบันทึกประกาศได้จาก Dashboard</div>
+      {err && <div style={{ padding: "0 18px 12px" }}><p className="notice err">{err}</p></div>}
+      <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>Safety / Admin กดบันทึกประกาศได้จาก Dashboard · ลบ Code แล้วประกาศที่บันทึกไว้ในเหตุการณ์เก่ายังอยู่</div>
     </div>
   );
 }

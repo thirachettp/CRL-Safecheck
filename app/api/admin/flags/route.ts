@@ -30,8 +30,7 @@ async function act(req: Request, a: { name: string; code?: string }) {
       await saveFlag({ ...b, flag_no: Number(b.flag_no), flag_no_old: num(b.flag_no_old) }, b.action === "flag-add");
       return ok({ ok: true });
     case "flag-delete":
-      await deleteFlag(Number(b.flag_no));
-      return ok({ ok: true });
+      return ok(await deleteFlag(Number(b.flag_no), { moveTo: num(b.move_to), removePeople: !!b.remove_people }, by));
     case "person-add":
       return ok({ emp_id: await addPlanPerson({ ...b, flag_no: Number(b.flag_no) }, by) });
     case "person-edit":

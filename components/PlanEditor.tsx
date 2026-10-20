@@ -31,6 +31,20 @@ export default function PlanEditor({ flags, leaders, points, total, onChanged }:
   const [term, setTerm] = useState("");
   const [adding, setAdding] = useState(false);
   const [all, setAll] = useState(false);
+  const [del, setDel] = useState<number | null>(null);
+  const [delMode, setDelMode] = useState<"move" | "remove">("move");
+  const [moveTo, setMoveTo] = useState<number | "">("");
+  const [delErr, setDelErr] = useState<string | null>(null);
+  const [delMsg, setDelMsg] = useState<string | null>(null);
+  async function doDelete(f: FlagRow) {
+    setDelErr(null);
+    try {
+      const r: any = await call({ action: "flag-delete", flag_no: f.flag_no,
+        ...(f.people > 0 ? (delMode === "move" ? { move_to: moveTo } : { remove_people: true }) : {}) });
+      setDelMsg(`ลบธง ${f.flag_no} แล้ว${r.moved ? ` · ย้าย ${r.moved} คนไปธง ${moveTo}` : ""}${r.removed ? ` · เอา ${r.removed} คนออกจากชุดธง (คืนค่าได้ถ้าสร้างธง ${f.flag_no} ใหม่)` : ""}`);
+      setDel(null); if (open === f.flag_no) setOpen(null); onChanged();
+    } catch (e: any) { setDelErr(e.message); }
+  }
   const leader = useMemo(() => new Map(leaders.map((l) => [l.flag_no, l])), [leaders]);
   const pName = (c: string | null) => (c ? points.find((p) => p.code === c)?.name ?? c : "—");
   const list = flags.filter((f) => f.flag_no != null);
@@ -61,7 +75,7 @@ export default function PlanEditor({ flags, leaders, points, total, onChanged }:
       )}
       <div className="scroll-x">
         <table className="tbl" style={{ minWidth: 760 }}>
-          <thead><tr><th style={{ width: 56 }}>ธง</th><th>พื้นที่</th><th>จุดรวมพล</th><th>ผู้นำธง</th><th style={{ width: 70 }}>สมาชิก</th><th style={{ width: 80 }}>ชาย/หญิง</th><th>ตรวจทานล่าสุด</th><th style={{ width: 90 }} /></tr></thead>
+          <thead><tr><th style={{ width: 56 }}>ธง</th><th>พื้นที่</th><th>จุดรวมพล</th><th>ผู้นำธง</th><th style={{ width: 70 }}>สมาชิก</th><th style={{ width: 80 }}>ชาย/หญิง</th><th>ตรวจทานล่าสุด</th><th style={{ width: 110 }} /></tr></thead>
           <tbody>
             {limit.length === 0 && <tr><td colSpan={8} className="muted small">{t ? "ไม่พบธงที่ค้นหา" : "ยังไม่มีธง นำเข้าไฟล์ธง หรือกด + เพิ่มธง"}</td></tr>}
             {limit.map((f) => {
@@ -80,8 +94,32 @@ export default function PlanEditor({ flags, leaders, points, total, onChanged }:
                     <td>{!f.reviewed_at ? <span className="chip grey">ยังไม่ตรวจ</span>
                       : f.edits_after ? <span className="chip warn">แก้หลังตรวจ {f.edits_after}</span>
                       : <span className="chip ok">ตรวจแล้ว · {f.reviewed_by}</span>}</td>
-                    <td style={{ textAlign: "right" }}><span className="lk">{isOpen ? "ปิด" : "แก้ไข"}</span></td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <span className="lk">{isOpen ? "ปิด" : "แก้ไข"}</span>{" "}
+                      <button className="lk del" onClick={(e) => { e.stopPropagation(); setDel(del === n ? null : n); setDelErr(null); setDelMode("move"); setMoveTo(list.find((x) => x.flag_no !== n)?.flag_no ?? ""); }}>ลบ</button>
+                    </td>
                   </tr>
+                  {del === n && (
+                    <tr className="editing"><td colSpan={8} style={{ background: "#FFF1F2" }}>
+                      <div className="row" style={{ gap: 10 }}>
+                        <b>ลบธง {n}{f.area ? ` (${f.area})` : ""}?</b>
+                        {f.people > 0 ? (
+                          <>
+                            <span className="small">ธงนี้มี {f.people} คน</span>
+                            <label className="row small" style={{ gap: 4 }}><input type="radio" checked={delMode === "move"} onChange={() => setDelMode("move")} />ย้ายคนไปธง</label>
+                            <select className="in" style={{ marginTop: 0, width: 110 }} value={moveTo} disabled={delMode !== "move"} onChange={(e) => setMoveTo(Number(e.target.value))} aria-label="ย้ายไปธง">
+                              {list.filter((x) => x.flag_no !== n).map((x) => <option key={x.flag_no!} value={x.flag_no!}>ธง {x.flag_no}</option>)}
+                            </select>
+                            <label className="row small" style={{ gap: 4 }}><input type="radio" checked={delMode === "remove"} onChange={() => setDelMode("remove")} />เอาคนออกจากชุดธงด้วย</label>
+                          </>
+                        ) : <span className="muted small">ธงนี้ไม่มีคน</span>}
+                        <span className="grow" />
+                        <button className="btn btn-sm" style={{ color: "#9F1239", borderColor: "#FCA5A5" }} disabled={f.people > 0 && delMode === "move" && moveTo === ""} onClick={() => doDelete(f)}>ยืนยันลบธง {n}</button>
+                        <button className="lk" onClick={() => setDel(null)}>ยกเลิก</button>
+                      </div>
+                      {delErr && <p className="notice err" style={{ marginTop: 8 }}>{delErr}</p>}
+                    </td></tr>
+                  )}
                   {isOpen && (
                     <tr><td colSpan={8} style={{ padding: 0, background: "#F8FAFC" }}><div style={{ width: 0, minWidth: "100%" }}>
                       <FlagDetail flag={n} row={f} leader={l} points={points} flags={list.map((x) => x.flag_no!)} onChanged={onChanged} onDeleted={() => { setOpen(null); onChanged(); }} />
@@ -93,6 +131,7 @@ export default function PlanEditor({ flags, leaders, points, total, onChanged }:
           </tbody>
         </table>
       </div>
+      {delMsg && <div style={{ padding: "10px 18px 0" }}><p className="notice ok">{delMsg}</p></div>}
       <div className="muted small" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>
         แสดง {limit.length} จาก {shown.length} ธง{!t && shown.length > 15 && <> · <button className="lk" style={{ minHeight: 0, padding: 0 }} onClick={() => setAll(!all)}>{all ? "ย่อ" : "ดูทั้งหมด"}</button></>}
         {" "}· กดแถวเพื่อแก้ข้อมูลธงและรายชื่อ · แก้เสร็จแล้วบันทึกทับเวอร์ชันที่ใช้อยู่ หรือบันทึกเป็นเวอร์ชันใหม่
@@ -206,8 +245,7 @@ function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: 
       <FlagForm key={JSON.stringify(leader ?? {}) + row.assembly_point}
         init={{ flag_no: flag, leader_name: leader?.leader_name ?? "", area: leader?.area ?? row.area ?? "", assembly_point: leader?.assembly_point ?? row.assembly_point ?? "",
           flag_no_old: leader?.flag_no_old ?? row.flag_no_old ?? null, cost_center: leader?.cost_center ?? "" }}
-        points={points} onDone={() => onChanged()} canDelete={active.length === 0}
-        onDelete={async () => { if (await run({ action: "flag-delete", flag_no: flag })) onDeleted(); }} />
+        points={points} onDone={() => onChanged()} />
       <div className="row" style={{ padding: "10px 18px 6px" }}>
         <b className="grow">รายชื่อในธง {flag} ({active.length} คน)</b>
         <button className="btn btn-sm" onClick={() => { setAdding(!adding); setDraft(blank); setEdit(null); }}>{adding ? "ยกเลิก" : "+ เพิ่มคน"}</button>

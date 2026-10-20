@@ -284,10 +284,25 @@ export async function saveFlag(f: FlagInput, isNew: boolean) {
   }
 }
 
-/** ลบธงได้เมื่อไม่มีคนเหลือในธง */
-export async function deleteFlag(flag: number) {
-  const n = await one<{ n: number }>(`SELECT count(*)::int AS n FROM evac_plan WHERE flag_no = $1 AND NOT removed`, [flag]);
-  if (n && n.n > 0) throw new UserError(`ธง ${flag} ยังมี ${n.n} คน ย้ายหรือลบคนออกก่อน`);
+/** ลบธง · ถ้ายังมีคน: ย้ายไปธงอื่น (moveTo) หรือเอาคนออกจากชุดธงด้วย (removePeople) */
+export async function deleteFlag(flag: number, o: { moveTo?: number | null; removePeople?: boolean } = {}, by = "") {
+  const n = (await one<{ n: number }>(`SELECT count(*)::int AS n FROM evac_plan WHERE flag_no = $1 AND NOT removed`, [flag]))?.n ?? 0;
+  if (n > 0) {
+    if (o.moveTo != null) {
+      if (o.moveTo === flag) throw new UserError("เลือกธงปลายทางอื่น");
+      const ap = (await one<{ ap: string | null }>(
+        `SELECT COALESCE((SELECT max(assembly_point) FROM evac_plan WHERE flag_no = $1 AND NOT removed), (SELECT assembly_point FROM flag_leaders WHERE flag_no = $1)) AS ap`,
+        [o.moveTo]))?.ap ?? null;
+      await q(`UPDATE evac_plan SET flag_no = $2, assembly_point = COALESCE($3, assembly_point), edited_by = $4, edited_at = now(), updated_at = now()
+               WHERE flag_no = $1`, [flag, o.moveTo, ap, by || null]);
+    } else if (o.removePeople) {
+      await q(`UPDATE evac_plan SET removed = true, removed_reason = $2, removed_by = $3, edited_at = now(), updated_at = now()
+               WHERE flag_no = $1 AND NOT removed`, [flag, `ลบธง ${flag}`, by || null]);
+    } else {
+      throw new UserError(`ธง ${flag} ยังมี ${n} คน เลือกย้ายไปธงอื่น หรือเอาคนออกด้วย`);
+    }
+  }
   await q(`DELETE FROM flag_leaders WHERE flag_no = $1`, [flag]);
   await q(`DELETE FROM flag_reviews WHERE flag_no = $1`, [flag]);
+  return { moved: o.moveTo != null ? n : 0, removed: o.removePeople && o.moveTo == null ? n : 0 };
 }

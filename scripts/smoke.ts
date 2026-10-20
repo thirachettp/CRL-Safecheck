@@ -258,6 +258,40 @@ await j("/api/admin/versions", { method: "POST", json: { action: "delete", id: v
 fo = await j("/api/plan");
 ok(fo.versions.length === nBefore - 1 && !fo.versions.some((v: any) => v.id === vOld), "ลบเวอร์ชันที่ไม่ได้ใช้ได้");
 
+// ---------- จุดรวมพล: เพิ่ม แก้ ลบ (ย้ายธงไปจุดอื่น) ----------
+await j("/api/admin/points", { method: "POST", json: { code: "9", name: "จุดทดสอบ", backup: null, sort: 9 } });
+await j("/api/admin/points", { method: "POST", json: { code: "9", name: "จุดทดสอบ แก้ชื่อ", backup: "1", sort: 9 } });
+fo = await j("/api/plan");
+ok(fo.points.some((p: any) => p.code === "9" && p.name === "จุดทดสอบ แก้ชื่อ" && p.backup === "1"), "จุดรวมพล: เพิ่มและแก้ชื่อ/จุดสำรอง");
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-save", flag_no: 3, assembly_point: "9", leader_name: "คุณหัวหน้า สาม" } });
+ok(await fails(j("/api/admin/points", { method: "POST", json: { action: "delete", code: "9" } })), "ลบจุดที่มีธงใช้อยู่ ต้องเลือกจุดย้ายก่อน");
+await j("/api/admin/points", { method: "POST", json: { action: "delete", code: "9", move_to: "2" } });
+fo = await j("/api/plan");
+const f3 = await j("/api/admin/flags?flag=3");
+ok(!fo.points.some((p: any) => p.code === "9") && f3.people.every((p: any) => p.assembly_point === "2"), "ลบจุดแล้วธงย้ายไปจุดที่เลือก");
+
+// ---------- Code ประกาศ: เพิ่ม แก้ ลบ ----------
+await j("/api/admin/codes", { method: "POST", json: { label: "Code ทดสอบ", meaning: "ก", tone: "warn" } });
+let cd = (await j("/api/admin/codes")).codes.find((c: any) => c.label === "Code ทดสอบ");
+await j("/api/admin/codes", { method: "POST", json: { id: cd.id, label: "Code ทดสอบ 2", meaning: "ข", tone: "err", closes: true } });
+cd = (await j("/api/admin/codes")).codes.find((c: any) => c.id === cd.id);
+ok(cd.label === "Code ทดสอบ 2" && cd.tone === "err" && cd.closes === true, "Code ประกาศ: แก้ชื่อ สี และใช้ปิดเหตุการณ์");
+await j("/api/admin/codes", { method: "POST", json: { action: "delete", id: cd.id } });
+ok(!(await j("/api/admin/codes")).codes.some((c: any) => c.id === cd.id), "Code ประกาศ: ลบได้");
+
+// ---------- ลบธงที่มีคน: ย้ายคน / เอาคนออก ----------
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 60, area: "ย้ายทดสอบ" } });
+await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 60, emp_id: "60000001", first_name: "ย้าย" } });
+ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: 60 } })), "ลบธงที่มีคน ต้องเลือกย้ายหรือเอาคนออก");
+const dm = await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: 60, move_to: 1 } });
+const f1 = await j("/api/admin/flags?flag=1");
+ok(dm.moved === 1 && f1.people.some((p: any) => p.emp_id === "60000001"), "ลบธงแล้วย้ายคนไปธงที่เลือก");
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 61 } });
+await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 61, emp_id: "61000001", first_name: "ออก" } });
+const dr = await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: 61, remove_people: true } });
+fo = await j("/api/plan");
+ok(dr.removed === 1 && !fo.flags.some((f: any) => f.flag_no === 61), "ลบธงพร้อมเอาคนออกจากชุดธง");
+
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);
   ok(r.status === 200, `หน้า ${p} เปิดได้`);
