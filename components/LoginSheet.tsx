@@ -109,8 +109,8 @@ export default function LoginSheet({ onClose, onDone }: { onClose: () => void; o
       {step === "code" && (
         <form className="sheet" onSubmit={(e) => { e.preventDefault(); run(async () => { const r = await check(c); setStep(r.next); }); }}>
           {head("เข้าสู่ระบบ")}
-          <label className="lb">รหัสพนักงาน
-            <input className="in mono" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="username" autoFocus placeholder="เช่น 20076487" />
+          <label className="lb">รหัสพนักงาน (หรือ admin)
+            <input className="in mono" value={code} onChange={(e) => setCode(e.target.value)} autoCapitalize="none" autoComplete="username" autoFocus placeholder="เช่น 20076487" />
           </label>
           <p className="muted xs">ยังไม่มีบัญชี ระบบจะพาไปลงทะเบียน</p>
           {errBox}

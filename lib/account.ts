@@ -1,7 +1,26 @@
 import { q, one } from "./db";
 import { UserError } from "./errors";
 import { hashPassword, verifyPassword, passwordProblem, tempPassword } from "./password";
-import { effectiveRole, signUser, bootstrapAdmins, type UserRole } from "./auth";
+import { effectiveRole, signUser, bootstrapAdmins, builtinAdmin, type UserRole } from "./auth";
+import { timingSafeEqual } from "node:crypto";
+
+const sameText = (a: string, b: string) => {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+/** สร้าง/อัปเดตแถวของบัญชี admin ในตัว ให้รหัสผ่านตรงกับ ADMIN_PASSWORD เสมอ */
+async function syncBuiltinAdmin(code: string) {
+  const pw = process.env.ADMIN_PASSWORD!;
+  const r = await one<any>(`SELECT password_hash FROM profiles WHERE code = $1`, [code]);
+  if (r && (await verifyPassword(pw, r.password_hash))) return;
+  const h = await hashPassword(pw);
+  await q(
+    `INSERT INTO profiles (code, name, first_name, email, role, password_hash, pw_ver)
+     VALUES ($1, 'ผู้ดูแลระบบ', 'ผู้ดูแลระบบ', $1 || '@safecheck.local', 'admin', $2, 1)
+     ON CONFLICT (code) DO UPDATE SET password_hash = EXCLUDED.password_hash, pw_ver = profiles.pw_ver + 1,
+       role = 'admin', must_change_pw = false, email = COALESCE(profiles.email, EXCLUDED.email)`, [code, h]);
+}
 
 const MAX_FAIL = 5;
 const LOCK_MIN = 15;
@@ -21,14 +40,30 @@ async function issue(code: string) {
 
 /** ขั้นแรกของการเข้าสู่ระบบ: บอกว่ารหัสนี้ต้องทำอะไรต่อ */
 export async function accountState(code: string): Promise<"password" | "setup" | "register"> {
+  if (builtinAdmin() && code.toLowerCase() === builtinAdmin()) return "password";
   const r = await one<any>(`SELECT email, password_hash FROM profiles WHERE code = $1`, [code]);
   if (!r?.email) return "register";
   return r.password_hash ? "password" : "setup";
 }
 
 export async function login(code: string, password: string) {
-  const r = await one<any>(`SELECT code, password_hash, failed_logins, locked_until FROM profiles WHERE code = $1 AND email IS NOT NULL`, [code]);
+  const b = builtinAdmin();
+  if (b && code.toLowerCase() === b) {
+    code = b;
+    const lock = await one<any>(`SELECT failed_logins, locked_until FROM profiles WHERE code = $1`, [code]);
+    if (lock?.locked_until && new Date(lock.locked_until) > new Date()) throw err("ใส่รหัสผ่านผิดหลายครั้ง ล็อกไว้ 15 นาที", 423);
+    if (!sameText(password, process.env.ADMIN_PASSWORD!)) {
+      const n = (lock?.failed_logins ?? 0) + 1;
+      if (lock) await q(`UPDATE profiles SET failed_logins = $2, locked_until = CASE WHEN $2 >= ${MAX_FAIL} THEN now() + interval '${LOCK_MIN} minutes' END WHERE code = $1`, [code, n >= MAX_FAIL ? 0 : n]);
+      throw err(`รหัสผ่านไม่ถูกต้อง`, 401);
+    }
+    await syncBuiltinAdmin(code);
+    await q(`UPDATE profiles SET failed_logins = 0, locked_until = NULL, last_login_at = now() WHERE code = $1`, [code]);
+    return issue(code);
+  }
+  const r = await one<any>(`SELECT code, email, password_hash, failed_logins, locked_until FROM profiles WHERE code = $1 AND email IS NOT NULL`, [code]);
   if (!r) throw err("ไม่พบบัญชีนี้ กรุณาลงทะเบียน", 404, { needRegister: true });
+  if (String(r.email).endsWith("@safecheck.local")) throw err("บัญชี admin ในตัวปิดใช้งานอยู่ (ยังไม่ได้ตั้ง ADMIN_PASSWORD ใน Vercel)", 403);
   if (!r.password_hash) throw err("บัญชีนี้ยังไม่ได้ตั้งรหัสผ่าน", 409, { needSetup: true });
   if (r.locked_until && new Date(r.locked_until) > new Date()) {
     const m = Math.ceil((new Date(r.locked_until).getTime() - Date.now()) / 60e3);
@@ -65,6 +100,7 @@ export async function setPasswordAtRegister(code: string, password: string) {
 }
 
 export async function changePassword(code: string, oldPw: string, newPw: string) {
+  if (builtinAdmin() && code === builtinAdmin()) throw err("รหัสผ่านของบัญชีนี้ตั้งใน Vercel (ADMIN_PASSWORD) เปลี่ยนที่นั่นแทน");
   const r = await one<any>(`SELECT password_hash FROM profiles WHERE code = $1`, [code]);
   if (!(await verifyPassword(oldPw, r?.password_hash ?? null))) throw err("รหัสผ่านเดิมไม่ถูกต้อง", 401);
   if (oldPw === newPw) throw err("รหัสผ่านใหม่ต้องไม่ซ้ำรหัสเดิม");
@@ -101,6 +137,7 @@ export async function setRole(code: string, role: UserRole, by: string) {
 
 /** ได้รหัสผ่านชั่วคราว (แสดงครั้งเดียว) ผู้ใช้ต้องเปลี่ยนเองตอนเข้าครั้งถัดไป และ token เก่าทุกเครื่องใช้ไม่ได้ */
 export async function resetPassword(code: string, by: string) {
+  if (builtinAdmin() && code === builtinAdmin()) throw err("รหัสผ่านของบัญชีนี้ตั้งใน Vercel (ADMIN_PASSWORD) เปลี่ยนที่นั่นแทน");
   const tmp = tempPassword();
   const r = await one<any>(
     `UPDATE profiles SET password_hash = $2, pw_ver = pw_ver + 1, must_change_pw = true, failed_logins = 0, locked_until = NULL

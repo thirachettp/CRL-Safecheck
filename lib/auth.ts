@@ -51,8 +51,14 @@ export function verifyToken(token: string | null): Actor | null {
 }
 
 /** รหัสพนักงานที่เป็น Admin เสมอ (ตั้งใน Vercel: ADMIN_CODES=รหัส1,รหัส2) ใช้เปิด Admin คนแรก */
-export const bootstrapAdmins = () =>
-  (process.env.ADMIN_CODES ?? "").split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+/** บัญชี admin ในตัว: ชื่อผู้ใช้ ADMIN_USER (ค่าตั้งต้น "admin") รหัสผ่าน ADMIN_PASSWORD ตั้งใน Vercel */
+export const builtinAdmin = () =>
+  process.env.ADMIN_PASSWORD ? (process.env.ADMIN_USER || "admin").trim().toLowerCase() : null;
+export const bootstrapAdmins = () => {
+  const list = (process.env.ADMIN_CODES ?? "").split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  const b = builtinAdmin();
+  return b ? [...list, b] : list;
+};
 export const effectiveRole = (code: string, dbRole: string | null): UserRole =>
   bootstrapAdmins().includes(code) ? "admin" : (["admin", "safety"].includes(dbRole ?? "") ? (dbRole as Role) : "user");
 
@@ -64,8 +70,10 @@ export function signUser(s: { code: string; name: string; role: UserRole; pw_ver
 export async function sessionOf(req: Request): Promise<Session | null> {
   const p = readToken(req.headers.get("x-admin-token"));
   if (!p?.code) return null;
-  const r = await one<any>(`SELECT code, name, role, pw_ver, must_change_pw FROM profiles WHERE code = $1 AND password_hash IS NOT NULL`, [p.code]);
+  const r = await one<any>(`SELECT code, name, role, pw_ver, must_change_pw, email FROM profiles WHERE code = $1 AND password_hash IS NOT NULL`, [p.code]);
   if (!r || r.pw_ver !== (p.v ?? 0)) return null;
+  // บัญชี admin ในตัว ใช้ได้เฉพาะตอนที่ยังตั้ง ADMIN_PASSWORD อยู่
+  if (String(r.email ?? "").endsWith("@safecheck.local") && r.code !== builtinAdmin()) return null;
   // ยังใช้รหัสชั่วคราวจาก Admin อยู่ = ยังไม่ให้สิทธิ์ Admin/Safety จนกว่าจะตั้งรหัสใหม่
   return { code: r.code, name: r.name || r.code, role: r.must_change_pw ? "user" : effectiveRole(r.code, r.role) };
 }
