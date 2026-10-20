@@ -293,6 +293,13 @@ ok(order.includes("17A") && order.indexOf("17A") > order.indexOf("3"), "เบ�
 ok((await j("/api/admin/flags?flag=17A")).people.some((p: any) => p.emp_id === "17000001"), "เพิ่มคนเข้าธง 17A ได้");
 await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: "17A", remove_people: true } });
 
+// ---------- ค้นหาคนทุกธง ----------
+const sr = await j("/api/review?q=30000102", { tok: "x" });
+ok(sr.results?.[0]?.emp_id === "30000102" && sr.results[0].flag_no != null && sr.results[0].tel === undefined, "ตรวจทานธง: ค้นด้วยรหัสพนักงานข้ามธงได้ (ไม่มีเบอร์โทร)");
+ok((await j("/api/review?q=82003", { tok: "x" })).results.every((p: any) => String(p.cost_center).startsWith("82003")) , "ค้นด้วย Cost Center ได้");
+ok((await j("/api/admin/flags?q=" + encodeURIComponent("สกุล1"))).results.length > 0, "ชุดธง (Admin): ค้นด้วยชื่อได้");
+ok(await fails(j("/api/admin/flags?q=a", { tok: "x" })), "ค้นในตั้งค่าต้องเป็น Admin");
+
 // ---------- ธงที่ใช้จุดรวมพล ----------
 await j("/api/admin/points", { method: "POST", json: { action: "set-flags", code: "2", flags: [1, 3] } });
 fo = await j("/api/plan");

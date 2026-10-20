@@ -291,3 +291,13 @@ ol.steps li::before { content: counter(st); grid-row: span 2; width: 26px; heigh
 .vrow { padding: 12px 18px; border-top: 1px solid var(--line-3); }
 .role-sel { margin-top: 0; min-height: 34px; padding: 4px 28px 4px 8px; font-size: 13px; width: auto; max-width: 150px; background-color: transparent; }
 .role-sel.lead { background-color: #FEF3C7; border-color: #FCD34D; font-weight: 700; color: #78350F; }
+.psearch { border: 1px solid var(--line-2); border-radius: 10px; padding: 0 12px; height: 42px; background: #fff; flex-wrap: nowrap; gap: 8px; }
+.psearch input { border: 0; outline: 0; font: inherit; font-size: 15px; flex-grow: 1; background: transparent; min-width: 0; }
+.psearch:focus-within { border-color: var(--ink); }
+.psearch-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 25; background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.12); max-height: 360px; overflow-y: auto; }
+.psearch-i { font: inherit; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; background: none; border: 0;
+  border-top: 1px solid var(--line-3); cursor: pointer; color: var(--ink); }
+.psearch-i:first-child { border-top: 0; }
+.psearch-i:hover { background: var(--subtle); }
+tr.hl td, .hl { background: #FEF9C3 !important; transition: background .3s; }

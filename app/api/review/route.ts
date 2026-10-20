@@ -2,12 +2,14 @@ import { q } from "@/lib/db";
 import { viewerOf } from "@/lib/auth";
 import { normFlag } from "@/lib/flag";
 import { handle, ok, fail } from "@/lib/http";
-import { reviewFlag, flagCells, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan } from "@/lib/plan";
+import { reviewFlag, flagCells, searchPlan, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
 /** ตรวจทานธง: ไม่ต้อง login แต่บันทึกชื่อคนแก้ทุกครั้ง */
 export const GET = handle(async (req: Request) => {
+  const term = new URL(req.url).searchParams.get("q");
+  if (term != null) return ok({ results: (await searchPlan(term)).filter((p: any) => !p.removed) });
   const f = normFlag(new URL(req.url).searchParams.get("flag"));
   const cells = await flagCells();
   const flag: string | null = f && cells.some((c: any) => c.flag_no === f) ? f : f ?? cells[0]?.flag_no ?? null;

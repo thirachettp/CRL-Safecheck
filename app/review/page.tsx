@@ -5,6 +5,7 @@ import MobileShell from "@/components/MobileShell";
 import { useUser } from "@/components/identity";
 import { api, usePoll, useWide } from "@/components/lib";
 import { IBack, IFlag, IDown, IClose } from "@/components/Icons";
+import PlanSearch from "@/components/PlanSearch";
 
 const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไม่ได้ทำงานพื้นที่นี้", "อื่นๆ"];
 
@@ -25,6 +26,7 @@ export default function ReviewPage() {
 function Review() {
   const { user, by } = useUser();
   const [sel, setSel] = useState<string | null>(null);
+  const [hl, setHl] = useState<string | null>(null);
   const d = usePoll<Data>(`/api/review${sel ? `?flag=${encodeURIComponent(sel)}` : ""}`, 15000);
   const [picker, setPicker] = useState(false);
   const [open, setOpen] = useState<{ id: string; mode: "edit" | "del" } | null>(null);
@@ -125,6 +127,14 @@ function Review() {
             มา {active.filter(here).length}/{active.length} คน
           </div>
         </div>
+        <div style={{ marginTop: 8 }}>
+          <PlanSearch endpoint="/api/review" onPick={(h) => {
+            if (h.flag_no) { setSel(h.flag_no); setOpen(null); }
+            setHl(h.emp_id);
+            setTimeout(() => document.getElementById(`p-${h.emp_id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 600);
+            setTimeout(() => setHl(null), 4000);
+          }} />
+        </div>
       </div>
 
       <div className="m-body">
@@ -141,7 +151,7 @@ function Review() {
                   const { edited, note } = meta(p);
                   const isOpen = open?.id === p.emp_id;
                   return [
-                    <tr key={p.emp_id} className={isOpen ? "editing" : ""}>
+                    <tr key={p.emp_id} id={`p-${p.emp_id}`} className={`${isOpen ? "editing" : ""}${hl === p.emp_id ? " hl" : ""}`}>
                       <td className="mono">{p.emp_id}</td>
                       <td><b>{p.first_name} {p.last_name}</b>{/^\s*ผู้นำ/.test(p.role ?? "") && <span className="g" style={{ marginLeft: 6 }}>ผู้นำธง</span>}</td>
                       <td>{p.gender ?? "—"}</td>
@@ -168,7 +178,7 @@ function Review() {
           const { edited, note } = meta(p);
           const isOpen = open?.id === p.emp_id;
           return (
-            <div key={p.emp_id} className="card" style={{ padding: 12 }}>
+            <div key={p.emp_id} id={`p-${p.emp_id}`} className={`card${hl === p.emp_id ? " hl" : ""}`} style={{ padding: 12 }}>
               <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.first_name} {p.last_name}</b>{p.gender && <span className="g">{p.gender}</span>}
@@ -197,7 +207,7 @@ function Review() {
           <>
             <b className="small" style={{ margin: "8px 4px 0" }}>ลบออกแล้ว ({removed.length})</b>
             {removed.map((p) => (
-              <div key={p.emp_id} className="row" style={{ background: "var(--subtle)", border: "1px dashed var(--line-2)", borderRadius: 14, padding: "10px 12px", flexWrap: "nowrap" }}>
+              <div key={p.emp_id} id={`p-${p.emp_id}`} className={`row${hl === p.emp_id ? " hl" : ""}`} style={{ background: "var(--subtle)", border: "1px dashed var(--line-2)", borderRadius: 14, padding: "10px 12px", flexWrap: "nowrap" }}>
                 <div className="grow"><div style={{ fontWeight: 600, textDecoration: "line-through" }}>{p.first_name} {p.last_name}</div>
                   <div className="muted xs">{p.removed_reason} · ลบโดย {p.removed_by ?? "—"}</div></div>
                 <button className="lk" onClick={() => act({ action: "restore", emp_id: p.emp_id })}>คืนค่า</button>

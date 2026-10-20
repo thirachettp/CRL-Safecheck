@@ -2,6 +2,7 @@
 // ตั้งค่า › ชุดธง: แก้/เพิ่ม ธง และคนในธง (Admin)
 import { Fragment, useMemo, useState } from "react";
 import { api, usePoll } from "./lib";
+import PlanSearch from "./PlanSearch";
 
 export type FlagRow = {
   flag_no: string | null; assembly_point: string | null; people: number; male: number; female: number; area: string | null;
@@ -31,6 +32,7 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
   const roleList = [...new Set([...ROLES, ...roles])];
   const [open, setOpen] = useState<string | null>(null);
   const [term, setTerm] = useState("");
+  const [hl, setHl] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [all, setAll] = useState(false);
   const [del, setDel] = useState<string | null>(null);
@@ -67,7 +69,15 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
         <span className="chip ok">ตรวจแล้ว {rev}</span><span className="chip warn">แก้หลังตรวจ {after}</span><span className="chip grey">ยังไม่ตรวจ {none}</span>
       </div>
       <div className="row" style={{ padding: "10px 18px", gap: 8, borderBottom: "1px solid var(--line-3)" }}>
-        <input className="in grow" style={{ marginTop: 0, maxWidth: 360 }} placeholder="ค้นหาธง เบอร์ / พื้นที่ / ผู้นำธง" value={term} onChange={(e) => setTerm(e.target.value)} aria-label="ค้นหาธง" />
+        <input className="in" style={{ marginTop: 0, width: 240 }} placeholder="กรองธง: เบอร์ / พื้นที่ / ผู้นำธง" value={term} onChange={(e) => setTerm(e.target.value)} aria-label="กรองธง" />
+        <div className="grow" style={{ maxWidth: 420 }}>
+          <PlanSearch endpoint="/api/admin/flags" placeholder="ค้นหาคน: ชื่อ / รหัสพนักงาน / Cost Center" onPick={(h) => {
+            if (!h.flag_no) return;
+            setTerm(""); setAll(true); setOpen(h.flag_no); setHl(h.emp_id);
+            setTimeout(() => document.getElementById(`pe-${h.emp_id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 900);
+            setTimeout(() => setHl(null), 5000);
+          }} />
+        </div>
         <span className="grow" />
         <button className="btn btn-sm btn-pri" onClick={() => setAdding(!adding)}>{adding ? "ยกเลิก" : "+ เพิ่มธง"}</button>
       </div>
@@ -124,7 +134,7 @@ export default function PlanEditor({ flags, leaders, points, total, roles = [], 
                   )}
                   {isOpen && (
                     <tr><td colSpan={8} style={{ padding: 0, background: "#F8FAFC" }}><div style={{ width: 0, minWidth: "100%" }}>
-                      <FlagDetail flag={n} row={f} leader={l} points={points} roles={roleList} flags={list.map((x) => x.flag_no!)} onChanged={onChanged} onDeleted={() => { setOpen(null); onChanged(); }} />
+                      <FlagDetail flag={n} row={f} leader={l} points={points} roles={roleList} hl={hl} flags={list.map((x) => x.flag_no!)} onChanged={onChanged} onDeleted={() => { setOpen(null); onChanged(); }} />
                     </div></td></tr>
                   )}
                 </Fragment>
@@ -190,8 +200,8 @@ function FlagForm({ init, isNew, points, onDone, onDelete, canDelete }: {
   );
 }
 
-function FlagDetail({ flag, row, leader, points, roles, flags, onChanged, onDeleted }: {
-  flag: string; row: FlagRow; leader?: Leader; points: Point[]; roles: string[]; flags: string[]; onChanged: () => void; onDeleted: () => void;
+function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, onDeleted }: {
+  flag: string; row: FlagRow; leader?: Leader; points: Point[]; roles: string[]; flags: string[]; hl?: string | null; onChanged: () => void; onDeleted: () => void;
 }) {
   const d = usePoll<{ people: Person[] }>(`/api/admin/flags?flag=${flag}`, 0);
   const [edit, setEdit] = useState<string | null>(null);
@@ -293,7 +303,7 @@ function FlagDetail({ flag, row, leader, points, roles, flags, onChanged, onDele
                 </td>
               </tr>
             ) : (
-              <tr key={p.emp_id}>
+              <tr key={p.emp_id} id={`pe-${p.emp_id}`} className={hl === p.emp_id ? "hl" : ""}>
                 <td className="mono">{p.emp_id.startsWith("ไม่มีรหัส ") ? <span className="muted">—</span> : p.emp_id}{!EMP_OK.test(p.emp_id) && !p.emp_id.startsWith("ADD-") && <div><span className="chip sm warn" title="กดแก้ไขเพื่อใส่รหัสพนักงาน">{p.emp_id.startsWith("ไม่มีรหัส ") ? "ไม่มีรหัส" : "รหัสไม่ถูกต้อง"}</span></div>}</td>
                 <td><b>{p.prefix ? `${p.prefix} ` : ""}{p.first_name} {p.last_name}</b>
                   {p.added_manually && <span className="chip sm grey" style={{ marginLeft: 6 }}>เพิ่มเอง</span>}</td>

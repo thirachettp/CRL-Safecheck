@@ -48,7 +48,9 @@ function SearchIncident({ id }: { id: number }) {
   const [err, setErr] = useState<string | null>(null);
 
   const inc = d.data?.incident;
-  const real = inc?.mode === "real";
+  const realMode = inc?.mode === "real";
+  const [byCC, setByCC] = useState(false); // ตอนซ้อม: สลับกรองตามธง ↔ Cost Center
+  const real = realMode || byCC; // จัดกลุ่มตาม Cost Center
   const anon = d.data?.viewer === "anon";
   const hidden = <span className="muted">เข้าสู่ระบบเพื่อดู</span>;
   const people: P[] = useMemo(
@@ -84,7 +86,7 @@ function SearchIncident({ id }: { id: number }) {
   const bypass = qq.length > 0;
   const list = people.filter((p) => {
     if (bypass) {
-      const hay = [p.name, p.emp_id, p.plate, p.email, p.tel, (p.tel ?? "").replace(/-/g, ""), p.cost_center, p.cc_name]
+      const hay = [p.name, p.emp_id, p.plate, p.email, p.tel, (p.tel ?? "").replace(/-/g, ""), p.cost_center, p.cc_name, p.area]
         .filter(Boolean).join(" ").toLowerCase();
       return hay.includes(qq) || hay.replace(/[\s-]/g, "").includes(qq.replace(/[\s-]/g, ""));
     }
@@ -151,7 +153,7 @@ function SearchIncident({ id }: { id: number }) {
   if (!d.data) return <MobileShell><p className="muted" style={{ padding: 16 }}>{d.error ?? "กำลังโหลด…"}</p></MobileShell>;
 
   const closedNames = [...closed].map(pName);
-  const ui = real
+  const ui = realMode
     ? { bg: "#B91C1C", fg: "#FFF", badgeBg: "#FFF", badgeFg: "#B91C1C", badge: "จริง", title: `INCIDENT · ${inc.kind ?? ""} ${inc.area ?? ""}`,
         sub: `ยืนยันโดย ${inc.confirmed_by ?? "—"} · ${closedNames.length ? `ปิด ${closedNames.join(", ")} ใช้จุดสำรอง` : "ใช้จุดรวมพลตามปกติ"}` }
     : { bg: "#FCD34D", fg: "#422006", badgeBg: "#422006", badgeFg: "#FCD34D", badge: "ซ้อม", title: `${inc.title ?? "ซ้อมอพยพ"}${inc.plan_version ? ` · ชุดธง v${inc.plan_version}${inc.plan_name ? ` ${inc.plan_name}` : ""}` : ""}`,
@@ -164,7 +166,7 @@ function SearchIncident({ id }: { id: number }) {
         <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
           <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: ui.badgeBg, color: ui.badgeFg }}>{ui.badge}</span>
           <b className="grow" style={{ fontSize: 15 }}>{ui.title}</b>
-          {real ? <Link href="/dashboard" style={{ color: "inherit", fontSize: 13, fontWeight: 600 }}>สรุปผล</Link>
+          {realMode ? <Link href="/dashboard" style={{ color: "inherit", fontSize: 13, fontWeight: 600 }}>สรุปผล</Link>
             : <Link href="/?stay=1" style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", background: "#fff", border: "1px solid #B91C1C", borderRadius: 8, padding: "6px 8px", textDecoration: "none" }}>แจ้งเหตุจริง</Link>}
         </div>
         <div className="xs" style={{ opacity: .9, marginTop: 4 }}>{ui.sub}</div>
@@ -175,7 +177,7 @@ function SearchIncident({ id }: { id: number }) {
           <div style={{ padding: "10px 16px", background: "#fff", borderBottom: "1px solid var(--line)" }}>
             <label className="row" style={{ border: "2px solid var(--ink)", borderRadius: 12, padding: "0 14px", height: 50, background: "#fff", flexWrap: "nowrap" }}>
               <ISearch />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ชื่อ, รหัส, เบอร์โทร, ทะเบียนรถ" aria-label="ค้นหาคน"
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ชื่อ, รหัส, Cost Center, เบอร์โทร" aria-label="ค้นหาคน"
                 style={{ border: 0, outline: 0, font: "inherit", fontSize: 16, flexGrow: 1, background: "transparent", minWidth: 0 }} />
             </label>
             <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "nowrap" }}>
@@ -183,7 +185,7 @@ function SearchIncident({ id }: { id: number }) {
               {canRoll ? (
                 <button className="btn btn-go grow" style={{ minHeight: 40 }} onClick={() => { setRoll(true); setTick({}); setInj({}); setCnt(""); }}>เช็คชื่อทั้งธง {f}</button>
               ) : (
-                <span className="muted xs grow" style={{ textAlign: "right" }}>{real ? "ระบุรายคนเท่านั้น" : f === "all" ? "เลือกธงเพื่อเช็คชื่อทั้งธง" : "ธงนี้ครบแล้ว"}</span>
+                <span className="muted xs grow" style={{ textAlign: "right" }}>{realMode ? "ระบุรายคนเท่านั้น" : byCC ? "กรองตาม Cost Center · เช็คชื่อทั้งธงให้เลือกธง" : f === "all" ? "เลือกธงเพื่อเช็คชื่อทั้งธง" : "ธงนี้ครบแล้ว"}</span>
               )}
             </div>
             {bypass && <div className="xs" style={{ marginTop: 8, background: "#EEF2F7", color: "#1F3A5F", borderRadius: 8, padding: "6px 10px", fontWeight: 600 }}>กำลังค้นหาทุกกลุ่มและทุกสถานะ (ข้าม filter)</div>}
@@ -208,7 +210,7 @@ function SearchIncident({ id }: { id: number }) {
                           {p.plate && <span className="g">{p.plate}</span>}
                         </div>
                         <div className="muted xs ellip" style={{ marginTop: 1 }}>
-                          {real ? `${p.cost_center ?? "—"} · ${p.cc_name ?? p.area ?? ""}` : `ธง ${p.flag_no ?? "?"} · ${p.area ?? p.cost_center ?? ""}`}
+                          {realMode ? `${p.cost_center ?? "—"} · ${p.cc_name ?? p.area ?? ""}` : `ธง ${p.flag_no ?? "?"} · ${[p.cost_center, p.area ?? p.cc_name].filter(Boolean).join(" ")}`}
                           {fromAbs && <span className="tag-abs" style={{ marginLeft: 6 }}>เดิม: ปลอดภัยตามระบบ</span>}
                         </div>
                       </div>
@@ -322,6 +324,12 @@ function SearchIncident({ id }: { id: number }) {
           <div className="sheet">
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <b className="grow" style={{ fontSize: 17 }}>{real ? "เลือก Cost Center" : "เลือกธง"}</b>
+              {!realMode && (
+                <span className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                  <button className={`pill${!byCC ? " on" : ""}`} onClick={() => { setByCC(false); setF("all"); }}>ธง</button>
+                  <button className={`pill${byCC ? " on" : ""}`} onClick={() => { setByCC(true); setF("all"); }}>Cost Center</button>
+                </span>
+              )}
               <button className="fbtn" style={{ borderColor: "var(--line-2)" }} onClick={() => { setF("all"); setPicker(false); }}>ทั้งหมด</button>
               <button className="fbtn" style={{ borderColor: "var(--line-2)", width: 44, justifyContent: "center", padding: 0 }} onClick={() => setPicker(false)} aria-label="ปิด"><IClose size={16} /></button>
             </div>

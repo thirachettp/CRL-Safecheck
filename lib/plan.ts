@@ -328,3 +328,16 @@ export async function deleteFlag(flag: string, o: { moveTo?: string | null; remo
   await q(`DELETE FROM flag_reviews WHERE flag_no = $1`, [flag]);
   return { moved: o.moveTo != null ? n : 0, removed: o.removePeople && o.moveTo == null ? n : 0 };
 }
+
+/** ค้นหาคนในชุดธงทุกธง: ชื่อ / รหัสพนักงาน / Cost Center / แผนก */
+export async function searchPlan(term: string, limit = 50) {
+  const t = term.trim().replace(/\s+/g, " ");
+  if (t.length < 1) return [];
+  return q<any>(
+    `SELECT emp_id, prefix, first_name, last_name, gender, flag_no, cost_center, area, role, removed, assembly_point
+     FROM evac_plan
+     WHERE emp_id ILIKE '%' || $1 || '%' OR concat_ws(' ', first_name, last_name) ILIKE '%' || $1 || '%'
+        OR cost_center ILIKE $1 || '%' OR area ILIKE '%' || $1 || '%'
+     ORDER BY removed, (emp_id ILIKE $1 || '%') DESC, flag_key(flag_no), flag_no, first_name
+     LIMIT $2`, [t, limit]);
+}

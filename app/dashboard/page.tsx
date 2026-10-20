@@ -56,6 +56,7 @@ function IncidentDash({ id }: { id: number }) {
   const [ask, setAsk] = useState<null | (() => Promise<void>)>(null);
   const [closeArm, setCloseArm] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [dq, setDq] = useState("");
   const now = useNow(1000);
 
   const inc = d.data?.incident;
@@ -104,6 +105,13 @@ function IncidentDash({ id }: { id: number }) {
       firstDone,
     };
   }, [people, real, points, inc]);
+  const found = useMemo(() => {
+    const t = dq.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!t) return [];
+    return people.filter((p) => [p.name, p.emp_id, p.cost_center, p.cc_name, p.area, p.plate, p.email]
+      .some((x) => x && String(x).toLowerCase().includes(t)));
+  }, [people, dq]);
+  const list = dq.trim() ? found : m.missing;
 
   async function withPin(fn: () => Promise<void>) {
     setErr(null);
@@ -199,22 +207,26 @@ function IncidentDash({ id }: { id: number }) {
 
         <div className="g2">
           <section className="card">
-            <div className="card-h"><span className="grow">รายชื่อผู้สูญหาย</span><span className="chip" style={{ background: "#FEE2E2", color: "#991B1B" }}>{m.missing.length} คน</span></div>
+            <div className="card-h" style={{ flexWrap: "wrap", gap: 8 }}>
+              <span className="grow">{dq.trim() ? "ผลค้นหา (ทุกคนในเหตุการณ์)" : "รายชื่อผู้สูญหาย"}</span>
+              <input className="in" style={{ marginTop: 0, width: 260, minHeight: 36 }} placeholder="ค้นหา ชื่อ / รหัสพนักงาน / Cost Center" value={dq} onChange={(e) => setDq(e.target.value)} aria-label="ค้นหาคนในเหตุการณ์" />
+              <span className="chip" style={{ background: "#FEE2E2", color: "#991B1B" }}>{dq.trim() ? `${found.length} คน` : `${m.missing.length} คน`}</span>
+            </div>
             <div className="scroll-x"><table className="tbl">
               <thead><tr><th>#</th><th>ชื่อ-นามสกุล</th><th>แผนก</th><th>{real ? "Cost Center" : "ธง"}</th><th>จุดรวมพล</th><th>สถานะ</th></tr></thead>
               <tbody>
-                {m.missing.length === 0 && <tr><td colSpan={6} className="muted">ไม่มี</td></tr>}
-                {m.missing.slice(0, 100).map((p, i) => (
+                {list.length === 0 && <tr><td colSpan={6} className="muted">{dq.trim() ? "ไม่พบ" : "ไม่มี"}</td></tr>}
+                {list.slice(0, 100).map((p, i) => (
                   <tr key={p.person_key}>
-                    <td className="mono">{i + 1}</td><td><b>{p.name}</b>{p.plate && <div className="muted xs">{p.plate}</div>}</td>
-                    <td>{p.cc_name ?? p.area ?? "—"}</td><td className="mono">{real ? p.cost_center ?? "—" : p.flag_no != null ? `ธง ${p.flag_no}` : "—"}</td>
+                    <td className="mono">{i + 1}</td><td><b>{p.name}</b><div className="muted xs mono">{[p.emp_id, p.plate].filter(Boolean).join(" · ")}</div></td>
+                    <td>{p.cc_name ?? p.area ?? "—"}{p.cost_center && <div className="muted xs mono">{p.cost_center}</div>}</td><td className="mono">{real ? p.cost_center ?? "—" : p.flag_no != null ? `ธง ${p.flag_no}` : "—"}</td>
                     <td>{p.assembly_point ? pName(effPoint(p.assembly_point)) : "—"}</td>
                     <td><span className={`chip s-${p.status}`}>{LBL[p.status]}</span>{p.status_note && <div className="muted xs" style={{ marginTop: 2 }}>{p.status_note}</div>}</td>
                   </tr>
                 ))}
               </tbody>
             </table></div>
-            {m.missing.length > 100 && <div className="muted xs" style={{ padding: "10px 18px" }}>แสดง 100 จาก {m.missing.length} คน</div>}
+            {list.length > 100 && <div className="muted xs" style={{ padding: "10px 18px" }}>แสดง 100 จาก {list.length} คน</div>}
           </section>
           <div className="stack" style={{ gap: 20, minWidth: 0 }}>
           <section className="card" style={{ padding: 18 }}>
