@@ -2,7 +2,7 @@ import { q } from "@/lib/db";
 import { viewerOf, requireUser } from "@/lib/auth";
 import { normFlag } from "@/lib/flag";
 import { handle, ok, fail } from "@/lib/http";
-import { reviewFlag, flagCells, searchPlan, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan } from "@/lib/plan";
+import { reviewFlag, flagCells, searchPlan, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan, saveFlag, deleteFlag } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +53,18 @@ export const POST = handle(async (req: Request) => {
       const id = await addPlanPerson({ ...b, flag_no: normFlag(b.flag_no) ?? "" }, by);
       await touchPlan();
       return ok({ emp_id: id });
+    }
+    // จัดการธง (ผู้ที่เข้าสู่ระบบ)
+    case "flag-add":
+    case "flag-save":
+      await saveFlag({ flag_no: normFlag(b.flag_no) ?? "", leader_name: b.leader_name, area: b.area, assembly_point: b.assembly_point,
+        flag_no_old: normFlag(b.flag_no_old), cost_center: b.cost_center }, b.action === "flag-add");
+      await touchPlan();
+      return ok({ flag: normFlag(b.flag_no) });
+    case "flag-delete": {
+      const r = await deleteFlag(normFlag(b.flag_no) ?? "", { moveTo: normFlag(b.move_to), removePeople: !!b.remove_people }, by);
+      await touchPlan();
+      return ok(r);
     }
     case "reviewed":
       await markReviewed(normFlag(b.flag) ?? "", by);

@@ -308,6 +308,15 @@ const a102 = rvU.people.find((p: any) => p.emp_id === "30000102");
 ok(a102?.here_by?.includes("30000101") && !!a102.here_at, "บันทึกชื่อคนตรวจจากบัญชี (ไม่ใช่ชื่อที่ส่งมา) พร้อมเวลา");
 await j("/api/review", { method: "POST", json: { action: "edit", emp_id: "30000102", role: "ผู้ช่วยผู้นำธง" }, tok: rvTok });
 ok((await j("/api/review?flag=2", { tok: rvTok })).people.find((p: any) => p.emp_id === "30000102")?.role === "ผู้ช่วยผู้นำธง", "ตรวจทานธง: แก้บทบาทได้");
+await j("/api/review", { method: "POST", json: { action: "flag-add", flag_no: "70", area: "ทดสอบตรวจทาน", leader_name: "หัวหน้า เจ็ดสิบ" }, tok: rvTok });
+let rv70 = await j("/api/review?flag=70", { tok: rvTok });
+ok(rv70.flag === "70" && rv70.cells.some((c: any) => c.flag_no === "70") && rv70.leader?.leader_name === "หัวหน้า เจ็ดสิบ", "ตรวจทานธง: เพิ่มธงใหม่ได้ และขึ้นในรายการธง");
+await j("/api/review", { method: "POST", json: { action: "flag-save", flag_no: "70", area: "แก้แล้ว", leader_name: "หัวหน้า ใหม่" }, tok: rvTok });
+rv70 = await j("/api/review?flag=70", { tok: rvTok });
+ok(rv70.leader?.area === "แก้แล้ว" && rv70.leader?.leader_name === "หัวหน้า ใหม่", "ตรวจทานธง: แก้ข้อมูลธงได้");
+await j("/api/review", { method: "POST", json: { action: "flag-delete", flag_no: "70" }, tok: rvTok });
+ok(!(await j("/api/review", { tok: rvTok })).cells.some((c: any) => c.flag_no === "70"), "ตรวจทานธง: ลบธงได้");
+ok(await fails(j("/api/review", { method: "POST", json: { action: "flag-add", flag_no: "71" }, tok: "x" })), "จัดการธงต้องเข้าสู่ระบบ");
 ok((await j("/api/admin/flags?q=" + encodeURIComponent("สกุล1"))).results.length > 0, "ชุดธง (Admin): ค้นด้วยชื่อได้");
 ok(await fails(j("/api/admin/flags?q=a", { tok: "x" })), "ค้นในตั้งค่าต้องเป็น Admin");
 

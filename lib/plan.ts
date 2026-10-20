@@ -190,9 +190,12 @@ export async function reviewFlag(flag: string) {
 
 export async function flagCells() {
   return q<any>(
-    `SELECT p.flag_no, count(*) FILTER (WHERE NOT p.removed)::int AS n, (r.flag_no IS NOT NULL) AS reviewed, max(r.reviewed_by) AS reviewed_by, max(r.reviewed_at) AS reviewed_at
-     FROM evac_plan p LEFT JOIN flag_reviews r ON r.flag_no = p.flag_no
-     WHERE p.flag_no IS NOT NULL GROUP BY p.flag_no, r.flag_no ORDER BY flag_key(p.flag_no), p.flag_no`);
+    `SELECT f.flag_no, count(p.emp_id) FILTER (WHERE NOT p.removed)::int AS n, (max(r.flag_no) IS NOT NULL) AS reviewed,
+       max(r.reviewed_by) AS reviewed_by, max(r.reviewed_at) AS reviewed_at
+     FROM (SELECT flag_no FROM evac_plan WHERE flag_no IS NOT NULL AND NOT removed UNION SELECT flag_no FROM flag_leaders) f
+     LEFT JOIN evac_plan p ON p.flag_no = f.flag_no
+     LEFT JOIN flag_reviews r ON r.flag_no = f.flag_no
+     GROUP BY f.flag_no ORDER BY flag_key(f.flag_no), f.flag_no`);
 }
 
 export async function setAttendance(personKey: string, here: boolean, by: string) {

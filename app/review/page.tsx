@@ -64,6 +64,7 @@ function ReviewBody() {
   const [reason, setReason] = useState(REASONS[0]);
   const [reasonNote, setReasonNote] = useState("");
   const [adding, setAdding] = useState(false);
+  const [flagSheet, setFlagSheet] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const flag = d.data?.flag ?? null;
@@ -162,6 +163,7 @@ function ReviewBody() {
         </div>
         <div className="row" style={{ marginTop: 6, gap: 8, flexWrap: "nowrap" }}>
           <button className="fbtn" onClick={() => setPicker(true)}><IFlag size={16} />ธง {flag ?? "—"}<IDown size={14} /></button>
+          <button className="lk boxed" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => setFlagSheet(true)}>จัดการธง</button>
           <div className="muted xs grow">
             {point?.name ?? (people[0] as any)?.assembly_point ?? ""}{d.data?.leader ? ` · ${d.data.leader.leader_name}` : ""}<br />
             มา {active.filter(here).length}/{active.length} คน
@@ -294,6 +296,18 @@ function ReviewBody() {
         </div>
       )}
 
+      {flagSheet && (
+        <FlagSheet flag={flag} leader={d.data?.leader} people={active.length} points={d.data?.points ?? []}
+          flags={(d.data?.cells ?? []).map((c) => c.flag_no)} curPoint={(people[0] as any)?.assembly_point ?? d.data?.leader?.assembly_point ?? ""}
+          onClose={() => setFlagSheet(false)}
+          onAct={async (json) => {
+            const r: any = await api("/api/review", { method: "POST", json });
+            d.reload();
+            if (json.action === "flag-add") setSel(r.flag);
+            if (json.action === "flag-delete") setSel(json.move_to || null);
+            return r;
+          }} />
+      )}
       {adding && flag != null && <AddSheet flag={flag} onClose={() => setAdding(false)} onSave={async (f) => { await act({ action: "add", ...f }); setAdding(false); }} />}
     </MobileShell>
   );
@@ -320,6 +334,90 @@ function AddSheet({ flag, onClose, onSave }: { flag: string; onClose: () => void
         </div>
         <button className="btn btn-pri btn-lg" type="submit">เพิ่มเข้าธง {f.flag_no}</button>
       </form>
+    </div>
+  );
+}
+
+/** จัดการธง: แก้ข้อมูลธง · เพิ่มธงใหม่ · ลบธง (ย้ายคน / เอาคนออก) */
+function FlagSheet({ flag, leader, people, points, flags, curPoint, onClose, onAct }: {
+  flag: string | null; leader: any; people: number; points: any[]; flags: string[]; curPoint: string;
+  onClose: () => void; onAct: (json: any) => Promise<any>;
+}) {
+  const [tab, setTab] = useState<"edit" | "add" | "del">(flag ? "edit" : "add");
+  const [f, setF] = useState({ leader_name: leader?.leader_name ?? "", area: leader?.area ?? "", assembly_point: curPoint, flag_no_old: leader?.flag_no_old ?? "" });
+  const [n, setN] = useState({ flag_no: "", leader_name: "", area: "", assembly_point: points[0]?.code ?? "", flag_no_old: "" });
+  const [mode, setMode] = useState<"move" | "remove">("move");
+  const [moveTo, setMoveTo] = useState(flags.find((x) => x !== flag) ?? "");
+  const [arm, setArm] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function go(json: any) {
+    setErr(null); setBusy(true);
+    try { await onAct(json); onClose(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+  const pointSel = (v: string, set: (x: string) => void) => (
+    <select className="in" value={v} onChange={(e) => set(e.target.value)}>
+      <option value="">ไม่ระบุ</option>
+      {points.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+    </select>
+  );
+  return (
+    <div className="sheet-bg" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="sheet">
+        <div className="row"><b className="grow" style={{ fontSize: 17 }}>จัดการธง</b>
+          <button className="fbtn" style={{ borderColor: "var(--line-2)", width: 44, justifyContent: "center", padding: 0 }} onClick={onClose} aria-label="ปิด"><IClose size={16} /></button></div>
+        <div className="row" style={{ gap: 6 }}>
+          {flag && <button className={`pill${tab === "edit" ? " on" : ""}`} onClick={() => setTab("edit")}>แก้ธง {flag}</button>}
+          <button className={`pill${tab === "add" ? " on" : ""}`} onClick={() => setTab("add")}>+ เพิ่มธงใหม่</button>
+          {flag && <button className={`pill${tab === "del" ? " on" : ""}`} onClick={() => setTab("del")}>ลบธง {flag}</button>}
+        </div>
+
+        {tab === "edit" && flag && (
+          <form className="stack" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); go({ action: "flag-save", flag_no: flag, ...f }); }}>
+            <label className="lb">ผู้นำธง<input className="in" value={f.leader_name} onChange={(e) => setF({ ...f, leader_name: e.target.value })} /></label>
+            <label className="lb">พื้นที่ / แผนก<input className="in" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} /></label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 8 }}>
+              <label className="lb">จุดรวมพล{pointSel(f.assembly_point, (x) => setF({ ...f, assembly_point: x }))}</label>
+              <label className="lb">ธงเดิม<input className="in mono" value={f.flag_no_old} onChange={(e) => setF({ ...f, flag_no_old: e.target.value })} /></label>
+            </div>
+            <p className="muted xs" style={{ margin: 0 }}>เปลี่ยนจุดรวมพล → คนทั้งธงย้ายจุดตาม</p>
+            <button className="btn btn-pri btn-lg" type="submit" disabled={busy}>บันทึกข้อมูลธง {flag}</button>
+          </form>
+        )}
+
+        {tab === "add" && (
+          <form className="stack" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); go({ action: "flag-add", ...n }); }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <label className="lb">เบอร์ธงใหม่<input className="in mono" required maxLength={20} placeholder="เช่น 32 หรือ 17A" value={n.flag_no} onChange={(e) => setN({ ...n, flag_no: e.target.value })} /></label>
+              <label className="lb">ธงเดิม<input className="in mono" value={n.flag_no_old} onChange={(e) => setN({ ...n, flag_no_old: e.target.value })} /></label>
+            </div>
+            <label className="lb">พื้นที่ / แผนก<input className="in" value={n.area} onChange={(e) => setN({ ...n, area: e.target.value })} /></label>
+            <label className="lb">ผู้นำธง<input className="in" value={n.leader_name} onChange={(e) => setN({ ...n, leader_name: e.target.value })} /></label>
+            <label className="lb">จุดรวมพล{pointSel(n.assembly_point, (x) => setN({ ...n, assembly_point: x }))}</label>
+            <button className="btn btn-pri btn-lg" type="submit" disabled={busy || !n.flag_no.trim()}>เพิ่มธง {n.flag_no.trim()}</button>
+          </form>
+        )}
+
+        {tab === "del" && flag && (
+          <div className="stack" style={{ gap: 8 }}>
+            {people > 0 ? (
+              <>
+                <p className="small" style={{ margin: 0 }}>ธง {flag} มี {people} คน เลือกว่าจะทำอย่างไรกับคนในธง</p>
+                <label className="row small" style={{ gap: 6 }}><input type="radio" checked={mode === "move"} onChange={() => setMode("move")} />ย้ายไปธง
+                  <select className="in" style={{ marginTop: 0, width: 120 }} value={moveTo} disabled={mode !== "move"} onChange={(e) => setMoveTo(e.target.value)}>
+                    {flags.filter((x) => x !== flag).map((x) => <option key={x} value={x}>ธง {x}</option>)}
+                  </select></label>
+                <label className="row small" style={{ gap: 6 }}><input type="radio" checked={mode === "remove"} onChange={() => setMode("remove")} />เอาคนออกจากชุดธงด้วย</label>
+              </>
+            ) : <p className="muted small" style={{ margin: 0 }}>ธง {flag} ไม่มีคน</p>}
+            <button className="btn btn-del btn-lg" disabled={busy || (people > 0 && mode === "move" && !moveTo)} onBlur={() => setArm(false)}
+              onClick={() => arm ? go({ action: "flag-delete", flag_no: flag, ...(people > 0 ? (mode === "move" ? { move_to: moveTo } : { remove_people: true }) : {}) }) : setArm(true)}>
+              {arm ? "กดอีกครั้งเพื่อยืนยันลบ" : `ลบธง ${flag}`}</button>
+          </div>
+        )}
+        {err && <p className="notice err">{err}</p>}
+        <p className="muted xs" style={{ margin: 0 }}>บันทึกชื่อผู้แก้จากบัญชีที่เข้าสู่ระบบ · Admin บันทึกเป็นเวอร์ชันชุดธงได้ที่หน้าตั้งค่า</p>
+      </div>
     </div>
   );
 }
