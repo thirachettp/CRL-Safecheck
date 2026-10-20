@@ -101,7 +101,7 @@ function Admin() {
           </aside>
         </div>
       )}
-      {tab === "points" && <div className="wrap">{o.data && <PointsCard points={o.data.points} onSaved={o.reload} />}</div>}
+      {tab === "points" && <div className="wrap">{o.data && <PointsCard points={o.data.points} flags={o.data.flags} onSaved={o.reload} />}</div>}
       {tab === "users" && <div className="wrap"><UsersPanel /></div>}
       {tab === "codes" && <div className="wrap"><div style={{ maxWidth: 760 }}><CodesCard /></div></div>}
       {tab === "system" && (
@@ -154,9 +154,6 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
     const { combinedRows } = await import("@/lib/parsers");
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(combinedRows(m)), "รวม");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m.leaders.map((l) => ({
-      "จุดรวมพล": l.assembly_point ?? "", "เบอร์ธงอพยพ": l.flag_no, "เบอร์ธงเดิม": l.flag_no_old ?? "", "ผู้นำธงอพยพ": l.leader_name,
-      "Cost Center": l.cost_center ?? "", "แผนก/พื้นที่": l.area ?? "", "หมายเหตุ": l.note ?? "" }))), "รายชื่อผู้นำธง");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m.issues.map((i) => ({
       "ระดับ": i.level === "error" ? "ต้องแก้" : "เตือน", "ไฟล์": i.file, "ปัญหา": i.message }))), "ปัญหาที่พบ");
     XLSX.writeFile(wb, `Summary_EmergencyFlags_รวม_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -176,7 +173,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
   return (
     <div className="card">
       <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>นำเข้าไฟล์ธง (Excel)</span>
-        <span className="muted xs" style={{ fontWeight: 500 }}>ไฟล์รายแผนก หัวตารางแถว 4 (จุดรวมพล … รหัสพนักงาน) + ชีตรายชื่อผู้นำธง · เลือกหลายไฟล์หรือทั้งโฟลเดอร์ได้</span></div>
+        <span className="muted xs" style={{ fontWeight: 500 }}>ไฟล์รายแผนก หัวตารางแถว 4 (จุดรวมพล … รหัสพนักงาน) · ไม่ใช้ชีตรายชื่อผู้นำธง · เลือกหลายไฟล์หรือทั้งโฟลเดอร์ได้</span></div>
       <div className="dropzone" data-over={over} role="button" tabIndex={0}
         onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
@@ -224,7 +221,12 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
 }
 
 // ---------- จุดรวมพล ----------
-function PointsCard({ points, onSaved }: { points: Overview["points"]; onSaved: () => void }) {
+function PointsCard({ points, flags, onSaved }: { points: Overview["points"]; flags: Overview["flags"]; onSaved: () => void }) {
+  const [pick, setPick] = useState<{ code: string; sel: number[] } | null>(null);
+  const allFlags = flags.filter((f) => f.flag_no != null);
+  const pointOf = (n: number) => allFlags.find((f) => f.flag_no === n)?.assembly_point ?? null;
+  const pName = (c: string | null) => (c ? points.find((x) => x.code === c)?.name ?? c : "ไม่ระบุจุด");
+  const noPoint = allFlags.filter((f) => !f.assembly_point || !points.some((x) => x.code === f.assembly_point)).map((f) => f.flag_no!);
   const [draft, setDraft] = useState<Record<string, { name: string; backup: string; sort: number }>>({});
   const [add, setAdd] = useState({ code: "", name: "" });
   const [del, setDel] = useState<string | null>(null);
@@ -251,7 +253,9 @@ function PointsCard({ points, onSaved }: { points: Overview["points"]; onSaved: 
             <div className="tr" style={{ ...cols, background: del === p.code ? "#FFF1F2" : undefined }}>
               <b className="mono">{p.code}</b>
               <input className="in" style={{ marginTop: 0 }} value={dr.name} onChange={(e) => set({ name: e.target.value })} aria-label={`ชื่อจุด ${p.code}`} />
-              <div className="mono small">{p.flags?.length ? rangeText(p.flags) : "—"}</div>
+              <button className="lk mono small" style={{ textAlign: "left", minHeight: 0, padding: 0 }} title="แก้ธงที่ใช้จุดนี้"
+                onClick={() => setPick(pick?.code === p.code ? null : { code: p.code, sel: allFlags.filter((f) => f.assembly_point === p.code).map((f) => f.flag_no!) })}>
+                {p.flags?.length ? rangeText(p.flags) : "—"} <span style={{ fontFamily: "inherit" }}>· แก้</span></button>
               <select className="in" style={{ marginTop: 0 }} value={dr.backup} onChange={(e) => set({ backup: e.target.value })} aria-label={`จุดสำรองของ ${p.code}`}>
                 <option value="">ไม่มี</option>
                 {others.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
@@ -263,6 +267,31 @@ function PointsCard({ points, onSaved }: { points: Overview["points"]; onSaved: 
                 <button className="lk del" onClick={() => { setDel(del === p.code ? null : p.code); setMoveTo(others[0]?.code ?? ""); }}>ลบ</button>
               </div>
             </div>
+            {pick?.code === p.code && (
+              <div className="tr" style={{ gridTemplateColumns: "1fr", background: "#F8FAFC" }}>
+                <div className="small" style={{ marginBottom: 6 }}><b>ธงที่ใช้ {p.name}</b> · กดเลือก/เอาออก ธงที่เลือกจากจุดอื่นจะย้ายมาจุดนี้ · ธงที่เอาออกจะเป็น “ไม่ระบุจุด”</div>
+                <div className="row" style={{ gap: 6 }}>
+                  {allFlags.length === 0 && <span className="muted small">ยังไม่มีธง</span>}
+                  {allFlags.map((f) => {
+                    const n = f.flag_no!;
+                    const on = pick.sel.includes(n);
+                    const from = pointOf(n);
+                    return (
+                      <button key={n} type="button" className={`pill${on ? " on" : ""}`}
+                        title={from && from !== p.code ? `ตอนนี้อยู่ ${pName(from)}` : undefined}
+                        onClick={() => setPick({ ...pick, sel: on ? pick.sel.filter((x) => x !== n) : [...pick.sel, n] })}>
+                        ธง {n}{!on && from && from !== p.code ? <span className="muted xs"> (อยู่จุด {from})</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                  <button className="btn btn-sm btn-pri" onClick={async () => { if (await call({ action: "set-flags", code: p.code, flags: pick.sel }, `บันทึกธงที่ใช้ ${p.name} แล้ว`)) setPick(null); }}>บันทึก</button>
+                  <button className="lk" onClick={() => setPick(null)}>ยกเลิก</button>
+                  <span className="muted xs">{pick.sel.length} ธง</span>
+                </div>
+              </div>
+            )}
             {del === p.code && (
               <div className="tr" style={{ gridTemplateColumns: "1fr", background: "#FFF1F2" }}>
                 <div className="row" style={{ gap: 10 }}>
@@ -285,6 +314,7 @@ function PointsCard({ points, onSaved }: { points: Overview["points"]; onSaved: 
           </div>
         );
       })}
+      {noPoint.length > 0 && <div className="tr" style={{ ...cols, background: "#FFFBEB" }}><b>?</b><div>ยังไม่ระบุจุดรวมพล</div><div className="mono small">{rangeText(noPoint)}</div><div className="muted small" style={{ gridColumn: "span 3" }}>กด “แก้” ที่จุดรวมพลด้านบนเพื่อกำหนดธงเหล่านี้</div></div>}
       <div className="tr" style={{ ...cols, background: "#F0FDFA" }}><b>–</b><div>กองอำนวยการกลาง</div><div className="muted small">ใครก็ได้ที่ไปประจำวันนั้น</div><div className="muted small">นับเป็นอพยพแล้ว</div><div /><div /></div>
       <form className="tr" style={cols} onSubmit={async (e) => { e.preventDefault(); if (await call({ code: add.code.trim(), name: add.name.trim(), backup: null, sort: points.length + 1 }, `เพิ่มจุด ${add.code.trim()} แล้ว`)) setAdd({ code: "", name: "" }); }}>
         <input className="in mono" style={{ marginTop: 0 }} placeholder="รหัส" value={add.code} onChange={(e) => setAdd({ ...add, code: e.target.value })} aria-label="รหัสจุดใหม่" />

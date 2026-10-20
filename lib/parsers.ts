@@ -91,6 +91,9 @@ function findHeader(rows: unknown[][], mustHave: string, scan = 15) {
   return null;
 }
 
+/** ชีต "รายชื่อผู้นำธง" ไม่นำมาคิดอะไรเลย */
+export const isLeaderSheet = (name: string) => name.replace(/\s+/g, "") === "รายชื่อผู้นำธง";
+
 /** ไฟล์ชั่วคราวของ Excel (~$ชื่อไฟล์.xlsx) ไม่ใช่ไฟล์จริง */
 export const isTempExcel = (name: string) => name.split(/[\\/]/).pop()!.startsWith("~$");
 
@@ -111,6 +114,7 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
   // ---- ชีตรายชื่อ: หาชีตที่มีหัวคอลัมน์ "รหัสพนักงาน"
   let found = false;
   for (const name of wb.SheetNames) {
+    if (isLeaderSheet(name)) continue;
     const rows = rowsOf(wb.Sheets[name]);
     const h = findHeader(rows, "รหัสพนักงาน");
     if (!h) continue;
@@ -208,39 +212,7 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
   }
   if (!found) issues.push({ file, level: "error", message: "ไม่พบตารางที่มีหัวคอลัมน์ รหัสพนักงาน" });
 
-  // ---- ชีตผู้นำธง
-  for (const name of wb.SheetNames) {
-    const rows = rowsOf(wb.Sheets[name]);
-    const h = findHeader(rows, "ผู้นำธงอพยพ", 5);
-    // ต้องเป็นหัวตารางจริง (มีคอลัมน์เบอร์ธง) ไม่ใช่บรรทัด "แผนก … ผู้นำธงอพยพ …" ของชีตรายชื่อ
-    if (!h || h.heads.some((x) => x.includes("รหัสพนักงาน")) || !h.heads.some((x) => x.includes("เบอร์ธง"))) continue;
-    const H = h.heads;
-    const c = {
-      ap: col(H, "จุดรวมพล"),
-      flag: col(H, "เบอร์ธงอพยพ"),
-      flagOld: col(H, "เบอร์ธงเดิม"),
-      leader: col(H, "ผู้นำธงอพยพ"),
-      cc: col(H, "costcenter"),
-      area: col(H, "แผนก/พื้นที่", "แผนก"),
-      note: col(H, "หมายเหตุ"),
-    };
-    for (let r = h.row + 1; r < rows.length; r++) {
-      const row = rows[r];
-      const flag = toInt(row[c.flag]);
-      const leader = cell(row[c.leader]);
-      if (flag === null || !leader) continue;
-      leaders.push({
-        flag_no: flag,
-        assembly_point: cell(row[c.ap]) || null,
-        flag_no_old: c.flagOld >= 0 ? toInt(row[c.flagOld]) : null,
-        leader_name: leader,
-        cost_center: c.cc >= 0 ? cell(row[c.cc]) || null : null,
-        area: c.area >= 0 ? cell(row[c.area]) || null : null,
-        note: c.note >= 0 ? cell(row[c.note]) || null : null,
-      });
-    }
-  }
-
+  // ชีต "รายชื่อผู้นำธง" ไม่นำมาใช้ · ผู้นำธงและข้อมูลธงมาจากแถวข้อมูลเท่านั้น
   return { file, people, leaders, issues };
 }
 
@@ -253,7 +225,7 @@ export type MergedPlan = {
 
 /**
  * รวมผลจากหลายไฟล์ · เบอร์ธงของแต่ละคนยึดตามคอลัมน์ "เบอร์ธงอพยพใหม่" ในแถวข้อมูลเสมอ (ไม่ดูชื่อไฟล์/ชื่อชีต)
- * ผู้นำธง พื้นที่ และจุดรวมพลของธง ยึดตามแถวข้อมูลก่อน ชีตรายชื่อผู้นำธงใช้เติมธงที่ไม่มีข้อมูลในแถว
+ * ผู้นำธง พื้นที่ และจุดรวมพลของธง ยึดตามแถวข้อมูล · ชีต "รายชื่อผู้นำธง" ไม่นำมาใช้
  */
 export function mergePlan(results: PlanFileResult[]): MergedPlan {
   const issues = results.flatMap((r) => r.issues);
@@ -290,17 +262,6 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
   }
 
   const leaderMap = new Map<number, FlagLeader>();
-  for (const r of results) for (const l of r.leaders) {
-    const prev = leaderMap.get(l.flag_no);
-    if (prev && prev.leader_name !== l.leader_name) {
-      issues.push({
-        file: r.file,
-        level: "warn",
-        message: `ธง ${l.flag_no} มีผู้นำธงไม่ตรงกันระหว่างไฟล์ ("${prev.leader_name}" กับ "${l.leader_name}")`,
-      });
-    }
-    if (!prev) leaderMap.set(l.flag_no, l);
-  }
   // ข้อมูลธงจากแถวข้อมูล: ผู้นำธง = คนที่บทบาท "ผู้นำธง" · พื้นที่/จุดรวมพล/ธงเดิม/Cost Center = ค่าที่พบมากที่สุดในธง
   const mode = (xs: (string | number | null)[]) => {
     const c = new Map<string | number, number>();
@@ -311,7 +272,6 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
   for (const p of people) if (p.flag_no != null) byFlag.set(p.flag_no, [...(byFlag.get(p.flag_no) ?? []), p]);
   for (const [flag, list] of byFlag) {
     const leadsP = list.filter((p) => /^\s*ผู้นำ/.test(p.role ?? ""));
-    const fromSheet = leaderMap.get(flag);
     const name = leadsP.length ? `${leadsP[0].first_name} ${leadsP[0].last_name}`.replace(/\s+/g, " ").trim() : null;
     if (leadsP.length > 1) {
       issues.push({ file: leadsP[1].source_file, level: "warn",
@@ -319,21 +279,18 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
     }
     leaderMap.set(flag, {
       flag_no: flag,
-      leader_name: name ?? fromSheet?.leader_name ?? "",
-      area: (mode(list.map((p) => p.area)) as string | null) ?? fromSheet?.area ?? null,
-      assembly_point: (mode(list.map((p) => p.assembly_point)) as string | null) ?? fromSheet?.assembly_point ?? null,
-      flag_no_old: (mode(list.map((p) => p.flag_no_old)) as number | null) ?? fromSheet?.flag_no_old ?? null,
-      cost_center: (mode(list.map((p) => p.cost_center)) as string | null) ?? fromSheet?.cost_center ?? null,
-      note: fromSheet?.note ?? null,
+      leader_name: name ?? "",
+      area: (mode(list.map((p) => p.area)) as string | null),
+      assembly_point: (mode(list.map((p) => p.assembly_point)) as string | null),
+      flag_no_old: (mode(list.map((p) => p.flag_no_old)) as number | null),
+      cost_center: (mode(list.map((p) => p.cost_center)) as string | null),
+      note: null,
     });
-    if (!name && !fromSheet?.leader_name) issues.push({ file: list[0].source_file, level: "warn", message: `ธง ${flag} ไม่มีผู้นำธง (ไม่มีคนที่บทบาท "ผู้นำธงอพยพ")` });
+    if (!name) issues.push({ file: list[0].source_file, level: "warn", message: `ธง ${flag} ไม่มีผู้นำธง (ไม่มีคนที่บทบาท "ผู้นำธงอพยพ")` });
   }
   const leaders = [...leaderMap.values()].sort((a, b) => a.flag_no - b.flag_no);
   people.sort((a, b) => (a.flag_no ?? 9999) - (b.flag_no ?? 9999) || a.emp_id.localeCompare(b.emp_id));
-  // ธงที่มีแค่ในชีตผู้นำธง แต่ธงเดิมของมันมีคนอยู่ในแถวข้อมูลแล้ว (ถูกเปลี่ยนเบอร์ใหม่) = ไม่ต้องสร้างธงว่างซ้ำ
-  const oldInData = new Set(people.map((p) => p.flag_no_old).filter((x) => x != null));
-  const kept = leaders.filter((l) => byFlag.has(l.flag_no) || (l.leader_name && !(l.flag_no_old != null && oldInData.has(l.flag_no_old))));
-  return { people, leaders: kept, issues, duplicates };
+  return { people, leaders, issues, duplicates };
 }
 
 // ---------------- MS Form (Excel ที่ sync กับฟอร์ม) ----------------
@@ -420,7 +377,7 @@ export function combinedRows(m: MergedPlan) {
     "Cost Center": p.cost_center ?? "",
     "แผนก/พื้นที่": p.area ?? "",
     "บทบาทหน้าที่": p.role ?? "",
-    "ผู้นำธง (ชีตผู้นำธง)": p.flag_no != null ? leader.get(p.flag_no) ?? "" : "",
+    "ผู้นำธงของธงนี้": p.flag_no != null ? leader.get(p.flag_no) ?? "" : "",
     "source file": p.source_file,
     "source sheet": p.sheet ?? "",
   }));

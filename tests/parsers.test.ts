@@ -39,7 +39,9 @@ test("อ่านไฟล์แผนอพยพตามโครงจร�
   assert.equal(r.people[0].last_name, "ทดสอบ");
   assert.equal(r.people[0].flag_no, 1);
   assert.equal(r.people[1].gender, "หญิง");
-  assert.equal(r.leaders.length, 2);
+  assert.equal(r.leaders.length, 0, "ไม่อ่านชีตรายชื่อผู้นำธง");
+  const m = mergePlan([r]);
+  assert.deepEqual(m.leaders.map((l) => [l.flag_no, l.leader_name]), [[1, "สมชาย ทดสอบ"]], "ผู้นำธงจากแถวข้อมูลเท่านั้น ธง 2 ในชีตผู้นำธงไม่ถูกสร้าง");
   assert.equal(r.issues.filter((i) => i.level === "error").length, 0);
 });
 
@@ -109,7 +111,7 @@ test("ไฟล์ Template จริง: รหัส Outsource, ช่อง�
   assert.equal(r.people.length, 5);
   assert.ok(r.people.every((p) => p.flag_no === 30));
   assert.equal(r.people.find((p) => p.emp_id === "KNN250593")?.first_name, "ยาวียะ");
-  assert.equal(r.leaders.length, 1, "บรรทัด 'แผนก … ผู้นำธงอพยพ' ไม่ใช่ชีตผู้นำธง");
+  assert.equal(r.leaders.length, 0, "ไม่อ่านชีตรายชื่อผู้นำธง");
   assert.ok(r.issues.some((i) => /3 คนไม่ได้กรอกเบอร์ธงใหม่/.test(i.message)));
   assert.ok(r.issues.some((i) => /คำนำหน้า "นาย" แต่เพศ "หญิง"/.test(i.message)));
 
@@ -120,7 +122,7 @@ test("ไฟล์ Template จริง: รหัส Outsource, ช่อง�
   assert.equal(l30?.leader_name, "รัตนา โสดา", "ผู้นำธงจากบทบาทในแถวข้อมูล");
   assert.equal(l30?.area, "MZ3 ฝั่ง WH");
   assert.equal(l30?.flag_no_old, 29);
-  assert.ok(!m.leaders.some((l) => l.flag_no === 14), "ธงในชีตผู้นำธงที่ธงเดิมถูกใช้ในแถวข้อมูลแล้ว ไม่สร้างธงว่างซ้ำ");
+  assert.deepEqual(m.leaders.map((l) => l.flag_no), [30], "มีแค่ธงจากแถวข้อมูล");
 });
 
 test("ไม่มีชีตผู้นำธง → ใช้คนที่บทบาทผู้นำธงเป็นผู้นำ", () => {

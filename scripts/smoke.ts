@@ -284,6 +284,16 @@ fo = await j("/api/plan");
 const f3 = await j("/api/admin/flags?flag=3");
 ok(!fo.points.some((p: any) => p.code === "9") && f3.people.every((p: any) => p.assembly_point === "2"), "ลบจุดแล้วธงย้ายไปจุดที่เลือก");
 
+// ---------- ธงที่ใช้จุดรวมพล ----------
+await j("/api/admin/points", { method: "POST", json: { action: "set-flags", code: "2", flags: [1, 3] } });
+fo = await j("/api/plan");
+const ap = (n: number) => fo.flags.find((f: any) => f.flag_no === n)?.assembly_point;
+ok(ap(1) === "2" && ap(3) === "2", "กำหนดธงที่ใช้จุดรวมพล: ธง 1 ย้ายมาจุด 2");
+await j("/api/admin/points", { method: "POST", json: { action: "set-flags", code: "2", flags: [3] } });
+fo = await j("/api/plan");
+ok(ap(1) == null && ap(3) === "2", "เอาธงออกจากจุด = ไม่ระบุจุด");
+await j("/api/admin/points", { method: "POST", json: { action: "set-flags", code: "1", flags: [1, 2] } });
+
 // ---------- Code ประกาศ: เพิ่ม แก้ ลบ ----------
 await j("/api/admin/codes", { method: "POST", json: { label: "Code ทดสอบ", meaning: "ก", tone: "warn" } });
 let cd = (await j("/api/admin/codes")).codes.find((c: any) => c.label === "Code ทดสอบ");

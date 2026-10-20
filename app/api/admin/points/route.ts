@@ -9,6 +9,20 @@ export const dynamic = "force-dynamic";
 export const POST = handle(async (req: Request) => {
   await requireRole(req, ["admin"]);
   const b = await req.json();
+  if (b.action === "set-flags") {
+    // กำหนดธงที่ใช้จุดนี้: ธงที่เลือกย้ายมาจุดนี้ · ธงที่เอาออกจะเป็น "ไม่ระบุจุด"
+    const code = String(b.code);
+    const flags: number[] = (Array.isArray(b.flags) ? b.flags : []).map(Number).filter(Number.isInteger);
+    if (!(await q(`SELECT 1 FROM assembly_points WHERE code = $1`, [code])).length) return fail("ไม่พบจุดรวมพลนี้");
+    await q(`UPDATE evac_plan SET assembly_point = NULL, updated_at = now()
+             WHERE assembly_point = $1 AND NOT (flag_no = ANY($2::int[]))`, [code, flags]);
+    await q(`UPDATE flag_leaders SET assembly_point = NULL WHERE assembly_point = $1 AND NOT (flag_no = ANY($2::int[]))`, [code, flags]);
+    await q(`UPDATE evac_plan SET assembly_point = $1, updated_at = now()
+             WHERE flag_no = ANY($2::int[]) AND assembly_point IS DISTINCT FROM $1`, [code, flags]);
+    await q(`UPDATE flag_leaders SET assembly_point = $1 WHERE flag_no = ANY($2::int[])`, [code, flags]);
+    await touchPlan();
+    return ok({ saved: true });
+  }
   if (b.action === "delete") {
     // จุดที่ยังมีธงใช้อยู่ ต้องย้ายธงไปจุดอื่นก่อน (move_to)
     const code = String(b.code);
