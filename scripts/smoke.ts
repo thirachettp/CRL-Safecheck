@@ -235,6 +235,28 @@ ok(fo.versions[0].id === sv.version && fo.versions[0].name === "ซ้อมใ�
 await j("/api/admin/versions", { method: "POST", json: { action: "rename", id: sv.version, name: "ชุดธง 2569" } });
 fo = await j("/api/plan");
 ok(fo.versions[0].name === "ชุดธง 2569", "แก้ชื่อเวอร์ชันได้");
+ok(fo.version.active === sv.version && !fo.version.dirty, "เวอร์ชันที่บันทึกล่าสุดเป็นเวอร์ชันที่ใช้อยู่");
+const nVers = fo.versions.length;
+const vOld = fo.versions.find((v: any) => v.id !== sv.version)!.id;
+ok(await fails(j("/api/admin/versions", { method: "POST", json: { action: "delete", id: sv.version } })), "ลบเวอร์ชันที่ใช้อยู่ไม่ได้");
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 50, area: "ทดสอบ" } });
+fo = await j("/api/plan");
+ok(fo.version.dirty, "แก้ชุดธงแล้วขึ้นว่ามีการแก้ที่ยังไม่บันทึก");
+ok(await fails(j("/api/admin/versions", { method: "POST", json: { action: "overwrite", id: vOld } })), "บันทึกทับได้เฉพาะเวอร์ชันที่ใช้อยู่");
+await j("/api/admin/versions", { method: "POST", json: { action: "overwrite", id: sv.version } });
+fo = await j("/api/plan");
+ok(!fo.version.dirty, "บันทึกทับแล้วไม่มีแก้ค้าง");
+await j("/api/admin/versions", { method: "POST", json: { action: "activate", id: vOld } });
+fo = await j("/api/plan");
+ok(fo.version.active === vOld && fo.versions.length === nVers, "เลือกใช้เวอร์ชันเก่าโดยไม่สร้างเวอร์ชันใหม่");
+ok(!fo.flags.some((f: any) => f.flag_no === 50), "เลือกใช้เวอร์ชันเก่าแล้วได้ชุดธงของเวอร์ชันนั้น");
+await j("/api/admin/versions", { method: "POST", json: { action: "activate", id: sv.version } });
+fo = await j("/api/plan");
+ok(fo.flags.some((f: any) => f.flag_no === 50), "สลับกลับมาเวอร์ชันที่บันทึกทับไว้ ได้ธง 50 คืน");
+const nBefore = fo.versions.length;
+await j("/api/admin/versions", { method: "POST", json: { action: "delete", id: vOld } });
+fo = await j("/api/plan");
+ok(fo.versions.length === nBefore - 1 && !fo.versions.some((v: any) => v.id === vOld), "ลบเวอร์ชันที่ไม่ได้ใช้ได้");
 
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);

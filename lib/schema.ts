@@ -305,4 +305,6 @@ export const SCHEMA: string[] = [
   )`,
   // v6: ตั้งชื่อเวอร์ชันชุดธง
   `ALTER TABLE plan_versions ADD COLUMN IF NOT EXISTS name text`,
+  // v7: เวอร์ชันชุดธง แก้/บันทึกทับได้
+  `ALTER TABLE plan_versions ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
 ];

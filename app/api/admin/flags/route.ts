@@ -1,6 +1,6 @@
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole } from "@/lib/auth";
-import { reviewFlag, saveFlag, deleteFlag, editPerson, addPlanPerson, removePerson } from "@/lib/plan";
+import { reviewFlag, saveFlag, deleteFlag, editPerson, addPlanPerson, removePerson, touchPlan } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,12 @@ export const GET = handle(async (req: Request) => {
 /** Admin แก้ชุดธง: ธง และคนในธง */
 export const POST = handle(async (req: Request) => {
   const a = await requireRole(req, ["admin"]);
+  const r = await act(req, a);
+  await touchPlan();
+  return r;
+});
+
+async function act(req: Request, a: { name: string; code?: string }) {
   const b = await req.json();
   const by = a.code ? `${a.name} (${a.code})` : a.name;
   const num = (v: unknown) => (v === "" || v == null ? null : Number(v));
@@ -42,4 +48,4 @@ export const POST = handle(async (req: Request) => {
       return ok({ ok: true });
   }
   return fail("ไม่รู้จักคำสั่ง");
-});
+}

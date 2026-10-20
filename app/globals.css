@@ -287,3 +287,5 @@ ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: st; display: 
 ol.steps li { counter-increment: st; display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; }
 ol.steps li::before { content: counter(st); grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; background: var(--navy); color: #fff;
   font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+
+.vrow { padding: 12px 18px; border-top: 1px solid var(--line-3); }

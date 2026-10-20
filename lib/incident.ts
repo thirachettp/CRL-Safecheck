@@ -202,7 +202,11 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
 }
 
 async function latestVersion() {
-  return (await one<{ id: number }>(`SELECT id FROM plan_versions ORDER BY id DESC LIMIT 1`))?.id ?? null;
+  // เวอร์ชันที่ Admin เลือกใช้อยู่ (ถ้าไม่ได้เลือก = ล่าสุด)
+  const r = await one<{ id: number }>(
+    `SELECT id FROM plan_versions WHERE id = (SELECT (value #>> '{}')::int FROM app_settings WHERE key = 'active_plan_version')
+     UNION ALL (SELECT id FROM plan_versions ORDER BY id DESC LIMIT 1) LIMIT 1`);
+  return r?.id ?? null;
 }
 
 /** แจ้งเหตุ (ต้องระบุตัวตน) → รอ Admin / Safety Officer ยืนยัน */

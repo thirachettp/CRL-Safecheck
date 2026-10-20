@@ -1,7 +1,7 @@
 import { q } from "@/lib/db";
 import { viewerOf } from "@/lib/auth";
 import { handle, ok, fail } from "@/lib/http";
-import { reviewFlag, flagCells, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed } from "@/lib/plan";
+import { reviewFlag, flagCells, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -32,15 +32,21 @@ export const POST = handle(async (req: Request) => {
         first_name: b.first_name, last_name: b.last_name, gender: b.gender, tel: (await viewerOf(req)) === "anon" ? undefined : b.tel,
         cost_center: b.cost_center, area: b.area, flag_no: b.flag_no != null ? Number(b.flag_no) : undefined,
       }, by);
+      await touchPlan();
       break;
     case "remove":
       await removePerson(String(b.emp_id), String(b.reason ?? "").trim(), by);
+      await touchPlan();
       break;
     case "restore":
       await removePerson(String(b.emp_id), "", by, true);
+      await touchPlan();
       break;
-    case "add":
-      return ok({ emp_id: await addPlanPerson({ ...b, flag_no: Number(b.flag_no) }, by) });
+    case "add": {
+      const id = await addPlanPerson({ ...b, flag_no: Number(b.flag_no) }, by);
+      await touchPlan();
+      return ok({ emp_id: id });
+    }
     case "reviewed":
       await markReviewed(Number(b.flag), by);
       break;

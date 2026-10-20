@@ -15,7 +15,8 @@ type Overview = {
   flags: FlagRow[];
   leaders: { flag_no: number; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: number | null; cost_center: string | null }[];
   points: { code: string; name: string; backup: string | null; sort: number; flags: number[] | null }[];
-  versions: { id: number; name: string | null; note: string; created_by: string; created_at: string; people: number }[];
+  versions: { id: number; name: string | null; note: string; created_by: string; created_at: string; updated_at: string; people: number; used: number }[];
+  version: { active: number | null; dirty: boolean; changed_at: string | null };
   accuracy: { imported: number; moved: number; added: number; removed: number; edited: number; unchanged: number; pct: number | null };
 };
 
@@ -32,7 +33,6 @@ function Admin() {
   const router = useRouter();
   const o = usePoll<Overview>("/api/plan", 0);
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
-  const nextV = (o.data?.versions[0]?.id ?? 0) + 1;
   const [tab, setTab] = useTab("admin", ["plan", "points", "users", "codes", "system"] as const, "plan");
   const [naming, setNaming] = useState(false);
   const [vName, setVName] = useState("");
@@ -59,14 +59,14 @@ function Admin() {
         {naming ? (
           <form className="row" style={{ gap: 8, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault();
             run(() => api("/api/admin/versions", { method: "POST", json: { action: "save", note: "บันทึกหลังแก้ไข", name: vName } }),
-              `บันทึกเป็นชุดธง v${nextV}${vName.trim() ? ` “${vName.trim()}”` : ""} แล้ว`).then((done) => { if (done) { setNaming(false); setVName(""); } }); }}>
+              `บันทึกเป็นเวอร์ชันใหม่${vName.trim() ? ` “${vName.trim()}”` : ""} และตั้งเป็นเวอร์ชันที่ใช้อยู่แล้ว`).then((done) => { if (done) { setNaming(false); setVName(""); } }); }}>
             <input className="in" style={{ marginTop: 0, width: 280 }} autoFocus maxLength={80} placeholder={`ชื่อเวอร์ชัน เช่น ซ้อมใหญ่ ต.ค. ${new Date().getFullYear() + 543}`}
               value={vName} onChange={(e) => setVName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
-            <button className="btn btn-pri" type="submit">บันทึก v{nextV}</button>
+            <button className="btn btn-pri" type="submit">บันทึกเวอร์ชันใหม่</button>
             <button className="btn" type="button" onClick={() => setNaming(false)}>ยกเลิก</button>
           </form>
         ) : (
-          <button className="btn btn-pri" disabled={!o.data?.total} onClick={() => setNaming(true)}>บันทึกเป็นชุดธงใหม่ (v{nextV})</button>
+          <button className="btn btn-pri" disabled={!o.data?.total} onClick={() => setNaming(true)}>+ บันทึกเป็นเวอร์ชันใหม่</button>
         )}
       </div>
       {msg && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
@@ -79,6 +79,15 @@ function Admin() {
           { id: "system", label: "แหล่งข้อมูล & PIN สำรอง" },
         ]} value={tab} onChange={setTab} />
       </div>
+      {tab === "plan" && o.data?.version.dirty && (
+        <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}>
+          <div className="notice warn row" style={{ gap: 10 }}>
+            <span className="grow">มีการแก้ชุดธงที่ยังไม่บันทึกลงเวอร์ชัน (แก้ล่าสุด {fmtDateTime(o.data.version.changed_at)}) · ตอนเริ่มซ้อม/เกิดเหตุ ระบบใช้ชุดธงปัจจุบันที่แก้แล้ว</span>
+            {o.data.version.active && <button className="btn btn-sm" onClick={() => run(() => api("/api/admin/versions", { method: "POST", json: { action: "overwrite", id: o.data!.version.active } }), `บันทึกทับ v${o.data!.version.active} แล้ว`)}>บันทึกทับ v{o.data.version.active}</button>}
+            <button className="btn btn-sm btn-pri" onClick={() => setNaming(true)}>บันทึกเป็นเวอร์ชันใหม่</button>
+          </div>
+        </div>
+      )}
       {tab === "plan" && (
         <div className="wrap layout" style={{ display: "grid" }}>
           <section className="stack" style={{ gap: 20, minWidth: 0 }}>
@@ -87,7 +96,7 @@ function Admin() {
           </section>
           <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
             {o.data && <AccuracyCard a={o.data.accuracy} />}
-            {o.data && <VersionsCard versions={o.data.versions} onDone={o.reload} />}
+            {o.data && <VersionsCard versions={o.data.versions} state={o.data.version} onDone={o.reload} />}
           </aside>
         </div>
       )}
@@ -320,48 +329,66 @@ function SourcesCard() {
   );
 }
 
-function VersionsCard({ versions, onDone }: { versions: Overview["versions"]; onDone: () => void }) {
-  const [arm, setArm] = useState<number | null>(null);
+function VersionsCard({ versions, state, onDone }: { versions: Overview["versions"]; state: Overview["version"]; onDone: () => void }) {
+  const [arm, setArm] = useState<string | null>(null);
   const [ren, setRen] = useState<number | null>(null);
   const [val, setVal] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  async function back(id: number) {
-    if (arm !== id) return setArm(id);
-    await api("/api/admin/versions", { method: "POST", json: { action: "rollback", id } });
-    setArm(null); onDone();
+  const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
+  async function call(json: any, ok: string) {
+    setMsg(null);
+    try { await api("/api/admin/versions", { method: "POST", json }); setArm(null); setRen(null); setMsg({ k: "ok", t: ok }); onDone(); }
+    catch (e: any) { setMsg({ k: "err", t: e.message }); }
   }
-  async function rename(id: number) {
-    setErr(null);
-    try { await api("/api/admin/versions", { method: "POST", json: { action: "rename", id, name: val } }); setRen(null); onDone(); }
-    catch (e: any) { setErr(e.message); }
-  }
+  const twice = (key: string, fn: () => void) => (arm === key ? fn() : setArm(key));
+  const label = (v: Overview["versions"][number]) => `v${v.id}${v.name ? ` “${v.name}”` : ""}`;
   return (
     <div className="card">
-      <div className="card-h">เวอร์ชันชุดธง</div>
-      {versions.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มี นำเข้าไฟล์ธงเพื่อสร้าง v1</div>}
-      {versions.map((v, i) => (
-        <div key={v.id} className="tr" style={{ gridTemplateColumns: "40px minmax(0,1fr) auto" }}>
-          <b className="mono">v{v.id}</b>
-          {ren === v.id ? (
-            <form className="row" style={{ gap: 6, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault(); rename(v.id); }}>
-              <input className="in" style={{ marginTop: 0 }} autoFocus maxLength={80} value={val} onChange={(e) => setVal(e.target.value)} aria-label={`ชื่อ v${v.id}`} />
-              <button className="btn btn-sm btn-pri" type="submit">บันทึก</button>
-              <button className="lk" type="button" onClick={() => setRen(null)}>ยกเลิก</button>
-            </form>
-          ) : (
-            <div style={{ minWidth: 0 }}>
+      <div className="card-h"><span className="grow">เวอร์ชันชุดธง</span><span className="muted xs" style={{ fontWeight: 500 }}>{versions.length} เวอร์ชัน</span></div>
+      {versions.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มี นำเข้าไฟล์ธงหรือกด “บันทึกเป็นชุดธงใหม่” เพื่อสร้าง v1</div>}
+      <div style={{ maxHeight: 520, overflowY: "auto" }}>
+        {versions.map((v) => {
+          const active = v.id === state.active;
+          return (
+            <div key={v.id} className="vrow" style={{ background: active ? "#F0FDF4" : undefined }}>
               <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                <b className="ellip" style={{ fontWeight: v.name ? 600 : 400, color: v.name ? undefined : "var(--muted)" }}>{v.name ?? "ไม่มีชื่อ"}</b>
-                <button className="lk" style={{ minHeight: 0, padding: 0, fontSize: 12 }} onClick={() => { setRen(v.id); setVal(v.name ?? ""); }}>{v.name ? "แก้ชื่อ" : "ตั้งชื่อ"}</button>
+                <b className="mono">v{v.id}</b>
+                {ren === v.id ? (
+                  <form className="row grow" style={{ gap: 6, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault(); call({ action: "rename", id: v.id, name: val }, "แก้ชื่อแล้ว"); }}>
+                    <input className="in" style={{ marginTop: 0 }} autoFocus maxLength={80} value={val} onChange={(e) => setVal(e.target.value)} aria-label={`ชื่อ v${v.id}`} placeholder="ชื่อเวอร์ชัน" />
+                    <button className="btn btn-sm btn-pri" type="submit">บันทึก</button>
+                    <button className="lk" type="button" onClick={() => setRen(null)}>ยกเลิก</button>
+                  </form>
+                ) : (
+                  <b className="grow ellip" style={{ fontWeight: v.name ? 600 : 400, color: v.name ? undefined : "var(--muted)" }}>{v.name ?? "ไม่มีชื่อ"}</b>
+                )}
+                {active && ren !== v.id && <span className="chip ok sm">{state.dirty ? "ใช้อยู่ · มีแก้ไข" : "ใช้อยู่"}</span>}
               </div>
-              <div className="muted xs">{fmtDateTime(v.created_at)} · {v.people} คน · {v.created_by ?? "—"} · {v.note}</div>
+              <div className="muted xs" style={{ margin: "2px 0 6px 0" }}>
+                {fmtDateTime(v.created_at)} · {v.people} คน · {v.created_by ?? "—"} · {v.note}
+                {v.used > 0 && ` · ใช้ในเหตุการณ์ ${v.used} ครั้ง`}
+              </div>
+              {ren !== v.id && (
+                <div className="row" style={{ gap: 6 }}>
+                  {!active && <button className="btn btn-sm" onBlur={() => setArm(null)}
+                    onClick={() => twice(`use${v.id}`, () => call({ action: "activate", id: v.id }, `ใช้ ${label(v)} แล้ว`))}>
+                    {arm === `use${v.id}` ? (state.dirty ? "ที่แก้ไว้ยังไม่บันทึกจะหาย · กดยืนยัน" : "กดอีกครั้งเพื่อใช้") : "ใช้เวอร์ชันนี้"}</button>}
+                  {active && state.dirty && <button className="btn btn-sm" onBlur={() => setArm(null)}
+                    onClick={() => twice(`ow${v.id}`, () => call({ action: "overwrite", id: v.id }, `บันทึกทับ ${label(v)} แล้ว`))}>
+                    {arm === `ow${v.id}` ? "กดอีกครั้งเพื่อบันทึกทับ" : "บันทึกทับด้วยที่แก้ไว้"}</button>}
+                  <button className="btn btn-sm" onClick={() => { setRen(v.id); setVal(v.name ?? ""); setArm(null); }}>{v.name ? "แก้ชื่อ" : "ตั้งชื่อ"}</button>
+                  {!active && <button className="btn btn-sm" style={{ color: "#9F1239" }} onBlur={() => setArm(null)}
+                    onClick={() => twice(`del${v.id}`, () => call({ action: "delete", id: v.id }, `ลบ ${label(v)} แล้ว`))}>
+                    {arm === `del${v.id}` ? "กดอีกครั้งเพื่อลบ" : "ลบ"}</button>}
+                </div>
+              )}
             </div>
-          )}
-          {ren === v.id ? <span /> : i === 0 ? <span className="chip ok">ปัจจุบัน</span>
-            : <button className="btn btn-sm" onClick={() => back(v.id)} onBlur={() => setArm(null)}>{arm === v.id ? "กดอีกครั้งเพื่อยืนยัน" : "ย้อนกลับ"}</button>}
-        </div>
-      ))}
-      {err && <div style={{ padding: "0 18px 12px" }}><p className="notice err">{err}</p></div>}
+          );
+        })}
+      </div>
+      {msg && <div style={{ padding: "8px 18px 12px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
+      <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>
+        ใช้เวอร์ชันนี้ = โหลดรายชื่อ ธง และผู้นำธงของเวอร์ชันนั้นมาใช้ (ผลตรวจทานธงจะเริ่มใหม่) · เหตุการณ์ที่เปิดอยู่ไม่กระทบ · ลบเวอร์ชันที่ใช้อยู่ไม่ได้
+      </div>
     </div>
   );
 }

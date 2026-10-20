@@ -2,6 +2,7 @@ import { UserError } from "./errors";
 // ชุดธง: นำเข้า Excel, ตรวจทาน (แก้/ย้าย/เพิ่ม/ลบ + มา/ไม่มา), เวอร์ชัน และความแม่นยำของข้อมูลตั้งต้น
 import { q, one } from "./db";
 import { bangkokDay } from "./incident";
+import { getSetting, setSetting } from "./settings";
 import type { PlanPerson, FlagLeader } from "./parsers";
 
 const vname = (n?: string | null) => {
@@ -9,17 +10,73 @@ const vname = (n?: string | null) => {
   return t || null;
 };
 
-export async function saveVersion(note: string, by: string, name?: string | null) {
+const ACTIVE = "active_plan_version";
+const CHANGED = "plan_changed_at";
+/** มีการแก้ชุดธง (ใช้บอกว่ามีการแก้ที่ยังไม่บันทึกลงเวอร์ชัน) */
+export const touchPlan = () => setSetting(CHANGED, new Date().toISOString());
+
+async function snapshot() {
   const [people, leaders, points] = await Promise.all([
     q(`SELECT * FROM evac_plan`),
     q(`SELECT * FROM flag_leaders`),
     q(`SELECT * FROM assembly_points`),
   ]);
-  const active = people.filter((p: any) => !p.removed).length;
+  return { count: people.filter((p: any) => !p.removed).length, data: JSON.stringify({ people, leaders, points }) };
+}
+
+/** บันทึกชุดธงปัจจุบันเป็นเวอร์ชันใหม่ และตั้งเป็นเวอร์ชันที่ใช้อยู่ */
+export async function saveVersion(note: string, by: string, name?: string | null) {
+  const s = await snapshot();
   const r = await one<{ id: number }>(
     `INSERT INTO plan_versions (note, created_by, people, data, name) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [note, by, active, JSON.stringify({ people, leaders, points }), vname(name)]);
+    [note, by, s.count, s.data, vname(name)]);
+  await setSetting(ACTIVE, r!.id);
   return r!.id;
+}
+
+export async function activeVersionId(): Promise<number | null> {
+  const id = await getSetting<number | null>(ACTIVE, null);
+  const r = id != null ? await one<{ id: number }>(`SELECT id FROM plan_versions WHERE id = $1`, [id]) : null;
+  return r?.id ?? (await one<{ id: number }>(`SELECT id FROM plan_versions ORDER BY id DESC LIMIT 1`))?.id ?? null;
+}
+
+/** บันทึกทับเวอร์ชันที่ใช้อยู่ด้วยชุดธงปัจจุบัน */
+export async function overwriteVersion(id: number, by: string) {
+  if (id !== (await activeVersionId())) throw new UserError("บันทึกทับได้เฉพาะเวอร์ชันที่ใช้อยู่ เลือกใช้เวอร์ชันนั้นก่อน");
+  const s = await snapshot();
+  await q(`UPDATE plan_versions SET data = $2, people = $3, updated_at = now(), note = $4 WHERE id = $1`,
+    [id, s.data, s.count, `แก้ไขโดย ${by}`]);
+}
+
+/** เลือกใช้เวอร์ชัน: โหลดรายชื่อ ธง และผู้นำธงของเวอร์ชันนั้นมาเป็นชุดธงปัจจุบัน (ไม่สร้างเวอร์ชันใหม่) */
+export async function activateVersion(id: number) {
+  const v = await one<any>(`SELECT * FROM plan_versions WHERE id = $1`, [id]);
+  if (!v) throw new UserError("ไม่พบเวอร์ชันนี้");
+  const { people, leaders } = v.data;
+  await q(`DELETE FROM evac_plan`);
+  if (people.length) await q(`INSERT INTO evac_plan SELECT * FROM jsonb_populate_recordset(null::evac_plan, $1::jsonb)`, [JSON.stringify(people)]);
+  await q(`DELETE FROM flag_leaders`);
+  if (leaders.length) await q(`INSERT INTO flag_leaders SELECT * FROM jsonb_populate_recordset(null::flag_leaders, $1::jsonb)`, [JSON.stringify(leaders)]);
+  await q(`DELETE FROM flag_reviews`);
+  await setSetting(ACTIVE, id);
+  await q(`UPDATE plan_versions SET updated_at = now() WHERE id = $1 AND updated_at < now()`, [id]); // ไม่มีการแก้ค้าง
+  await setSetting(CHANGED, null);
+}
+
+/** ลบเวอร์ชัน (ลบเวอร์ชันที่ใช้อยู่ไม่ได้) */
+export async function deleteVersion(id: number) {
+  if (id === (await activeVersionId())) throw new UserError("ลบเวอร์ชันที่ใช้อยู่ไม่ได้ เลือกใช้เวอร์ชันอื่นก่อน");
+  const r = await one(`DELETE FROM plan_versions WHERE id = $1 RETURNING id`, [id]);
+  if (!r) throw new UserError("ไม่พบเวอร์ชันนี้");
+}
+
+/** สถานะเวอร์ชัน: ใช้อยู่ตัวไหน และมีการแก้ที่ยังไม่บันทึกหรือไม่ */
+export async function versionState() {
+  const active = await activeVersionId();
+  const changed = await getSetting<string | null>(CHANGED, null);
+  const v = active ? await one<{ updated_at: string }>(`SELECT updated_at FROM plan_versions WHERE id = $1`, [active]) : null;
+  const dirty = !!changed && (!v || new Date(changed) > new Date(v.updated_at));
+  return { active, dirty, changed_at: dirty ? changed : null };
 }
 
 /** นำเข้าแผนจาก Excel แทนที่ชุดเดิม เก็บธงจาก Excel ไว้เทียบความแม่นยำ แล้วบันทึกเป็นเวอร์ชันใหม่ */
@@ -64,19 +121,9 @@ export async function renameVersion(id: number, name: string) {
   if (!r) throw new UserError("ไม่พบเวอร์ชันนี้");
 }
 
-export async function rollback(versionId: number, by: string) {
-  const v = await one<any>(`SELECT * FROM plan_versions WHERE id = $1`, [versionId]);
-  if (!v) throw new UserError("ไม่พบเวอร์ชันนี้");
-  const { people, leaders } = v.data;
-  await q(`DELETE FROM evac_plan`);
-  if (people.length) {
-    await q(`INSERT INTO evac_plan SELECT * FROM jsonb_populate_recordset(null::evac_plan, $1::jsonb)`, [JSON.stringify(people)]);
-  }
-  await q(`DELETE FROM flag_leaders`);
-  if (leaders.length) {
-    await q(`INSERT INTO flag_leaders SELECT * FROM jsonb_populate_recordset(null::flag_leaders, $1::jsonb)`, [JSON.stringify(leaders)]);
-  }
-  return saveVersion(`ย้อนกลับไป v${versionId}`, by, v.name);
+export async function rollback(versionId: number) {
+  await activateVersion(versionId);
+  return versionId;
 }
 
 /** ภาพรวมสำหรับหน้าตั้งค่า */
@@ -100,7 +147,9 @@ export async function planOverview() {
     q<any>(`SELECT * FROM flag_leaders ORDER BY flag_no`),
     q<any>(`SELECT a.*, (SELECT array_agg(DISTINCT flag_no ORDER BY flag_no) FROM evac_plan
               WHERE assembly_point = a.code AND NOT removed) AS flags FROM assembly_points a ORDER BY sort, code`),
-    q<any>(`SELECT id, name, note, created_by, created_at, people FROM plan_versions ORDER BY id DESC LIMIT 10`),
+    q<any>(`SELECT v.id, v.name, v.note, v.created_by, v.created_at, v.updated_at, v.people,
+              (SELECT count(*)::int FROM incidents i WHERE i.plan_version = v.id) AS used
+            FROM plan_versions v ORDER BY v.id DESC LIMIT 100`),
     one<any>(`SELECT
         count(*) FILTER (WHERE NOT added_manually)::int AS imported,
         count(*) FILTER (WHERE NOT added_manually AND NOT removed AND flag_no IS DISTINCT FROM orig_flag)::int AS moved,
@@ -116,7 +165,7 @@ export async function planOverview() {
   const unchanged = Math.max(0, a.imported - a.moved - a.removed - a.edited);
   return {
     total: total?.n ?? 0, files: total?.files ?? 0, updated_at: total?.at ?? null,
-    flags, leaders, points, versions,
+    flags, leaders, points, versions, version: await versionState(),
     accuracy: { ...a, unchanged, pct: a.imported ? Math.round((unchanged / a.imported) * 100) : null },
   };
 }

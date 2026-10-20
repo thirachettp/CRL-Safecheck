@@ -95,7 +95,7 @@ export default function PlanEditor({ flags, leaders, points, total, onChanged }:
       </div>
       <div className="muted small" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>
         แสดง {limit.length} จาก {shown.length} ธง{!t && shown.length > 15 && <> · <button className="lk" style={{ minHeight: 0, padding: 0 }} onClick={() => setAll(!all)}>{all ? "ย่อ" : "ดูทั้งหมด"}</button></>}
-        {" "}· กดแถวเพื่อแก้ข้อมูลธงและรายชื่อ · แก้เสร็จแล้วกด “บันทึกเป็นชุดธงใหม่” ด้านบนเพื่อเก็บเป็นเวอร์ชัน
+        {" "}· กดแถวเพื่อแก้ข้อมูลธงและรายชื่อ · แก้เสร็จแล้วบันทึกทับเวอร์ชันที่ใช้อยู่ หรือบันทึกเป็นเวอร์ชันใหม่
       </div>
     </div>
   );
