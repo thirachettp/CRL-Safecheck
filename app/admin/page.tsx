@@ -8,7 +8,7 @@ import PlanEditor, { type FlagRow } from "@/components/PlanEditor";
 import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, rangeText } from "@/components/lib";
 import { IUpload } from "@/components/Icons";
-import type { MergedPlan, PlanFileResult, FlagSource } from "@/lib/parsers";
+import type { MergedPlan, PlanFileResult } from "@/lib/parsers";
 
 type Overview = {
   total: number; files: number; updated_at: string | null;
@@ -121,12 +121,11 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [raw, setRaw] = useState<PlanFileResult[] | null>(null);
-  const [src, setSrc] = useState<FlagSource>("sheet");
   const [name, setName] = useState("");
   const m: (MergedPlan & { files: number }) | null = useMemo(() => {
     if (!raw) return null;
-    return { ...mergePlanFn.current!(raw, src), files: raw.length };
-  }, [raw, src]);
+    return { ...mergePlanFn.current!(raw), files: raw.length };
+  }, [raw]);
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
 
   async function read(files: FileList | File[]) {
@@ -143,7 +142,6 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
       const res = [];
       for (const f of list) res.push(parsePlanWorkbook(XLSX.read(await f.arrayBuffer(), { type: "array" }), f.name));
       mergePlanFn.current = mergePlan;
-      setSrc("sheet");
       setName(list.length === 1 ? list[0].name.replace(/\.xlsx?$/i, "") : "");
       setRaw(res);
       if (skipped) setMsg({ k: "warn", t: `ข้าม ${skipped} ไฟล์ที่ไม่ใช่ .xlsx หรือเป็นไฟล์ชั่วคราว (~$)` });
@@ -197,16 +195,6 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
             <b className="grow">ผลตรวจ: {m.files} ไฟล์ · {m.people.length} คน · {new Set(m.people.map((p) => p.flag_no)).size} ธง</b>
             <span className="chip ok">นำเข้าได้ {m.people.length}</span><span className="chip warn">เตือน {warns.length}</span><span className="chip err">ต้องแก้ {errors.length}</span>
           </div>
-          {(m.flagMismatch > 0 || src === "leaders") && (
-            <div style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)", background: "#FFFBEB" }}>
-              <b className="small">เบอร์ธงใหม่ในชีตรายชื่อไม่ตรงกับชีตผู้นำธง{src === "sheet" ? ` (${m.flagMismatch} คน)` : ""}</b>
-              <div className="muted xs" style={{ margin: "2px 0 8px" }}>เลือกว่าจะใช้เบอร์ธงใหม่จากที่ไหน แล้วตรวจผลด้านล่างอีกครั้ง</div>
-              <div className="row" style={{ gap: 6 }}>
-                <button type="button" className={`pill${src === "sheet" ? " on" : ""}`} onClick={() => setSrc("sheet")}>ตามชีตรายชื่อ (คอลัมน์ธงใหม่)</button>
-                <button type="button" className={`pill${src === "leaders" ? " on" : ""}`} onClick={() => setSrc("leaders")}>แปลงจากธงเดิม ตามชีตผู้นำธง</button>
-              </div>
-            </div>
-          )}
           {m.duplicates.length > 0 && <div className="tr" style={{ gridTemplateColumns: "1fr" }}><span className="small">
             พบ {m.duplicates.length} คนอยู่มากกว่าหนึ่งไฟล์ ระบบใช้ค่าจากไฟล์แรก เช่น {m.duplicates.slice(0, 3).map((d) => `${d.emp_id} (${d.files.join(", ")})`).join("; ")}</span></div>}
           {(errors.length > 0 || warns.length > 0) && (

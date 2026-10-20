@@ -244,22 +244,14 @@ export type MergedPlan = {
   leaders: FlagLeader[];
   issues: FileIssue[];
   duplicates: { emp_id: string; files: string[] }[];
-  /** จำนวนคนที่เบอร์ธงใหม่ในชีตรายชื่อไม่ตรงกับชีตผู้นำธง (ธงเดิมเดียวกัน) */
-  flagMismatch: number;
 };
 
-/** sheet = ใช้เบอร์ธงใหม่ตามชีตรายชื่อ · leaders = แปลงจากธงเดิมตามชีตผู้นำธง */
-export type FlagSource = "sheet" | "leaders";
-
-/** รวมผลจากหลายไฟล์ ตรวจคนซ้ำข้ามไฟล์ และผู้นำธงที่ขัดกัน */
-export function mergePlan(results: PlanFileResult[], flagFrom: FlagSource = "sheet"): MergedPlan {
+/**
+ * รวมผลจากหลายไฟล์ · เบอร์ธงของแต่ละคนยึดตามคอลัมน์ "เบอร์ธงอพยพใหม่" ในแถวข้อมูลเสมอ (ไม่ดูชื่อไฟล์/ชื่อชีต)
+ * ผู้นำธง พื้นที่ และจุดรวมพลของธง ยึดตามแถวข้อมูลก่อน ชีตรายชื่อผู้นำธงใช้เติมธงที่ไม่มีข้อมูลในแถว
+ */
+export function mergePlan(results: PlanFileResult[]): MergedPlan {
   const issues = results.flatMap((r) => r.issues);
-  if (flagFrom === "leaders") {
-    const old2new = new Map<number, number>();
-    for (const r of results) for (const l of r.leaders) if (l.flag_no_old != null && !old2new.has(l.flag_no_old)) old2new.set(l.flag_no_old, l.flag_no);
-    results = results.map((r) => ({ ...r, people: r.people.map((p) =>
-      p.flag_no_old != null && old2new.has(p.flag_no_old) ? { ...p, flag_no: old2new.get(p.flag_no_old)! } : p) }));
-  }
   const byEmp = new Map<string, PlanPerson[]>();
   for (const r of results) for (const p of r.people) {
     const list = byEmp.get(p.emp_id) ?? [];
@@ -295,42 +287,39 @@ export function mergePlan(results: PlanFileResult[], flagFrom: FlagSource = "she
     }
     if (!prev) leaderMap.set(l.flag_no, l);
   }
-  // ตรวจกับชีตผู้นำธง: ธงเดิม → ธงใหม่ ต้องตรงกัน และชื่อผู้นำธงต้องตรงกับคนที่บทบาท "ผู้นำธง"
-  const byNew = new Map<number, string>();
-  for (const l of leaderMap.values()) byNew.set(l.flag_no, l.area ?? l.leader_name);
-  const byOld = new Map<number, FlagLeader>();
-  for (const l of leaderMap.values()) if (l.flag_no_old != null) byOld.set(l.flag_no_old, l);
-  const groups = new Map<string, { file: string; sheet: string; old: number; flag: number; n: number }>();
-  for (const p of people) {
-    if (p.flag_no_old == null || p.flag_no == null) continue;
-    const k = `${p.source_file}|${p.sheet ?? ""}|${p.flag_no_old}|${p.flag_no}`;
-    const g = groups.get(k) ?? { file: p.source_file, sheet: p.sheet ?? "", old: p.flag_no_old, flag: p.flag_no, n: 0 };
-    g.n++; groups.set(k, g);
-  }
-  let flagMismatch = 0;
-  for (const g of groups.values()) {
-    const l = byOld.get(g.old);
-    if (l && l.flag_no !== g.flag) {
-      flagMismatch += g.n;
-      issues.push({ file: g.file, level: "error",
-        message: `เบอร์ธงไม่ตรงกัน ${g.n} คน (ธงเดิม ${g.old} ${l.area ?? ""}): ชีต "${g.sheet.trim()}" ใส่ธงใหม่ ${g.flag}${byNew.get(g.flag) ? ` ซึ่งในชีตผู้นำธงคือ ${byNew.get(g.flag)}` : ""} · แต่ชีตผู้นำธงบอกว่าธงเดิม ${g.old} = ธงใหม่ ${l.flag_no} · ตอนนี้ใช้ธง ${g.flag} ถ้าชีตผู้นำธงถูก ให้กด “แปลงจากธงเดิม ตามชีตผู้นำธง”` });
+  // ข้อมูลธงจากแถวข้อมูล: ผู้นำธง = คนที่บทบาท "ผู้นำธง" · พื้นที่/จุดรวมพล/ธงเดิม/Cost Center = ค่าที่พบมากที่สุดในธง
+  const mode = (xs: (string | number | null)[]) => {
+    const c = new Map<string | number, number>();
+    for (const x of xs) if (x != null && x !== "") c.set(x, (c.get(x) ?? 0) + 1);
+    return [...c].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  };
+  const byFlag = new Map<number, PlanPerson[]>();
+  for (const p of people) if (p.flag_no != null) byFlag.set(p.flag_no, [...(byFlag.get(p.flag_no) ?? []), p]);
+  for (const [flag, list] of byFlag) {
+    const leadsP = list.filter((p) => /ผู้นำ/.test(p.role ?? ""));
+    const fromSheet = leaderMap.get(flag);
+    const name = leadsP.length ? `${leadsP[0].first_name} ${leadsP[0].last_name}`.replace(/\s+/g, " ").trim() : null;
+    if (leadsP.length > 1) {
+      issues.push({ file: leadsP[1].source_file, level: "warn",
+        message: `ธง ${flag} มีผู้นำธง ${leadsP.length} คน (${leadsP.map((p) => p.first_name).join(", ")}) ใช้ ${leadsP[0].first_name}` });
     }
-  }
-  for (const p of people) {
-    if (p.flag_no == null || !/ผู้นำ/.test(p.role ?? "")) continue;
-    const name = `${p.first_name} ${p.last_name}`.replace(/\s+/g, " ").trim();
-    const l = leaderMap.get(p.flag_no);
-    if (!l) {
-      leaderMap.set(p.flag_no, { flag_no: p.flag_no, assembly_point: p.assembly_point, flag_no_old: p.flag_no_old,
-        leader_name: name, cost_center: p.cost_center, area: p.area, note: "จากบทบาทในชีตรายชื่อ" });
-    } else if (stripTitle(l.leader_name) !== stripTitle(name)) {
-      issues.push({ file: p.source_file, level: "warn",
-        message: `ธง ${p.flag_no}: ชีต "${p.sheet ?? ""}" ระบุผู้นำธงเป็น "${name}" แต่ชีตผู้นำธงเป็น "${l.leader_name}" · ใช้ตามชีตผู้นำธง` });
-    }
+    leaderMap.set(flag, {
+      flag_no: flag,
+      leader_name: name ?? fromSheet?.leader_name ?? "",
+      area: (mode(list.map((p) => p.area)) as string | null) ?? fromSheet?.area ?? null,
+      assembly_point: (mode(list.map((p) => p.assembly_point)) as string | null) ?? fromSheet?.assembly_point ?? null,
+      flag_no_old: (mode(list.map((p) => p.flag_no_old)) as number | null) ?? fromSheet?.flag_no_old ?? null,
+      cost_center: (mode(list.map((p) => p.cost_center)) as string | null) ?? fromSheet?.cost_center ?? null,
+      note: fromSheet?.note ?? null,
+    });
+    if (!name && !fromSheet?.leader_name) issues.push({ file: list[0].source_file, level: "warn", message: `ธง ${flag} ไม่มีผู้นำธง (ไม่มีคนที่บทบาท "ผู้นำธงอพยพ")` });
   }
   const leaders = [...leaderMap.values()].sort((a, b) => a.flag_no - b.flag_no);
   people.sort((a, b) => (a.flag_no ?? 9999) - (b.flag_no ?? 9999) || a.emp_id.localeCompare(b.emp_id));
-  return { people, leaders, issues, duplicates, flagMismatch };
+  // ธงที่มีแค่ในชีตผู้นำธง แต่ธงเดิมของมันมีคนอยู่ในแถวข้อมูลแล้ว (ถูกเปลี่ยนเบอร์ใหม่) = ไม่ต้องสร้างธงว่างซ้ำ
+  const oldInData = new Set(people.map((p) => p.flag_no_old).filter((x) => x != null));
+  const kept = leaders.filter((l) => byFlag.has(l.flag_no) || (l.leader_name && !(l.flag_no_old != null && oldInData.has(l.flag_no_old))));
+  return { people, leaders: kept, issues, duplicates };
 }
 
 // ---------------- MS Form (Excel ที่ sync กับฟอร์ม) ----------------

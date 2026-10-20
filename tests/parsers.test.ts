@@ -114,13 +114,13 @@ test("ไฟล์ Template จริง: รหัส Outsource, ช่อง�
   assert.ok(r.issues.some((i) => /คำนำหน้า "นาย" แต่เพศ "หญิง"/.test(i.message)));
 
   const m = mergePlan([r]);
-  assert.equal(m.flagMismatch, 5);
-  assert.ok(m.issues.some((i) => i.level === "error" && /ธงเดิม 29 = ธงใหม่ 14/.test(i.message)));
-
-  const m2 = mergePlan([r], "leaders");
-  assert.equal(m2.flagMismatch, 0);
-  assert.ok(m2.people.every((p) => p.flag_no === 14));
-  assert.ok(!m2.issues.some((i) => /ผู้นำธงเป็น/.test(i.message)), "ผู้นำธงตรงกันเมื่อใช้เลขจากชีตผู้นำธง");
+  assert.ok(m.people.every((p) => p.flag_no === 30), "เบอร์ธงยึดตามแถวข้อมูล");
+  assert.ok(!m.issues.some((i) => i.level === "error"), "ไม่เทียบเบอร์ธงกับชีตผู้นำธง");
+  const l30 = m.leaders.find((l) => l.flag_no === 30);
+  assert.equal(l30?.leader_name, "รัตนา โสดา", "ผู้นำธงจากบทบาทในแถวข้อมูล");
+  assert.equal(l30?.area, "MZ3 ฝั่ง WH");
+  assert.equal(l30?.flag_no_old, 29);
+  assert.ok(!m.leaders.some((l) => l.flag_no === 14), "ธงในชีตผู้นำธงที่ธงเดิมถูกใช้ในแถวข้อมูลแล้ว ไม่สร้างธงว่างซ้ำ");
 });
 
 test("ไม่มีชีตผู้นำธง → ใช้คนที่บทบาทผู้นำธงเป็นผู้นำ", () => {
