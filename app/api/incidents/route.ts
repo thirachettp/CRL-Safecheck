@@ -20,10 +20,10 @@ export const POST = handle(async (req: Request) => {
   }
   if (b.action === "drill") {
     const actor = await requireRole(req, ["admin", "safety"]);
+    // ซ้อม: ดึงข้อมูลเข้า-ออกล่าสุดก่อน แล้วค่อยเทียบกับผลตรวจทานธงตอนสร้างรายชื่อ (รอไม่เกิน ~15 วินาที)
+    const pulled = await fanOutSync(15_000).catch(() => []);
     const id = await startDrill(actor, b.title);
-    // snapshot แล้ว ค่อยดึงข้อมูลสดตามมา ไม่ให้หน้าจอรอ
-    fanOutSync(25_000).then(() => mergeIntoIncident(id, "sync")).catch(() => {});
-    return ok({ id });
+    return ok({ id, pulled });
   }
   return fail("ไม่รู้จักคำสั่ง");
 });

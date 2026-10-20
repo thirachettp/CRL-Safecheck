@@ -42,8 +42,8 @@ async function issue(code: string) {
 export async function accountState(code: string): Promise<"password" | "setup" | "register"> {
   if (builtinAdmin() && code.toLowerCase() === builtinAdmin()) return "password";
   const r = await one<any>(`SELECT email, password_hash FROM profiles WHERE code = $1`, [code]);
-  if (!r?.email) return "register";
-  return r.password_hash ? "password" : "setup";
+  if (r?.password_hash) return "password";
+  return r?.email ? "setup" : "register"; // บัญชีเก่าที่ลงทะเบียนก่อนมีรหัสผ่าน (มีอีเมล) → ยืนยันอีเมลแล้วตั้งรหัส
 }
 
 export async function login(code: string, password: string) {
@@ -61,9 +61,9 @@ export async function login(code: string, password: string) {
     await q(`UPDATE profiles SET failed_logins = 0, locked_until = NULL, last_login_at = now() WHERE code = $1`, [code]);
     return issue(code);
   }
-  const r = await one<any>(`SELECT code, email, password_hash, failed_logins, locked_until FROM profiles WHERE code = $1 AND email IS NOT NULL`, [code]);
+  const r = await one<any>(`SELECT code, email, password_hash, failed_logins, locked_until FROM profiles WHERE code = $1 AND (password_hash IS NOT NULL OR email IS NOT NULL)`, [code]);
   if (!r) throw err("ไม่พบบัญชีนี้ กรุณาลงทะเบียน", 404, { needRegister: true });
-  if (String(r.email).endsWith("@safecheck.local")) throw err("บัญชี admin ในตัวปิดใช้งานอยู่ (ยังไม่ได้ตั้ง ADMIN_PASSWORD ใน Vercel)", 403);
+  if (String(r.email ?? "").endsWith("@safecheck.local")) throw err("บัญชี admin ในตัวปิดใช้งานอยู่ (ยังไม่ได้ตั้ง ADMIN_PASSWORD ใน Vercel)", 403);
   if (!r.password_hash) throw err("บัญชีนี้ยังไม่ได้ตั้งรหัสผ่าน", 409, { needSetup: true });
   if (r.locked_until && new Date(r.locked_until) > new Date()) {
     const m = Math.ceil((new Date(r.locked_until).getTime() - Date.now()) / 60e3);
@@ -119,7 +119,7 @@ export async function listUsers(term: string) {
     `SELECT p.code, p.name, p.cost_center, c.name AS cc_name, p.email, p.role, p.password_hash IS NOT NULL AS has_password,
        p.must_change_pw, p.locked_until > now() AS locked, p.last_login_at
      FROM profiles p LEFT JOIN cost_centers c ON c.code = p.cost_center
-     WHERE p.email IS NOT NULL AND ($1 = '' OR p.code ILIKE '%' || $1 || '%' OR p.name ILIKE '%' || $1 || '%' OR p.email ILIKE '%' || $1 || '%')
+     WHERE (p.password_hash IS NOT NULL OR p.email IS NOT NULL) AND ($1 = '' OR p.code ILIKE '%' || $1 || '%' OR p.name ILIKE '%' || $1 || '%' OR COALESCE(p.email, '') ILIKE '%' || $1 || '%')
      ORDER BY (p.role <> 'user') DESC, p.name LIMIT 100`, [t]);
   const boot = bootstrapAdmins();
   return rows.map((r) => ({ ...r, role: effectiveRole(r.code, r.role), fixed_admin: boot.includes(r.code) }));
@@ -129,7 +129,7 @@ export async function setRole(code: string, role: UserRole, by: string) {
   if (!["user", "safety", "admin"].includes(role)) throw err("บทบาทไม่ถูกต้อง");
   if (bootstrapAdmins().includes(code) && role !== "admin") throw err("รหัสนี้ถูกกำหนดเป็น Admin ใน ADMIN_CODES ของ Vercel แก้ที่นั่นแทน");
   if (code === by && role !== "admin") throw err("ลดสิทธิ์ตัวเองไม่ได้ ให้ Admin คนอื่นทำ");
-  const r = await one<any>(`UPDATE profiles SET role = $2 WHERE code = $1 AND email IS NOT NULL RETURNING code`, [code, role]);
+  const r = await one<any>(`UPDATE profiles SET role = $2 WHERE code = $1 AND (password_hash IS NOT NULL OR email IS NOT NULL) RETURNING code`, [code, role]);
   if (!r) throw err("ไม่พบบัญชีนี้", 404);
   await log(code, "role", role, by);
   return { code, role };
@@ -141,7 +141,7 @@ export async function resetPassword(code: string, by: string) {
   const tmp = tempPassword();
   const r = await one<any>(
     `UPDATE profiles SET password_hash = $2, pw_ver = pw_ver + 1, must_change_pw = true, failed_logins = 0, locked_until = NULL
-     WHERE code = $1 AND email IS NOT NULL RETURNING code`, [code, await hashPassword(tmp)]);
+     WHERE code = $1 AND (password_hash IS NOT NULL OR email IS NOT NULL) RETURNING code`, [code, await hashPassword(tmp)]);
   if (!r) throw err("ไม่พบบัญชีนี้", 404);
   await log(code, "reset", null, by);
   return { code, temp: tmp };

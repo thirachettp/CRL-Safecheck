@@ -33,8 +33,10 @@ export function problems(f: ProfileForm) {
   if (!f.last_name.trim()) out.push("นามสกุล");
   if (!/^[A-Za-z0-9-]{3,30}$/.test(f.code.trim())) out.push("รหัสพนักงาน");
   if (!f.cost_center) out.push("Cost Center");
-  if (!EMAIL_RE.test(f.email.trim())) out.push("อีเมล @central.co.th");
-  if (!telOk(f.tel)) out.push("เบอร์โทร");
+  if (!f.gender) out.push("เพศ");
+  // ไม่บังคับ แต่ถ้ากรอกต้องถูกรูปแบบ
+  if (f.email.trim() && !EMAIL_RE.test(f.email.trim())) out.push("อีเมล (ต้องเป็น @central.co.th)");
+  if (f.tel.trim() && !telOk(f.tel)) out.push("เบอร์โทร (9–10 หลัก)");
   return out;
 }
 
@@ -76,13 +78,13 @@ export default function ProfileFields({ f, set, codeLocked, onDeleteMedical }: {
         <div className="lb" style={L}>Cost Center{req}
           <CostCenterPicker value={f.cost_center} by={f.code} onChange={(cc) => set({ ...f, cost_center: cc })} />
         </div>
-        <label className="lb" style={L}>อีเมลบริษัท{req}
+        <label className="lb" style={L}>อีเมลบริษัท <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ</span>
           <input className="in" type="email" inputMode="email" autoComplete="email" placeholder="ชื่อ@central.co.th" value={f.email} onChange={up("email")}
             style={emailBad ? { borderColor: "#FCA5A5" } : undefined} />
         </label>
         {emailBad && <div className="xs" style={{ marginTop: -6, color: "#9F1239" }}>ต้องลงท้ายด้วย @central.co.th</div>}
-        <label className="lb" style={L}>เบอร์โทร{req}<input className="in" inputMode="tel" autoComplete="tel" placeholder="08x-xxx-xxxx" value={f.tel} onChange={up("tel")} /></label>
-        <div className="lb" style={L}>เพศ
+        <label className="lb" style={L}>เบอร์โทร <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ</span><input className="in" inputMode="tel" autoComplete="tel" placeholder="08x-xxx-xxxx" value={f.tel} onChange={up("tel")} /></label>
+        <div className="lb" style={L}>เพศ{req}
           <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: "nowrap" }}>
             {["ชาย", "หญิง", "ไม่ระบุ"].map((g) => <button type="button" key={g} className={`seg${f.gender === g ? " on" : ""}`} onClick={() => set({ ...f, gender: g })}>{g}</button>)}
           </div>

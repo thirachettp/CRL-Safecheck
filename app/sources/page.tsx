@@ -13,7 +13,7 @@ type Data = {
   recent: { response_id: string; email: string; full_name: string | null; gender: string | null; site: string | null; submitted_at: string; via: string }[];
   graph: boolean;
   outsource?: {
-    recent: { emp_id: string; name: string | null; cost_center: string | null; site: string | null; status: string | null; clock_in: string | null; clock_out: string | null; received_at: string }[];
+    recent: { emp_id: string; name: string | null; name_from?: string | null; cost_center: string | null; site: string | null; status: string | null; clock_in: string | null; clock_out: string | null; received_at: string }[];
     staff: number; staff_at: string | null; present: number; ingest: boolean;
   };
 };
@@ -81,13 +81,19 @@ function Sources() {
             นับว่าอยู่ในพื้นที่เมื่อ Clock in ภายใน 14 ชม. และยังไม่ Clock out · ชื่อและ Cost Center มาจากรายชื่อ DC_FTE
             {d.data?.outsource && !d.data.outsource.ingest ? " · ยังไม่ได้ตั้ง token ใน Vercel" : ""}
           </p>
-          <div className="scroll-x"><table className="tbl">
+          {d.data?.outsource && d.data.outsource.staff === 0 && (
+            <div style={{ padding: "0 18px 10px" }}><p className="notice warn">
+              ยังไม่มีรายชื่อจาก DC_FTE เลยไม่มีชื่อพนักงาน · ระบบใช้ชื่อจากชุดธงแทนถ้ารหัสตรงกัน ·
+              ให้ดึงรายชื่อด้วยแท็บ “Maintain” (ต้องตั้ง OS_BACKFILL_URL ใน Vercel) หรือให้ Flow แนบชื่อมากับแถวเข้างาน
+            </p></div>
+          )}
+          <div className="scroll-x freeze"><table className="tbl">
             <thead><tr><th>รับเมื่อ</th><th>รหัส</th><th>ชื่อ</th><th>Cost Center</th><th>ไซต์</th><th>เข้า</th><th>ออก</th><th>สถานะ</th></tr></thead>
             <tbody>
               {!d.data?.outsource?.recent.length && <tr><td colSpan={8} className="muted">ยังไม่มีข้อมูล Outsource</td></tr>}
               {d.data?.outsource?.recent.map((r, i) => (
                 <tr key={`${r.emp_id}-${i}`}>
-                  <td className="mono">{fmtDateTime(r.received_at)}</td><td className="mono">{r.emp_id}</td><td>{r.name || "—"}</td>
+                  <td className="mono">{fmtDateTime(r.received_at)}</td><td className="mono">{r.emp_id}</td><td>{r.name || <span className="muted">ไม่มีใน DC_FTE / ชุดธง</span>}{r.name_from === "ชุดธง" && <span className="muted xs"> · จากชุดธง</span>}</td>
                   <td className="mono">{r.cost_center ?? "—"}</td><td>{r.site ?? "—"}</td>
                   <td className="mono">{r.clock_in ? fmtDateTime(r.clock_in) : "—"}</td><td className="mono">{r.clock_out ? fmtDateTime(r.clock_out) : "—"}</td>
                   <td>{r.status ?? "—"}</td>
@@ -100,7 +106,7 @@ function Sources() {
         <section className="card">
           <div className="card-h"><span className="grow">เช็กอินฟอร์มล่าสุด</span>
             <span className="muted xs" style={{ fontWeight: 500 }}>{d.data?.sites.length ? `ไซต์: ${d.data.sites.map((s) => `${s.site} (${s.n})`).join(", ")}` : ""}</span></div>
-          <div className="scroll-x"><table className="tbl">
+          <div className="scroll-x freeze"><table className="tbl">
             <thead><tr><th>เวลาส่ง</th><th>ชื่อ</th><th>อีเมล</th><th>เพศ</th><th>ไซต์</th><th>มาจาก</th></tr></thead>
             <tbody>
               {!d.data?.recent.length && <tr><td colSpan={6} className="muted">ยังไม่มีข้อมูลเช็กอิน</td></tr>}
@@ -260,7 +266,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
         </div>
       )}
       {!!d.data?.vehicles.length && (
-        <div className="scroll-x" style={{ maxHeight: 360, overflowY: "auto" }}>
+        <div className="scroll-x freeze" style={{ maxHeight: 360 }}>
           <table className="tbl">
             <thead><tr><th>ทะเบียน</th><th>คนขับ</th><th>บริษัท</th><th>โซน</th><th>เข้าลาน</th></tr></thead>
             <tbody>
@@ -307,14 +313,14 @@ function LinkPanel() {
       {msg && <div style={{ padding: "0 18px 12px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
       {un.length > 0 ? (
         <>
-          <table className="tbl">
+          <div className="freeze" style={{ maxHeight: 420 }}><table className="tbl">
             <thead><tr><th>อีเมลที่ยังไม่จับคู่</th><th>ชื่อในฟอร์ม</th><th>ส่งฟอร์ม</th><th>รหัสพนักงาน</th></tr></thead>
             <tbody>{un.map((u) => (
               <tr key={u.email}><td className="small">{u.email}</td><td>{u.name}</td><td className="mono">{u.checkins}</td>
                 <td style={{ minWidth: 150 }}><input className="in mono" style={{ marginTop: 0 }} inputMode="numeric" placeholder="เช่น 20076487" value={draft[u.email] ?? ""}
                   onChange={(e) => setDraft({ ...draft, [u.email]: e.target.value })} aria-label={`รหัสพนักงานของ ${u.email}`} /></td></tr>
             ))}</tbody>
-          </table>
+          </table></div>
           <div style={{ padding: "12px 18px" }}><button className="btn btn-pri btn-sm" disabled={!Object.values(draft).some(Boolean)}
             onClick={() => send(Object.entries(draft).filter(([, v]) => v).map(([email, emp_id]) => ({ email, emp_id })))}>บันทึกการจับคู่</button></div>
         </>

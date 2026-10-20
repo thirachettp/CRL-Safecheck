@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PcHeader from "@/components/PcHeader";
 import { useAdmin } from "@/components/identity";
-import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI, rangeText } from "@/components/lib";
+import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI, rangeText, ago } from "@/components/lib";
 import { IClock } from "@/components/Icons";
 
 export default function DashboardPage() {
@@ -205,6 +205,8 @@ function IncidentDash({ id }: { id: number }) {
           </div>
         </section>
 
+        <SourceStrip sources={d.data?.sources ?? []} people={people} now={now} incidentId={id} active={inc.state === "active"} onDone={d.reload} />
+
         <div className="g2">
           <section className="card">
             <div className="card-h" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -330,5 +332,53 @@ function IncidentDash({ id }: { id: number }) {
         </div>
       </div>
     </>
+  );
+}
+
+/** สถานะการดึงข้อมูลจากแต่ละแหล่ง + จำนวนคนที่มาจากแหล่งนั้นในเหตุการณ์ */
+const PRESENCE: Record<string, string> = { div: "div", outsource: "outsource", driver: "kiosk" };
+function SourceStrip({ sources, people, now, incidentId, active, onDone }: {
+  sources: any[]; people: any[]; now: number; incidentId: number; active: boolean; onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function refresh() {
+    setBusy(true); setMsg(null);
+    try { const r: any = await api(`/api/incidents/${incidentId}/refresh`, { method: "POST" }); setMsg(`ดึงแล้ว · เพิ่ม ${r.added ?? 0} คน`); onDone(); }
+    catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
+  }
+  const state = (x: any) => {
+    if (!x.ready) return { c: "#9CA3AF", t: "ยังไม่เชื่อม" };
+    const failed = x.last_error && (!x.last_ok_at || new Date(x.last_try_at) > new Date(x.last_ok_at));
+    if (failed) return { c: "#B91C1C", t: `ดึงไม่สำเร็จ ${ago(x.last_try_at, now)}` };
+    if (!x.last_ok_at) return { c: "#C2410C", t: "ยังไม่มีข้อมูล" };
+    const age = now - new Date(x.last_ok_at).getTime();
+    return { c: age > 30 * 60e3 ? "#C2410C" : "#166534", t: `อัปเดต ${ago(x.last_ok_at, now)}` };
+  };
+  return (
+    <section className="card" style={{ padding: "12px 18px" }}>
+      <div className="row" style={{ gap: 18 }}>
+        <b className="small">สถานะการดึงข้อมูล</b>
+        {sources.map((x) => {
+          const st = state(x);
+          const pk = PRESENCE[x.key];
+          const n = pk ? people.filter((p) => p.presence === pk).length : null;
+          return (
+            <div key={x.key} className="row" style={{ gap: 6, flexWrap: "nowrap" }} title={x.last_error ?? undefined}>
+              <span className="dot" style={{ background: st.c }} />
+              <span className="small"><b>{x.label}</b> <span className="muted">{st.t}{n != null && x.ready ? ` · ในเหตุการณ์ ${n} คน` : ""}</span></span>
+            </div>
+          );
+        })}
+        <span className="grow" />
+        {msg && <span className="muted xs">{msg}</span>}
+        {active && <button className="btn btn-sm" onClick={refresh} disabled={busy}>{busy ? "กำลังดึง…" : "ดึงข้อมูลอีกครั้ง"}</button>}
+      </div>
+      {sources.some((x) => x.ready && x.last_error && (!x.last_ok_at || new Date(x.last_try_at) > new Date(x.last_ok_at))) && (
+        <div className="xs" style={{ marginTop: 6, color: "#9F1239" }}>
+          {sources.filter((x) => x.ready && x.last_error && (!x.last_ok_at || new Date(x.last_try_at) > new Date(x.last_ok_at))).map((x) => `${x.label}: ${x.last_error}`).join(" · ")}
+        </div>
+      )}
+    </section>
   );
 }

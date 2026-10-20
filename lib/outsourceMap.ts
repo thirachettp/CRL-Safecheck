@@ -39,16 +39,31 @@ export function parseAttendance(r: any): OsAttendance | null {
   };
 }
 
-export function parseStaff(r: any): OsStaff | null {
-  const emp_id = pick(r, "employee_id", "field_1", "emp_id");
+export function parseStaff(r: any, fallbackEmp?: string): OsStaff | null {
+  // ข้อมูลรายชื่ออาจถูกแนบมาเป็น object ซ้อน (เช่นผลจาก Get items ใน Flow)
+  const nested = ["staff", "employee", "lookup", "Lookup_employee", "fte", "value"].map((k) => r?.[k]).find((v) => v && typeof v === "object");
+  const src = Array.isArray(nested) ? nested[0] : nested;
+  const both = (...keys: string[]) => pick(r, ...keys) || (src ? pick(src, ...keys) : "");
+  const emp_id = both("employee_id", "field_1", "emp_id", "EmployeeID", "Employee_ID") || fallbackEmp || "";
   if (!emp_id) return null;
+  let first = both("firstname", "first_name", "FirstName", "First_Name", "field_3", "fname");
+  let last = both("lastname", "last_name", "LastName", "Last_Name", "field_4", "lname");
+  const full = both("fullname", "full_name", "FullName", "employee_name", "EmployeeName", "Name", "name");
+  if (!first && !last && full) {
+    const parts = full.replace(/\s+/g, " ").trim().split(" ");
+    first = parts.shift() ?? "";
+    last = parts.join(" ");
+  }
   return {
     emp_id,
-    first_name: pick(r, "firstname", "first_name", "field_3") || null,
-    last_name: pick(r, "lastname", "last_name", "field_4") || null,
-    cost_center: pick(r, "cost_center", "field_2") || null,
+    first_name: first || null,
+    last_name: last || null,
+    cost_center: both("cost_center", "CostCenter", "Cost_Center", "field_2") || null,
   };
 }
+
+/** มีข้อมูลชื่อหรือ Cost Center แนบมากับแถวเข้างานหรือไม่ */
+export const hasStaffInfo = (s: OsStaff | null) => !!s && !!(s.first_name || s.last_name || s.cost_center);
 
 /**
  * ใครอยู่ในพื้นที่ตอนนี้: รายการล่าสุดของแต่ละรหัส มี clock_in ภายใน 14 ชม. และยังไม่ clock_out

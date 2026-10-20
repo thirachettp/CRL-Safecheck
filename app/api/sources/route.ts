@@ -14,8 +14,13 @@ export const GET = handle(async (req: Request) => {
     q(`SELECT site, count(*)::int AS n FROM div_checkins WHERE site IS NOT NULL GROUP BY site ORDER BY n DESC`),
     q(`SELECT response_id, email, full_name, gender, site, submitted_at, via
        FROM div_checkins ORDER BY submitted_at DESC LIMIT 30`),
-    q(`SELECT a.emp_id, concat_ws(' ', s.first_name, s.last_name) AS name, s.cost_center, a.site, a.status, a.clock_in, a.clock_out, a.received_at
+    q(`SELECT a.emp_id,
+         COALESCE(NULLIF(concat_ws(' ', s.first_name, s.last_name), ''), NULLIF(concat_ws(' ', p.first_name, p.last_name), '')) AS name,
+         CASE WHEN NULLIF(concat_ws(' ', s.first_name, s.last_name), '') IS NOT NULL THEN 'DC_FTE'
+              WHEN p.emp_id IS NOT NULL THEN 'ชุดธง' END AS name_from,
+         COALESCE(s.cost_center, p.cost_center) AS cost_center, a.site, a.status, a.clock_in, a.clock_out, a.received_at
        FROM outsource_attendance a LEFT JOIN outsource_staff s USING (emp_id)
+       LEFT JOIN evac_plan p ON p.emp_id = a.emp_id AND NOT p.removed
        ORDER BY a.received_at DESC LIMIT 30`),
     q(`SELECT count(*)::int AS n, max(updated_at) AS at FROM outsource_staff`),
     outsourcePresent(),

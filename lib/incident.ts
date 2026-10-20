@@ -55,6 +55,8 @@ type Candidate = {
   name: string; gender: string | null; area: string | null; cost_center: string | null; cc_name: string | null;
   tel: string | null; flag_no: string | null; assembly_point: string | null; is_leader: boolean;
   presence: string; presence_site: string | null; presence_since: string | null; here: boolean; source: string;
+  /** เหตุผลที่ระบบตัดสิน มา/ไม่มา (เทียบผลตรวจทานธงกับข้อมูลเข้า-ออก) */
+  note?: string | null;
 };
 
 /** รายชื่อที่ควรอยู่ในเหตุการณ์: แผนอพยพ (หักคนที่ลบ) + คนที่อยู่ในพื้นที่จากแต่ละแหล่ง */
@@ -78,6 +80,11 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     outsourcePresent(now),
     q<any>(`SELECT * FROM outsource_staff`),
   ]);
+  // Outsource ที่ระบบรู้จัก (มีในรายชื่อ DC_FTE หรือเคยบันทึกเข้า-ออกใน 14 วัน) → บอกได้ว่าไม่อยู่
+  const osKnown = new Set<string>([
+    ...osStaff.map((x: any) => x.emp_id),
+    ...(await q<{ emp_id: string }>(`SELECT DISTINCT emp_id FROM outsource_attendance WHERE received_at > now() - interval '14 days'`)).map((x) => x.emp_id),
+  ]);
   const linkMap = new Map<string, string>(links.map((l) => [l.email, l.emp_id]));
   const planMap = new Map<string, any>(plan.map((p) => [p.emp_id, p]));
   const hereMap = new Map<string, boolean>(att.map((a) => [a.person_key, a.here]));
@@ -97,9 +104,37 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     present.set(email, { site: p.site, since: p.since, row: list[list.length - 1] });
   }
 
+  // DIV+: อีเมลที่จับคู่รหัสแล้ว และมีการส่งฟอร์มใน 48 ชม. → บอกได้ว่าเข้า/ออก
+  const divByEmp = new Map<string, { inNow: boolean; last: Date }>();
+  for (const [email, list] of byEmail) {
+    const emp = linkMap.get(email);
+    if (!emp) continue;
+    const last = new Date(list[list.length - 1].submitted_at);
+    const prev = divByEmp.get(emp);
+    divByEmp.set(emp, { inNow: (prev?.inNow ?? false) || present.has(email), last: prev && prev.last > last ? prev.last : last });
+  }
+  const osIn = new Map<string, any>(osPresent.map((a: any) => [a.emp_id, a]));
+  const hhmm = (d: Date | string) => new Date(d).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+  /** เทียบผลตรวจทานธง (มา/ไม่มา) กับข้อมูลเข้า-ออกจากระบบ */
+  const decide = (emp: string, key: string): { here: boolean; note: string | null } => {
+    const marked = hereMap.get(key); // true = มา, false = ไม่มา, undefined = ยังไม่ตรวจ
+    const os = osIn.get(emp);
+    const dv = divByEmp.get(emp);
+    const sysIn = !!os || !!dv?.inNow;
+    const sysKnown = sysIn || osKnown.has(emp) || !!dv;
+    const where = os ? `Outsource เข้า ${hhmm(os.clock_in)}` : dv?.inNow ? `DIV+ เช็คอิน` : null;
+    if (marked === false) {
+      return sysIn ? { here: true, note: `ตรวจทานว่าไม่มา แต่ระบบเห็นว่าอยู่ (${where}) ต้องนับ` } : { here: false, note: "ตรวจทานธง: ไม่มา" };
+    }
+    if (marked === true) return { here: true, note: null };
+    if (sysKnown && !sysIn) return { here: false, note: osKnown.has(emp) ? "ระบบ: Outsource ไม่ได้ Clock in / Clock out แล้ว" : `ระบบ: DIV+ เช็คเอาท์แล้ว (ล่าสุด ${hhmm(dv!.last)})` };
+    return { here: true, note: null };
+  };
+
   const out = new Map<string, Candidate>();
   const fromPlan = (p: any): Candidate => {
     const key = `emp:${p.emp_id}`;
+    const dc = decide(p.emp_id, key);
     return {
       person_key: key, emp_id: p.emp_id, email: null, plate: null,
       name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.emp_id,
@@ -107,7 +142,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       tel: p.tel ?? telMap.get(p.emp_id) ?? null, flag_no: p.flag_no,
       assembly_point: p.assembly_point ?? (p.flag_no != null ? flagPoint.get(p.flag_no) ?? null : null),
       is_leader: /^\s*ผู้นำ/.test(p.role ?? ""), presence: "plan", presence_site: null, presence_since: null,
-      here: hereMap.get(key) ?? true, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
+      here: dc.here, note: dc.note, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
     };
   };
   if (inc.include_plan) for (const p of plan) out.set(`emp:${p.emp_id}`, fromPlan(p));
@@ -176,11 +211,11 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
   const col = <K extends keyof Candidate>(k: K) => C.map((c) => c[k]);
   const ins = await q(
     `INSERT INTO incident_people (incident_id, person_key, emp_id, email, plate, name, gender, area, cost_center, cc_name,
-       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by)
-     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20
+       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by, status_note)
+     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20, nt
      FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
-       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[])
-       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src)
+       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[], $21::text[])
+       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, nt)
      ON CONFLICT (incident_id, person_key) DO UPDATE SET
        email = COALESCE(EXCLUDED.email, incident_people.email),
        presence = CASE WHEN EXCLUDED.presence IN ('div','kiosk','outsource') THEN EXCLUDED.presence ELSE incident_people.presence END,
@@ -191,7 +226,7 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
     [
       incidentId, col("person_key"), col("emp_id"), col("email"), col("plate"), col("name"), col("gender"), col("area"),
       col("cost_center"), col("cc_name"), col("tel"), col("flag_no"), col("assembly_point"), col("is_leader"), col("presence"),
-      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy,
+      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy, C.map((c) => c.note ?? null),
     ],
   );
   await q(

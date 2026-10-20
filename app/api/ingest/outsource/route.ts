@@ -1,5 +1,6 @@
 import { handle, ok, fail } from "@/lib/http";
 import { parseAttendance, parseStaff, storeAttendance, storeStaff } from "@/lib/outsource";
+import { hasStaffInfo } from "@/lib/outsourceMap";
 import { markSource } from "@/lib/sources";
 
 export const dynamic = "force-dynamic";
@@ -17,13 +18,13 @@ export const POST = handle(async (req: Request) => {
   const kind = String(body?.kind ?? "attendance");
   const records: any[] = Array.isArray(body) ? body : Array.isArray(body?.records) ? body.records : Array.isArray(body?.value) ? body.value : [body];
   if (kind === "staff") {
-    const rows = records.map(parseStaff).filter((r): r is NonNullable<typeof r> => !!r);
+    const rows = records.map((r) => parseStaff(r)).filter((r): r is NonNullable<typeof r> => !!r);
     const n = await storeStaff(rows);
     return ok({ kind, received: records.length, saved: n });
   }
   const rows = records.map(parseAttendance).filter((r): r is NonNullable<typeof r> => !!r);
   // ชื่อที่แนบมากับแถวเข้างาน (ถ้า Flow ส่งมาด้วย) เก็บเป็นรายชื่อไปพร้อมกัน
-  const staff = records.map((r) => (r?.firstname || r?.lastname || r?.cost_center ? parseStaff(r) : null)).filter((r): r is NonNullable<typeof r> => !!r);
+  const staff = records.map((r) => parseStaff(r, parseAttendance(r)?.emp_id)).filter(hasStaffInfo) as NonNullable<ReturnType<typeof parseStaff>>[];
   const n = await storeAttendance(rows);
   if (staff.length) await storeStaff(staff);
   await markSource("outsource", true, null);

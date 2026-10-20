@@ -301,3 +301,6 @@ ol.steps li::before { content: counter(st); grid-row: span 2; width: 26px; heigh
 .psearch-i:first-child { border-top: 0; }
 .psearch-i:hover { background: var(--subtle); }
 tr.hl td, .hl { background: #FEF9C3 !important; transition: background .3s; }
+/* หัวตารางค้าง (Freeze Header) */
+.freeze { max-height: 60vh; overflow: auto; }
+.freeze .tbl thead th { position: sticky; top: 0; z-index: 2; box-shadow: inset 0 -1px 0 var(--line-3); }

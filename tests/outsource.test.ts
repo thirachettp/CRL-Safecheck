@@ -33,3 +33,14 @@ test("อยู่ในพื้นที่ = เข้าภายใน 14 �
   ];
   assert.deepEqual(presentFrom(rows, now).map((r) => r.emp_id).sort(), ["A", "D"]);
 });
+
+test("ชื่อ Outsource แนบมากับแถวเข้างานได้หลายรูปแบบ", async () => {
+  const { parseStaff, hasStaffInfo } = await import("../lib/outsourceMap.ts");
+  const a = parseStaff({ Title: "KNN1", ID: 5, FirstName: "สมใจ", LastName: "ดี" }, "KNN1");
+  assert.deepEqual([a?.emp_id, a?.first_name, a?.last_name], ["KNN1", "สมใจ", "ดี"]);
+  const b = parseStaff({ Title: "KNN2", Lookup_employee: [{ field_1: "KNN2", field_3: "มานะ", field_4: "ขยัน", field_2: "82640" }] }, "KNN2");
+  assert.deepEqual([b?.first_name, b?.last_name, b?.cost_center], ["มานะ", "ขยัน", "82640"]);
+  const c = parseStaff({ Title: "KNN3", fullname: "ปิติ ยินดี มาก" }, "KNN3");
+  assert.deepEqual([c?.first_name, c?.last_name], ["ปิติ", "ยินดี มาก"]);
+  assert.equal(hasStaffInfo(parseStaff({ Title: "KNN4", ID: 1 }, "KNN4")), false);
+});

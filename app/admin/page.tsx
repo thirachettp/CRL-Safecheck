@@ -42,11 +42,13 @@ function Admin() {
     setMsg(null);
     try { await fn(); setMsg({ k: "ok", t: ok }); o.reload(); return true; } catch (e: any) { setMsg({ k: "err", t: e.message }); return false; }
   }
+  const [starting, setStarting] = useState(false);
   async function startDrill() {
+    setStarting(true);
     try {
       await api("/api/incidents", { method: "POST", json: { action: "drill", title: `ซ้อมอพยพ ${new Date().getFullYear()}` } });
       router.push("/dashboard");
-    } catch (e: any) { setMsg({ k: "err", t: e.message }); }
+    } catch (e: any) { setMsg({ k: "err", t: e.message }); setStarting(false); }
   }
 
   return (
@@ -56,7 +58,7 @@ function Admin() {
           <div className="muted small" style={{ fontWeight: 600 }}>เฉพาะ Admin · ใช้บน PC</div>
           <h1 style={{ margin: "4px 0 0", fontSize: 28 }}>ตั้งค่า</h1>
         </div>
-        <button className="btn" onClick={startDrill} disabled={!o.data?.total}>เริ่มซ้อม</button>
+        <button className="btn" onClick={startDrill} disabled={!o.data?.total || starting} title="ดึงข้อมูลเข้า-ออกล่าสุด แล้วเทียบกับผลตรวจทานธง">{starting ? "กำลังดึงข้อมูลและเทียบ…" : "เริ่มซ้อม"}</button>
         {naming ? (
           <form className="row" style={{ gap: 8, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault();
             run(() => api("/api/admin/versions", { method: "POST", json: { action: "save", note: "บันทึกหลังแก้ไข", name: vName } }),

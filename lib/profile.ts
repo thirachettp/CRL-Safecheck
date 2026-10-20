@@ -33,7 +33,7 @@ export async function validateProfile(b: ProfileInput, opts: { requireAll: boole
   if (opts.requireAll) {
     const miss = [
       !p.prefix && "คำนำหน้า", !p.first_name && "ชื่อ", !p.last_name && "นามสกุล",
-      !p.cost_center && "Cost Center", !p.email && "อีเมล", !p.tel && "เบอร์โทร",
+      !p.cost_center && "Cost Center", !p.gender && "เพศ",
     ].filter(Boolean);
     if (miss.length) throw new UserError(`กรอกให้ครบ: ${miss.join(", ")}`);
   }

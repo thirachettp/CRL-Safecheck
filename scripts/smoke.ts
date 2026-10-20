@@ -114,6 +114,10 @@ ok(await fails(j("/api/register", { method: "POST", json: { ...reg, last_name: "
 ok(await fails(j("/api/register", { method: "POST", json: { ...reg, cost_center: "NOPE" } })), "Cost Center ที่ไม่มีใน master ถูกปฏิเสธ");
 ok(await fails(j("/api/register", { method: "POST", json: { ...reg, password: "" } })), "ไม่ใส่รหัสผ่านถูกปฏิเสธ");
 const user = await j("/api/register", { method: "POST", json: reg });
+ok(await fails(j("/api/register", { method: "POST", json: { ...reg, code: "30000101", gender: "" } })), "ไม่เลือกเพศถูกปฏิเสธ");
+const minReg = await j("/api/register", { method: "POST", json: { password: PW, code: "30000101", prefix: "นาง", first_name: "ชื่อ1-1", last_name: "สกุล1", cost_center: "82001", gender: "หญิง" } });
+ok(minReg.code === "30000101", "ลงทะเบียนได้โดยไม่ใส่อีเมล/เบอร์โทร (บังคับแค่ คำนำหน้า ชื่อ นามสกุล รหัส CC เพศ)");
+ok((await j("/api/login", { method: "POST", json: { code: "30000101" } })).next === "password", "บัญชีที่ไม่มีอีเมลเข้าสู่ระบบด้วยรหัสผ่านได้");
 ok(user.name === "ชื่อ1-0 สกุล0", "ลงทะเบียนสำเร็จ");
 ok(await fails(j("/api/register", { method: "POST", json: reg })), "ลงทะเบียนซ้ำไม่ได้");
 ok(!!user.token && user.role === "user", "ลงทะเบียนแล้วได้ token บทบาทผู้ใช้ทั่วไป");
@@ -331,6 +335,19 @@ await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag
 const dr = await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: 61, remove_people: true } });
 fo = await j("/api/plan");
 ok(dr.removed === 1 && !fo.flags.some((f: any) => f.flag_no === "61"), "ลบธงพร้อมเอาคนออกจากชุดธง");
+
+// ---------- เริ่มซ้อม: เทียบผลตรวจทานธงกับข้อมูลเข้า-ออก ----------
+await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: "1", emp_id: "OS901", first_name: "ออกงานแล้ว" } });
+await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: "1", emp_id: "OS900", first_name: "อยู่ในงาน" } });
+await j("/api/review", { method: "POST", json: { action: "attend", emp_id: "OS900", here: false, by: "ทดสอบ" } });
+const { id: drill3 } = await j("/api/incidents", { method: "POST", json: { action: "drill" } });
+const d3 = await j(`/api/incidents/${drill3}`);
+const p901 = d3.people.find((p: any) => p.person_key === "emp:OS901");
+const p900 = d3.people.find((p: any) => p.person_key === "emp:OS900");
+ok(p901?.status === "abs" && /Outsource/.test(p901.status_note ?? ""), "ไม่ได้ตรวจทาน + Outsource ออกงานแล้ว = ปลอดภัยตามระบบ (รอยืนยัน)");
+ok(p900?.status === "unk" && /ตรวจทานว่าไม่มา แต่ระบบเห็นว่าอยู่/.test(p900.status_note ?? ""), "ตรวจทานว่าไม่มา แต่ Clock in อยู่ = ต้องนับ (ยังไม่ทราบ)");
+ok(d3.people.filter((p: any) => p.person_key.startsWith("emp:3")).every((p: any) => p.status !== "abs" || /ตรวจทาน/.test(p.status_note ?? "")), "พนักงานประจำ (ยังไม่มี Cnext) ไม่ถูกเดาว่าไม่อยู่");
+await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } });
 
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);

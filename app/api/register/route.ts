@@ -12,7 +12,7 @@ export const POST = handle(async (req: Request) => {
   const p = await validateProfile(b, { requireAll: true });
   const pwErr = passwordProblem(String(b.password ?? ""), p.code);
   if (pwErr) return fail(pwErr);
-  const exist = await one<any>(`SELECT 1 FROM profiles WHERE code = $1 AND email IS NOT NULL`, [p.code]);
+  const exist = await one<any>(`SELECT 1 FROM profiles WHERE code = $1 AND (password_hash IS NOT NULL OR email IS NOT NULL)`, [p.code]);
   if (exist) return fail("รหัสพนักงานนี้ลงทะเบียนแล้ว ให้เข้าสู่ระบบด้วยรหัสนี้ได้เลย", 409);
   await saveProfile(p);
   return ok(await setPasswordAtRegister(p.code, String(b.password)), 201);

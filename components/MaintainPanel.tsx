@@ -117,7 +117,7 @@ export default function MaintainPanel() {
       {err && <p className="notice err">{err}</p>}
 
       {res?.steps && (
-        <div className="scroll-x"><table className="tbl">
+        <div className="scroll-x freeze"><table className="tbl">
           <thead><tr><th>แหล่ง</th><th>วิธี</th><th>เวลาที่ใช้</th><th>ได้</th><th>ผล</th></tr></thead>
           <tbody>
             {res.steps.map((s) => (
@@ -162,7 +162,7 @@ export default function MaintainPanel() {
             <span className="muted xs">{list.length} คน</span>
             <button className="btn btn-sm" onClick={() => downloadCsv(list)} disabled={!list.length}>ดาวน์โหลด CSV</button>
           </div>
-          <div className="scroll-x" style={{ maxHeight: 520, overflowY: "auto" }}><table className="tbl">
+          <div className="scroll-x freeze" style={{ maxHeight: 520 }}><table className="tbl">
             <thead><tr>{COLS.map(([h]) => <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
             <tbody>
               {!list.length && <tr><td colSpan={COLS.length} className="muted">ไม่มีรายการ</td></tr>}
