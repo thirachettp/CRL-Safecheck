@@ -105,7 +105,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       gender: p.gender, area: p.area, cost_center: p.cost_center, cc_name: p.cost_center ? ccMap.get(p.cost_center) ?? null : null,
       tel: p.tel ?? telMap.get(p.emp_id) ?? null, flag_no: p.flag_no,
       assembly_point: p.assembly_point ?? (p.flag_no != null ? flagPoint.get(p.flag_no) ?? null : null),
-      is_leader: /ผู้นำ/.test(p.role ?? ""), presence: "plan", presence_site: null, presence_since: null,
+      is_leader: /^\s*ผู้นำ/.test(p.role ?? ""), presence: "plan", presence_site: null, presence_since: null,
       here: hereMap.get(key) ?? true, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
     };
   };

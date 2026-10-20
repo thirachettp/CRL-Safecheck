@@ -17,6 +17,8 @@ export type PlanPerson = {
   role: string | null;
   source_file: string;
   sheet?: string;
+  /** รหัสพนักงานรูปแบบไม่ถูกต้อง (นำเข้าไว้ก่อน แก้ภายหลังได้) */
+  bad_id?: boolean;
 };
 
 export type FlagLeader = {
@@ -135,15 +137,17 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
     const filled = new Map<string, number[]>(); // "ธงใหม่|ธงเดิม" → แถวที่เติมให้
     for (let r = h.row + 1; r < rows.length; r++) {
       const row = rows[r];
-      const emp = cell(row[c.emp]).replace(/\.0$/, "").replace(/\s+/g, "").toUpperCase();
+      const rawEmp = cell(row[c.emp]).replace(/\.0$/, "");
+      let emp = rawEmp.replace(/\s+/g, "").toUpperCase();
       if (!emp) {
         if (++blankRun >= 5) break; // จบตารางเมื่อเจอแถวว่างติดกัน 5 แถว
         continue;
       }
       blankRun = 0;
-      if (!EMP_RE.test(emp)) {
-        issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัสพนักงาน "${emp}" รูปแบบไม่ถูกต้อง ข้ามแถวนี้` });
-        continue;
+      const badId = !EMP_RE.test(emp);
+      if (badId) {
+        emp = rawEmp.replace(/\s+/g, " ").trim().slice(0, 60);
+        issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัสพนักงาน "${emp}" รูปแบบไม่ถูกต้อง · นำเข้าไว้ก่อน แก้รหัสได้ที่ ตั้งค่า › ชุดธง` });
       }
       // หัวคอลัมน์ในไฟล์จริง: คอลัมน์ "คำนำหน้า" เก็บชื่อจริง และ "ชื่อ-นามสกุล" เก็บนามสกุล
       // ถ้าค่าในคอลัมน์คำนำหน้าเป็นคำนำหน้าจริง ให้ถือว่าชื่อ-นามสกุลเป็นชื่อเต็ม
@@ -193,6 +197,7 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         role: c.role >= 0 ? cell(row[c.role]) || null : null,
         source_file: file,
         sheet: name,
+        ...(badId ? { bad_id: true } : {}),
       });
     }
     for (const [k, rowsFilled] of filled) {
@@ -253,6 +258,15 @@ export type MergedPlan = {
 export function mergePlan(results: PlanFileResult[]): MergedPlan {
   const issues = results.flatMap((r) => r.issues);
   const byEmp = new Map<string, PlanPerson[]>();
+  // รหัสผิดรูปแบบ (เช่น "ร้านค้าโรงอาหาร") ไม่ใช่คนเดียวกันแม้ข้อความซ้ำ → ต่อท้าย (2), (3) ให้ไม่ชนกัน
+  const used = new Set(results.flatMap((r) => r.people.filter((p) => !p.bad_id).map((p) => p.emp_id)));
+  results = results.map((r) => ({ ...r, people: r.people.map((p) => {
+    if (!p.bad_id) return p;
+    let id = p.emp_id, k = 1;
+    while (used.has(id)) id = `${p.emp_id} (${++k})`;
+    used.add(id);
+    return id === p.emp_id ? p : { ...p, emp_id: id };
+  }) }));
   for (const r of results) for (const p of r.people) {
     const list = byEmp.get(p.emp_id) ?? [];
     list.push(p);
@@ -296,7 +310,7 @@ export function mergePlan(results: PlanFileResult[]): MergedPlan {
   const byFlag = new Map<number, PlanPerson[]>();
   for (const p of people) if (p.flag_no != null) byFlag.set(p.flag_no, [...(byFlag.get(p.flag_no) ?? []), p]);
   for (const [flag, list] of byFlag) {
-    const leadsP = list.filter((p) => /ผู้นำ/.test(p.role ?? ""));
+    const leadsP = list.filter((p) => /^\s*ผู้นำ/.test(p.role ?? ""));
     const fromSheet = leaderMap.get(flag);
     const name = leadsP.length ? `${leadsP[0].first_name} ${leadsP[0].last_name}`.replace(/\s+/g, " ").trim() : null;
     if (leadsP.length > 1) {

@@ -289,3 +289,5 @@ ol.steps li::before { content: counter(st); grid-row: span 2; width: 26px; heigh
   font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
 
 .vrow { padding: 12px 18px; border-top: 1px solid var(--line-3); }
+.role-sel { margin-top: 0; min-height: 34px; padding: 4px 28px 4px 8px; font-size: 13px; width: auto; max-width: 150px; background-color: transparent; }
+.role-sel.lead { background-color: #FEF3C7; border-color: #FCD34D; font-weight: 700; color: #78350F; }

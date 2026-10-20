@@ -258,6 +258,20 @@ await j("/api/admin/versions", { method: "POST", json: { action: "delete", id: v
 fo = await j("/api/plan");
 ok(fo.versions.length === nBefore - 1 && !fo.versions.some((v: any) => v.id === vOld), "ลบเวอร์ชันที่ไม่ได้ใช้ได้");
 
+// ---------- บทบาท + แก้รหัสพนักงาน ----------
+await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 2, emp_id: "ร้านค้าโรงอาหาร", first_name: "แม่ค้า", last_name: "ทดสอบ" } });
+await j("/api/admin/flags", { method: "POST", json: { action: "person-edit", emp_id: "ร้านค้าโรงอาหาร", role: "ผู้ช่วยผู้นำธง" } });
+let f2 = await j("/api/admin/flags?flag=2");
+ok(f2.people.find((p: any) => p.emp_id === "ร้านค้าโรงอาหาร")?.role === "ผู้ช่วยผู้นำธง", "แก้บทบาทได้ (บทบาทอื่นนอกจากผู้นำ/ผู้อพยพ)");
+ok(f2.leader?.leader_name !== "แม่ค้า ทดสอบ", "ผู้ช่วยผู้นำธงไม่ถูกตั้งเป็นผู้นำธง");
+await j("/api/admin/flags", { method: "POST", json: { action: "person-edit", emp_id: "ร้านค้าโรงอาหาร", new_emp_id: "knn777777", role: "ผู้นำธงอพยพ" } });
+f2 = await j("/api/admin/flags?flag=2");
+ok(f2.people.some((p: any) => p.emp_id === "KNN777777") && !f2.people.some((p: any) => p.emp_id === "ร้านค้าโรงอาหาร"), "แก้รหัสพนักงานที่ผิดรูปแบบได้");
+ok(f2.leader?.leader_name === "แม่ค้า ทดสอบ", "ตั้งเป็นผู้นำธงแล้ว ชื่อผู้นำธงของธงเปลี่ยนตาม");
+ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "person-edit", emp_id: "KNN777777", new_emp_id: "30000200" } })), "แก้รหัสให้ซ้ำคนอื่นไม่ได้");
+await j("/api/admin/flags", { method: "POST", json: { action: "person-remove", emp_id: "KNN777777", reason: "ทดสอบ" } });
+await j("/api/admin/flags", { method: "POST", json: { action: "flag-save", flag_no: 2, leader_name: "คุณหัวหน้า สอง", area: "Conveyor", assembly_point: "1" } });
+
 // ---------- จุดรวมพล: เพิ่ม แก้ ลบ (ย้ายธงไปจุดอื่น) ----------
 await j("/api/admin/points", { method: "POST", json: { code: "9", name: "จุดทดสอบ", backup: null, sort: 9 } });
 await j("/api/admin/points", { method: "POST", json: { code: "9", name: "จุดทดสอบ แก้ชื่อ", backup: "1", sort: 9 } });

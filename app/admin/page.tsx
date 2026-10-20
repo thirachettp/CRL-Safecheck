@@ -17,6 +17,7 @@ type Overview = {
   points: { code: string; name: string; backup: string | null; sort: number; flags: number[] | null }[];
   versions: { id: number; name: string | null; note: string; created_by: string; created_at: string; updated_at: string; people: number; used: number }[];
   version: { active: number | null; dirty: boolean; changed_at: string | null };
+  roles: string[];
   accuracy: { imported: number; moved: number; added: number; removed: number; edited: number; unchanged: number; pct: number | null };
 };
 
@@ -92,7 +93,7 @@ function Admin() {
         <div className="wrap layout" style={{ display: "grid" }}>
           <section className="stack" style={{ gap: 20, minWidth: 0 }}>
             <ImportCard onSaved={() => o.reload()} />
-            {o.data && <PlanEditor flags={o.data.flags} leaders={o.data.leaders} points={o.data.points} total={o.data.total} onChanged={o.reload} />}
+            {o.data && <PlanEditor flags={o.data.flags} leaders={o.data.leaders} points={o.data.points} total={o.data.total} roles={o.data.roles} onChanged={o.reload} />}
           </section>
           <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
             {o.data && <AccuracyCard a={o.data.accuracy} />}
@@ -164,7 +165,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
     if (!m) return;
     setBusy(true);
     try {
-      const people = m.people.map(({ sheet, ...p }) => p);
+      const people = m.people.map(({ sheet, bad_id, ...p }) => p);
       const r = await api("/api/plan", { method: "POST", json: { people, leaders: m.leaders, files: m.files, name } });
       setMsg({ k: "ok", t: `บันทึกเป็นชุดธง v${r.version}${name.trim() ? ` “${name.trim()}”` : ""} แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
       setRaw(null); onSaved();

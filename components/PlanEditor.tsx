@@ -15,18 +15,20 @@ type Person = {
   removed: boolean; removed_reason: string | null; removed_by: string | null; edited_by: string | null;
 };
 
-const ROLES = ["ผู้อพยพ", "ผู้นำธงอพยพ"];
+const ROLES = ["ผู้อพยพ", "ผู้นำธงอพยพ", "ผู้ช่วยผู้นำธง"];
+const EMP_OK = /^[A-Z]{0,5}\d{4,12}$/i;
 const PREFIX = ["", "นาย", "นาง", "นางสาว"];
 const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไม่ได้ทำงานพื้นที่นี้", "ย้ายไปแผนกอื่น", "อื่นๆ"];
-const isLeader = (r: string | null) => /ผู้นำ/.test(r ?? "");
+const isLeader = (r: string | null) => /^\s*ผู้นำ/.test(r ?? "");
 
 async function call(json: any) {
   return api("/api/admin/flags", { method: "POST", json });
 }
 
-export default function PlanEditor({ flags, leaders, points, total, onChanged }: {
-  flags: FlagRow[]; leaders: Leader[]; points: Point[]; total: number; onChanged: () => void;
+export default function PlanEditor({ flags, leaders, points, total, roles = [], onChanged }: {
+  flags: FlagRow[]; leaders: Leader[]; points: Point[]; total: number; roles?: string[]; onChanged: () => void;
 }) {
+  const roleList = [...new Set([...ROLES, ...roles])];
   const [open, setOpen] = useState<number | null>(null);
   const [term, setTerm] = useState("");
   const [adding, setAdding] = useState(false);
@@ -122,7 +124,7 @@ export default function PlanEditor({ flags, leaders, points, total, onChanged }:
                   )}
                   {isOpen && (
                     <tr><td colSpan={8} style={{ padding: 0, background: "#F8FAFC" }}><div style={{ width: 0, minWidth: "100%" }}>
-                      <FlagDetail flag={n} row={f} leader={l} points={points} flags={list.map((x) => x.flag_no!)} onChanged={onChanged} onDeleted={() => { setOpen(null); onChanged(); }} />
+                      <FlagDetail flag={n} row={f} leader={l} points={points} roles={roleList} flags={list.map((x) => x.flag_no!)} onChanged={onChanged} onDeleted={() => { setOpen(null); onChanged(); }} />
                     </div></td></tr>
                   )}
                 </Fragment>
@@ -188,8 +190,8 @@ function FlagForm({ init, isNew, points, onDone, onDelete, canDelete }: {
   );
 }
 
-function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: {
-  flag: number; row: FlagRow; leader?: Leader; points: Point[]; flags: number[]; onChanged: () => void; onDeleted: () => void;
+function FlagDetail({ flag, row, leader, points, roles, flags, onChanged, onDeleted }: {
+  flag: number; row: FlagRow; leader?: Leader; points: Point[]; roles: string[]; flags: number[]; onChanged: () => void; onDeleted: () => void;
 }) {
   const d = usePoll<{ people: Person[] }>(`/api/admin/flags?flag=${flag}`, 0);
   const [edit, setEdit] = useState<string | null>(null);
@@ -210,7 +212,7 @@ function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: 
   const blank = { emp_id: "", prefix: "", first_name: "", last_name: "", gender: "ชาย", role: "ผู้อพยพ", cost_center: leader?.cost_center ?? "", area: leader?.area ?? row.area ?? "", tel: "", flag_no: flag };
   const start = (p: Person) => {
     setEdit(p.emp_id); setDel(null);
-    setDraft({ prefix: p.prefix ?? "", first_name: p.first_name, last_name: p.last_name ?? "", gender: p.gender ?? "", role: p.role ?? "ผู้อพยพ",
+    setDraft({ new_emp_id: p.emp_id, prefix: p.prefix ?? "", first_name: p.first_name, last_name: p.last_name ?? "", gender: p.gender ?? "", role: p.role ?? "ผู้อพยพ",
       cost_center: p.cost_center ?? "", area: p.area ?? "", tel: p.tel ?? "", flag_no: p.flag_no });
   };
   const fields = (v: any, set: (x: any) => void, withId: boolean) => (
@@ -226,8 +228,7 @@ function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: 
       </td>
       <td><select className="in" style={{ marginTop: 0 }} value={v.gender} onChange={(e) => set({ ...v, gender: e.target.value })} aria-label="เพศ">
         <option value="">—</option><option>ชาย</option><option>หญิง</option><option>อื่นๆ</option></select></td>
-      <td><select className="in" style={{ marginTop: 0 }} value={v.role} onChange={(e) => set({ ...v, role: e.target.value })} aria-label="บทบาท">
-        {ROLES.map((x) => <option key={x}>{x}</option>)}</select></td>
+      <td><input className="in" style={{ marginTop: 0 }} list={`roles-${flag}`} value={v.role} onChange={(e) => set({ ...v, role: e.target.value })} aria-label="บทบาท" placeholder="ผู้อพยพ" /></td>
       <td>
         <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
           <input className="in mono" style={{ marginTop: 0, width: 84 }} placeholder="CC" value={v.cost_center} onChange={(e) => set({ ...v, cost_center: e.target.value })} aria-label="Cost Center" />
@@ -246,14 +247,15 @@ function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: 
         init={{ flag_no: flag, leader_name: leader?.leader_name ?? "", area: leader?.area ?? row.area ?? "", assembly_point: leader?.assembly_point ?? row.assembly_point ?? "",
           flag_no_old: leader?.flag_no_old ?? row.flag_no_old ?? null, cost_center: leader?.cost_center ?? "" }}
         points={points} onDone={() => onChanged()} />
+      <datalist id={`roles-${flag}`}>{roles.map((x) => <option key={x} value={x} />)}</datalist>
       <div className="row" style={{ padding: "10px 18px 6px" }}>
         <b className="grow">รายชื่อในธง {flag} ({active.length} คน)</b>
         <button className="btn btn-sm" onClick={() => { setAdding(!adding); setDraft(blank); setEdit(null); }}>{adding ? "ยกเลิก" : "+ เพิ่มคน"}</button>
       </div>
       {err && <div style={{ padding: "0 18px 8px" }}><p className="notice err">{err}</p></div>}
       <div className="scroll-x" style={{ padding: "0 8px 12px" }}>
-        <table className="tbl" style={{ minWidth: 1080, background: "#fff" }}>
-          <thead><tr><th style={{ width: 120 }}>รหัส</th><th>ชื่อ-นามสกุล</th><th style={{ width: 84 }}>เพศ</th><th style={{ width: 130 }}>บทบาท</th><th>Cost Center · แผนก</th><th style={{ width: 120 }}>เบอร์โทร</th><th style={{ width: 96 }}>ธง</th><th style={{ width: 120 }} /></tr></thead>
+        <table className="tbl" style={{ minWidth: 900, background: "#fff" }}>
+          <thead><tr><th style={{ width: 110 }}>รหัส</th><th>ชื่อ-นามสกุล</th><th style={{ width: 64 }}>เพศ</th><th style={{ width: 150 }}>บทบาท</th><th>Cost Center · แผนก</th><th style={{ width: 110 }}>เบอร์โทร</th><th style={{ width: 70 }}>ธง</th><th style={{ width: 100 }} /></tr></thead>
           <tbody>
             {adding && (
               <tr className="editing">
@@ -267,7 +269,7 @@ function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: 
             {d.data && active.length === 0 && !adding && <tr><td colSpan={8} className="muted small">ยังไม่มีคนในธงนี้ กด + เพิ่มคน</td></tr>}
             {active.map((p) => edit === p.emp_id ? (
               <tr key={p.emp_id} className="editing">
-                <td className="mono">{p.emp_id}</td>
+                <td><input className="in mono" style={{ marginTop: 0 }} value={draft.new_emp_id ?? p.emp_id} onChange={(e) => setDraft({ ...draft, new_emp_id: e.target.value })} aria-label="รหัสพนักงาน" /></td>
                 {fields(draft, setDraft, false)}
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   <button className="btn btn-sm btn-pri" onClick={() => run({ action: "person-edit", emp_id: p.emp_id, ...draft })}>บันทึก</button>{" "}
@@ -292,11 +294,16 @@ function FlagDetail({ flag, row, leader, points, flags, onChanged, onDeleted }: 
               </tr>
             ) : (
               <tr key={p.emp_id}>
-                <td className="mono">{p.emp_id}</td>
+                <td className="mono">{p.emp_id}{!EMP_OK.test(p.emp_id) && !p.emp_id.startsWith("ADD-") && <div><span className="chip sm warn" title="รหัสพนักงานรูปแบบไม่ถูกต้อง กดแก้ไขเพื่อแก้รหัส">รหัสไม่ถูกต้อง</span></div>}</td>
                 <td><b>{p.prefix ? `${p.prefix} ` : ""}{p.first_name} {p.last_name}</b>
                   {p.added_manually && <span className="chip sm grey" style={{ marginLeft: 6 }}>เพิ่มเอง</span>}</td>
                 <td>{p.gender ?? "—"}</td>
-                <td>{isLeader(p.role) ? <span className="chip sm warn">ผู้นำธง</span> : <span className="muted">{p.role ?? "ผู้อพยพ"}</span>}</td>
+                <td>
+                  <select className={`in role-sel${isLeader(p.role) ? " lead" : ""}`} value={p.role ?? "ผู้อพยพ"} aria-label={`บทบาทของ ${p.first_name}`}
+                    onChange={(e) => run({ action: "person-edit", emp_id: p.emp_id, role: e.target.value })}>
+                    {[...new Set([...roles, p.role ?? "ผู้อพยพ"])].map((x) => <option key={x}>{x}</option>)}
+                  </select>
+                </td>
                 <td className="small"><span className="mono">{p.cost_center ?? "—"}</span> {p.area ?? ""}</td>
                 <td className="mono small">{p.tel || "—"}</td>
                 <td className="mono">{p.flag_no}</td>

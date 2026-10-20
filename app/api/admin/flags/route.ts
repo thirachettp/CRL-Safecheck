@@ -35,7 +35,7 @@ async function act(req: Request, a: { name: string; code?: string }) {
       return ok({ emp_id: await addPlanPerson({ ...b, flag_no: Number(b.flag_no) }, by) });
     case "person-edit":
       await editPerson(String(b.emp_id), {
-        prefix: b.prefix, first_name: b.first_name, last_name: b.last_name, gender: b.gender, tel: b.tel, role: b.role,
+        new_emp_id: b.new_emp_id, prefix: b.prefix, first_name: b.first_name, last_name: b.last_name, gender: b.gender, tel: b.tel, role: b.role,
         cost_center: b.cost_center, area: b.area, flag_no: b.flag_no != null && b.flag_no !== "" ? Number(b.flag_no) : undefined,
       }, by);
       return ok({ ok: true });

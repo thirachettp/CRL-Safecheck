@@ -143,7 +143,7 @@ function Review() {
                   return [
                     <tr key={p.emp_id} className={isOpen ? "editing" : ""}>
                       <td className="mono">{p.emp_id}</td>
-                      <td><b>{p.first_name} {p.last_name}</b>{/ผู้นำ/.test(p.role ?? "") && <span className="g" style={{ marginLeft: 6 }}>ผู้นำธง</span>}</td>
+                      <td><b>{p.first_name} {p.last_name}</b>{/^\s*ผู้นำ/.test(p.role ?? "") && <span className="g" style={{ marginLeft: 6 }}>ผู้นำธง</span>}</td>
                       <td>{p.gender ?? "—"}</td>
                       <td className="small"><span className="mono">{p.cost_center ?? "—"}</span> {p.area ?? ""}</td>
                       <td className="small">{anon ? <span className="muted">เข้าสู่ระบบเพื่อดู</span> : p.tel ?? "—"}</td>
@@ -172,7 +172,7 @@ function Review() {
               <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.first_name} {p.last_name}</b>{p.gender && <span className="g">{p.gender}</span>}
-                    {/ผู้นำ/.test(p.role ?? "") && <span className="g">ผู้นำธง</span>}</div>
+                    {/^\s*ผู้นำ/.test(p.role ?? "") && <span className="g">ผู้นำธง</span>}</div>
                   <div className="muted xs"><span className="mono">{p.emp_id}</span>{p.cost_center && <> · <span className="mono">{p.cost_center}</span></>} {p.area}</div>
                   <div className="row" style={{ marginTop: 6, gap: 6 }}>
                     <span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "แผนอพยพ (Excel)"}</span>

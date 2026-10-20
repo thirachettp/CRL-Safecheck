@@ -143,3 +143,28 @@ test("หัวคอลัมน์สะกดผิด 'รหัสหนั
   assert.equal(rows[0]["source sheet"], "ชีต1");
   assert.equal(rows[0]["source file"], "x.xlsx");
 });
+
+test("รหัสพนักงานรูปแบบไม่ถูกต้อง: นำเข้าพร้อมเตือน ไม่ข้ามแถว และไม่ชนกัน", () => {
+  const wb = planBook([
+    [1, 3, 12, "ร้านค้าโรงอาหาร", "นาง", "แม่ค้า หนึ่ง", "หญิง", 999999, "Canteen", "ผู้อพยพ"],
+    [1, 3, 12, "ร้านค้าโรงอาหาร", "นาง", "แม่ค้า สอง", "หญิง", 999999, "Canteen", "ผู้อพยพ"],
+    [1, 3, 12, 20000010, "นาย", "ปกติ ดี", "ชาย", 999999, "Canteen", "ผู้อพยพ"],
+  ]);
+  const r = parsePlanWorkbook(wb, "c.xlsx");
+  assert.equal(r.people.length, 3);
+  assert.ok(r.issues.some((i) => i.level === "warn" && /"ร้านค้าโรงอาหาร" รูปแบบไม่ถูกต้อง · นำเข้าไว้ก่อน/.test(i.message)));
+  const m = mergePlan([r]);
+  const ids = m.people.map((p) => p.emp_id).sort();
+  assert.deepEqual(ids, ["20000010", "ร้านค้าโรงอาหาร", "ร้านค้าโรงอาหาร (2)"]);
+  assert.equal(m.duplicates.length, 0);
+});
+
+test("ผู้ช่วยผู้นำธง ไม่นับเป็นผู้นำธง", () => {
+  const wb = planBook([
+    [1, 7, 17, 20000020, "นาย", "ผู้ช่วย หนึ่ง", "ชาย", 1, "A", "ผู้ช่วยผู้นำธง"],
+    [1, 7, 17, 20000021, "นาย", "หัวหน้า จริง", "ชาย", 1, "A", "ผู้นำธงอพยพ"],
+  ]);
+  const m = mergePlan([parsePlanWorkbook(wb, "a.xlsx")]);
+  assert.equal(m.leaders.find((l) => l.flag_no === 7)?.leader_name, "หัวหน้า จริง");
+  assert.ok(!m.issues.some((i) => /ผู้นำธง 2 คน/.test(i.message)));
+});

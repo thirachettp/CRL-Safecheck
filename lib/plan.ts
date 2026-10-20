@@ -166,6 +166,7 @@ export async function planOverview() {
   return {
     total: total?.n ?? 0, files: total?.files ?? 0, updated_at: total?.at ?? null,
     flags, leaders, points, versions, version: await versionState(),
+    roles: (await q<{ role: string }>(`SELECT DISTINCT role FROM evac_plan WHERE role IS NOT NULL AND role <> '' ORDER BY role`)).map((r) => r.role),
     accuracy: { ...a, unchanged, pct: a.imported ? Math.round((unchanged / a.imported) * 100) : null },
   };
 }
@@ -178,7 +179,7 @@ export async function reviewFlag(flag: number) {
       `SELECT p.*, a.here, a.by_name AS here_by FROM evac_plan p
        LEFT JOIN attendance a ON a.person_key = 'emp:' || p.emp_id AND a.day = $2
        WHERE p.flag_no = $1
-       ORDER BY p.removed, p.role ILIKE '%ผู้นำ%' DESC, p.first_name`,
+       ORDER BY p.removed, p.role ILIKE 'ผู้นำ%' DESC, p.first_name`,
       [flag, day]),
     one<any>(`SELECT * FROM flag_reviews WHERE flag_no = $1`, [flag]),
     one<any>(`SELECT * FROM flag_leaders WHERE flag_no = $1`, [flag]),
@@ -202,11 +203,22 @@ export async function setAttendance(personKey: string, here: boolean, by: string
 
 export async function editPerson(
   empId: string,
-  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: number; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string },
+  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: number; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string; new_emp_id?: string },
   by: string,
 ) {
-  const p = await one<any>(`SELECT * FROM evac_plan WHERE emp_id = $1`, [empId]);
+  let p = await one<any>(`SELECT * FROM evac_plan WHERE emp_id = $1`, [empId]);
   if (!p) throw new UserError("ไม่พบรายชื่อ");
+  // แก้รหัสพนักงาน (เช่น รหัสที่นำเข้ามาผิดรูปแบบ)
+  const nid = f.new_emp_id?.replace(/\s+/g, " ").trim();
+  if (nid && nid !== empId) {
+    const to = /^[a-z]{0,5}\d{4,12}$/i.test(nid.replace(/\s+/g, "")) ? nid.replace(/\s+/g, "").toUpperCase() : nid;
+    const dup = await one<any>(`SELECT flag_no FROM evac_plan WHERE emp_id = $1`, [to]);
+    if (dup) throw new UserError(`รหัส ${to} มีอยู่แล้วในธง ${dup.flag_no ?? "—"}`);
+    await q(`UPDATE evac_plan SET emp_id = $2 WHERE emp_id = $1`, [empId, to]);
+    await q(`UPDATE attendance SET person_key = 'emp:' || $2 WHERE person_key = 'emp:' || $1`, [empId, to]);
+    empId = to;
+    p = { ...p, emp_id: to };
+  }
   const personal = ["first_name", "last_name", "gender", "tel", "cost_center", "area", "role", "prefix"].some(
     (k) => (f as any)[k] !== undefined && ((f as any)[k] ?? "") !== (p[k] ?? ""));
   const flag = f.flag_no ?? p.flag_no;
@@ -222,6 +234,13 @@ export async function editPerson(
     [empId, f.first_name ?? p.first_name, f.last_name ?? p.last_name, f.gender ?? p.gender, flag, f.tel ?? p.tel,
      f.cost_center ?? p.cost_center, f.area ?? p.area, ap, by || null, personal,
      f.role !== undefined ? f.role || null : p.role, f.prefix !== undefined ? f.prefix || null : p.prefix]);
+  // ตั้งเป็นผู้นำธง → ชื่อผู้นำธงของธงนั้นเปลี่ยนตาม
+  const role = f.role !== undefined ? f.role || null : p.role;
+  if (/^\s*ผู้นำ/.test(role ?? "") && flag != null) {
+    const name = `${f.first_name ?? p.first_name} ${f.last_name ?? p.last_name ?? ""}`.replace(/\s+/g, " ").trim();
+    await q(`INSERT INTO flag_leaders (flag_no, leader_name, assembly_point) VALUES ($1, $2, $3)
+             ON CONFLICT (flag_no) DO UPDATE SET leader_name = EXCLUDED.leader_name`, [flag, name, ap]);
+  }
 }
 
 export async function removePerson(empId: string, reason: string, by: string, restore = false) {
