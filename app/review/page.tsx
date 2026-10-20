@@ -2,20 +2,22 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
-import { useUser } from "@/components/identity";
-import { api, usePoll, useWide } from "@/components/lib";
+import { useUser, useAdmin } from "@/components/identity";
+import LoginSheet from "@/components/LoginSheet";
+import { api, usePoll, useWide, fmtDateTime, fmtTime } from "@/components/lib";
 import { IBack, IFlag, IDown, IClose } from "@/components/Icons";
 import PlanSearch from "@/components/PlanSearch";
 
 const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไม่ได้ทำงานพื้นที่นี้", "อื่นๆ"];
+const ROLES = ["ผู้อพยพ", "ผู้นำธงอพยพ", "ผู้ช่วยผู้นำธง"];
 
 type Person = {
   emp_id: string; first_name: string; last_name: string | null; gender: string | null; flag_no: string; orig_flag: string | null;
-  tel: string | null; cost_center: string | null; area: string | null; role: string | null; here: boolean | null;
+  tel: string | null; cost_center: string | null; area: string | null; role: string | null; here: boolean | null; here_by?: string | null; here_at?: string | null;
   added_manually: boolean; edited_note: string | null; edited_by: string | null; removed: boolean; removed_reason: string | null; removed_by: string | null;
 };
 type Data = {
-  flag: string | null; people: Person[]; cells: { flag_no: string; n: number; reviewed: boolean }[];
+  flag: string | null; people: Person[]; cells: { flag_no: string; n: number; reviewed: boolean; reviewed_by?: string | null; reviewed_at?: string | null }[];
   review: { reviewed_by: string; reviewed_at: string } | null; leader: any; points: any[]; viewer?: "anon" | "user" | "staff";
 };
 
@@ -24,6 +26,34 @@ export default function ReviewPage() {
 }
 
 function Review() {
+  const { user, ready } = useUser();
+  const { admin } = useAdmin();
+  if (!ready) return null;
+  if (!user && !admin) return <MobileShell><LoginGate /></MobileShell>;
+  return <ReviewBody />;
+}
+
+/** ตรวจทานธงต้องเข้าสู่ระบบ เพื่อบันทึกว่าใครตรวจ ใครแก้ */
+function LoginGate() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="m-top row" style={{ gap: 6, flexWrap: "nowrap" }}>
+        <Link href="/" className="back" aria-label="กลับ"><IBack /></Link><b className="grow">ตรวจทานธง</b>
+      </div>
+      <div className="m-body" style={{ padding: 16 }}>
+        <div className="card stack" style={{ padding: 18, gap: 10 }}>
+          <b style={{ fontSize: 17 }}>ต้องเข้าสู่ระบบก่อนตรวจทานธง</b>
+          <p className="muted small" style={{ margin: 0 }}>ระบบบันทึกชื่อคนตรวจและเวลาทุกครั้ง (มา/ไม่มา, แก้ไข, ยืนยันว่าตรวจธงแล้ว)</p>
+          <button className="btn btn-pri btn-lg" onClick={() => setOpen(true)}>เข้าสู่ระบบ</button>
+        </div>
+      </div>
+      {open && <LoginSheet onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function ReviewBody() {
   const { user, by } = useUser();
   const [sel, setSel] = useState<string | null>(null);
   const [hl, setHl] = useState<string | null>(null);
@@ -57,10 +87,16 @@ function Review() {
   function startEdit(p: Person) {
     setOpen({ id: p.emp_id, mode: "edit" });
     setDraft({ first_name: p.first_name, last_name: p.last_name ?? "", gender: p.gender ?? "ชาย", flag_no: p.flag_no,
-      tel: p.tel ?? "", cost_center: p.cost_center ?? "", area: p.area ?? "" });
+      tel: p.tel ?? "", cost_center: p.cost_center ?? "", area: p.area ?? "", role: p.role ?? "ผู้อพยพ" });
   }
 
   const reviewed = !!d.data?.review;
+  const attBy = (p: Person) => p.here_at
+    ? <div className="muted" style={{ fontSize: 10, marginTop: 2, maxWidth: 110, lineHeight: 1.3 }}>{p.here_by ?? "—"} · {fmtTime(p.here_at)}</div>
+    : <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>ยังไม่ระบุ</div>;
+  const roleChip = (r: string | null) => !r || r === "ผู้อพยพ" ? null
+    : <span className="g" style={{ marginLeft: 6, ...(/^\s*ผู้นำ/.test(r) ? {} : { background: "#EEF2F7", color: "#1F3A5F" }) }}>{/^\s*ผู้นำ/.test(r) ? "ผู้นำธง" : r}</span>;
+  const lastAtt = people.reduce<Person | null>((m, p) => (p.here_at && (!m || p.here_at > (m.here_at ?? "")) ? p : m), null);
   const wide = useWide();
   const panel = (p: Person) => {
     const isOpen = open?.id === p.emp_id;
@@ -74,7 +110,11 @@ function Review() {
                     <label className="lb">เพศ<select className="in" value={draft.gender} onChange={(e) => setDraft({ ...draft, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
                     <label className="lb">ธง<input className="in mono" value={draft.flag_no} onChange={(e) => setDraft({ ...draft, flag_no: e.target.value })} /></label>
                   </div>
-                  {!anon && <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={draft.tel} onChange={(e) => setDraft({ ...draft, tel: e.target.value })} /></label>}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <label className="lb">บทบาท<select className="in" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })}>
+                      {[...new Set([...ROLES, draft.role || "ผู้อพยพ"])].map((r) => <option key={r}>{r}</option>)}</select></label>
+                    <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={draft.tel} onChange={(e) => setDraft({ ...draft, tel: e.target.value })} /></label>
+                  </div>
                   <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
                     <label className="lb">Cost center<input className="in mono" value={draft.cost_center} onChange={(e) => setDraft({ ...draft, cost_center: e.target.value })} /></label>
                     <label className="lb">แผนก/พื้นที่<input className="in" value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value })} /></label>
@@ -127,6 +167,12 @@ function Review() {
             มา {active.filter(here).length}/{active.length} คน
           </div>
         </div>
+        {flag != null && (
+          <div className="xs" style={{ marginTop: 6, padding: "6px 10px", borderRadius: 8, background: reviewed ? "#F0FDF4" : "#FFFBEB", color: reviewed ? "#166534" : "#92400E", fontWeight: 600 }}>
+            {reviewed ? `ยืนยันว่าตรวจแล้ว โดย ${d.data!.review!.reviewed_by ?? "—"} · ${fmtDateTime(d.data!.review!.reviewed_at)}` : "ธงนี้ยังไม่ได้ยืนยันว่าตรวจแล้ว"}
+            {lastAtt && <span style={{ fontWeight: 400 }}> · ระบุมา/ไม่มาล่าสุด {lastAtt.here_by ?? "—"} {fmtTime(lastAtt.here_at)}</span>}
+          </div>
+        )}
         <div style={{ marginTop: 8 }}>
           <PlanSearch endpoint="/api/review" onPick={(h) => {
             if (h.flag_no) { setSel(h.flag_no); setOpen(null); }
@@ -153,14 +199,14 @@ function Review() {
                   return [
                     <tr key={p.emp_id} id={`p-${p.emp_id}`} className={`${isOpen ? "editing" : ""}${hl === p.emp_id ? " hl" : ""}`}>
                       <td className="mono">{p.emp_id}</td>
-                      <td><b>{p.first_name} {p.last_name}</b>{/^\s*ผู้นำ/.test(p.role ?? "") && <span className="g" style={{ marginLeft: 6 }}>ผู้นำธง</span>}</td>
+                      <td><b>{p.first_name} {p.last_name}</b>{roleChip(p.role)}</td>
                       <td>{p.gender ?? "—"}</td>
                       <td className="small"><span className="mono">{p.cost_center ?? "—"}</span> {p.area ?? ""}</td>
                       <td className="small">{anon ? <span className="muted">เข้าสู่ระบบเพื่อดู</span> : p.tel ?? "—"}</td>
                       <td><span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "Excel"}</span>
                         <div className="muted xs">{note}</div></td>
                       <td style={{ textAlign: "center" }}><button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}
-                        onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button></td>
+                        onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button>{attBy(p)}</td>
                       <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                         <button className="lk" onClick={() => (isOpen ? setOpen(null) : startEdit(p))}>{isOpen && open?.mode === "edit" ? "ปิด" : "แก้ไข"}</button>
                         <button className="lk del" onClick={() => (isOpen ? setOpen(null) : startDel(p))}>{isOpen && open?.mode === "del" ? "ปิด" : "ลบ"}</button>
@@ -182,15 +228,17 @@ function Review() {
               <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.first_name} {p.last_name}</b>{p.gender && <span className="g">{p.gender}</span>}
-                    {/^\s*ผู้นำ/.test(p.role ?? "") && <span className="g">ผู้นำธง</span>}</div>
+                    {roleChip(p.role)}</div>
                   <div className="muted xs"><span className="mono">{p.emp_id}</span>{p.cost_center && <> · <span className="mono">{p.cost_center}</span></>} {p.area}</div>
                   <div className="row" style={{ marginTop: 6, gap: 6 }}>
                     <span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "แผนอพยพ (Excel)"}</span>
                     <span className="muted" style={{ fontSize: 11 }}>{note}</span>
                   </div>
                 </div>
-                <button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}
-                  onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button>
+                <div style={{ textAlign: "center" }}>
+                  <button className={`att${here(p) ? " on" : ""}`} aria-pressed={here(p)}
+                    onClick={() => act({ action: "attend", emp_id: p.emp_id, here: !here(p) })}>{here(p) ? "มา" : "ไม่มา"}</button>{attBy(p)}
+                </div>
               </div>
               {!isOpen && (
                 <div className="row" style={{ justifyContent: "flex-end", gap: 4, marginTop: 4 }}>

@@ -177,7 +177,7 @@ export async function reviewFlag(flag: string) {
   const day = bangkokDay();
   const [people, review, leader] = await Promise.all([
     q<any>(
-      `SELECT p.*, a.here, a.by_name AS here_by FROM evac_plan p
+      `SELECT p.*, a.here, a.by_name AS here_by, a.at AS here_at FROM evac_plan p
        LEFT JOIN attendance a ON a.person_key = 'emp:' || p.emp_id AND a.day = $2
        WHERE p.flag_no = $1
        ORDER BY p.removed, p.role ILIKE 'ผู้นำ%' DESC, p.first_name`,
@@ -190,7 +190,7 @@ export async function reviewFlag(flag: string) {
 
 export async function flagCells() {
   return q<any>(
-    `SELECT p.flag_no, count(*) FILTER (WHERE NOT p.removed)::int AS n, (r.flag_no IS NOT NULL) AS reviewed
+    `SELECT p.flag_no, count(*) FILTER (WHERE NOT p.removed)::int AS n, (r.flag_no IS NOT NULL) AS reviewed, max(r.reviewed_by) AS reviewed_by, max(r.reviewed_at) AS reviewed_at
      FROM evac_plan p LEFT JOIN flag_reviews r ON r.flag_no = p.flag_no
      WHERE p.flag_no IS NOT NULL GROUP BY p.flag_no, r.flag_no ORDER BY flag_key(p.flag_no), p.flag_no`);
 }

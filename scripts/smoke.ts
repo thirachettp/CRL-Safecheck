@@ -207,8 +207,8 @@ const inA = await j(`/api/incidents/${drill}`, { tok: "x" });
 const inS = await j(`/api/incidents/${drill}`);
 ok(inA.viewer === "anon" && inA.people.every((p: any) => p.tel == null && p.emer == null && p.email == null && p.symptoms == null), "ไม่ได้เข้าสู่ระบบ: ไม่เห็นเบอร์โทร ผู้ติดต่อฉุกเฉิน อีเมล อาการ");
 ok(inS.viewer === "staff" && inS.people.some((p: any) => p.tel || p.emer || p.email), "Admin เห็นเบอร์โทร/ผู้ติดต่อฉุกเฉินตามปกติ");
-const rvA = await j("/api/review", { tok: "x" });
-ok(rvA.viewer === "anon" && rvA.people.every((p: any) => p.tel == null), "หน้าตรวจทานธง: ไม่ได้เข้าสู่ระบบไม่เห็นเบอร์โทร");
+ok(await fails(j("/api/review", { tok: "x" })), "ตรวจทานธง: ต้องเข้าสู่ระบบ");
+ok(await fails(j("/api/review", { method: "POST", json: { action: "attend", emp_id: "30000100", here: true }, tok: "x" })), "ตรวจทานธง: บันทึกต้องเข้าสู่ระบบ");
 
 // ---------- ตั้งค่า › ชุดธง: เพิ่ม/แก้ ธงและคน ----------
 await j("/api/admin/flags", { method: "POST", json: { action: "flag-add", flag_no: 40, leader_name: "คุณทดสอบ ธงใหม่", area: "MZ9", assembly_point: "2", flag_no_old: 99 } });
@@ -298,9 +298,16 @@ ok((await j("/api/admin/flags?flag=17A")).people.some((p: any) => p.emp_id === "
 await j("/api/admin/flags", { method: "POST", json: { action: "flag-delete", flag_no: "17A", remove_people: true } });
 
 // ---------- ค้นหาคนทุกธง ----------
-const sr = await j("/api/review?q=30000102", { tok: "x" });
-ok(sr.results?.[0]?.emp_id === "30000102" && sr.results[0].flag_no != null && sr.results[0].tel === undefined, "ตรวจทานธง: ค้นด้วยรหัสพนักงานข้ามธงได้ (ไม่มีเบอร์โทร)");
-ok((await j("/api/review?q=82003", { tok: "x" })).results.every((p: any) => String(p.cost_center).startsWith("82003")) , "ค้นด้วย Cost Center ได้");
+const rvTok = (await j("/api/login", { method: "POST", json: { code: "30000101", password: PW } })).token;
+const sr = await j("/api/review?q=30000102", { tok: rvTok });
+ok(sr.results?.[0]?.emp_id === "30000102" && sr.results[0].flag_no != null, "ตรวจทานธง: ค้นด้วยรหัสพนักงานข้ามธงได้");
+ok((await j("/api/review?q=82003", { tok: rvTok })).results.every((p: any) => String(p.cost_center).startsWith("82003")) , "ค้นด้วย Cost Center ได้");
+await j("/api/review", { method: "POST", json: { action: "attend", emp_id: "30000102", here: true, by: "ปลอม" }, tok: rvTok });
+const rvU = await j("/api/review?flag=2", { tok: rvTok });
+const a102 = rvU.people.find((p: any) => p.emp_id === "30000102");
+ok(a102?.here_by?.includes("30000101") && !!a102.here_at, "บันทึกชื่อคนตรวจจากบัญชี (ไม่ใช่ชื่อที่ส่งมา) พร้อมเวลา");
+await j("/api/review", { method: "POST", json: { action: "edit", emp_id: "30000102", role: "ผู้ช่วยผู้นำธง" }, tok: rvTok });
+ok((await j("/api/review?flag=2", { tok: rvTok })).people.find((p: any) => p.emp_id === "30000102")?.role === "ผู้ช่วยผู้นำธง", "ตรวจทานธง: แก้บทบาทได้");
 ok((await j("/api/admin/flags?q=" + encodeURIComponent("สกุล1"))).results.length > 0, "ชุดธง (Admin): ค้นด้วยชื่อได้");
 ok(await fails(j("/api/admin/flags?q=a", { tok: "x" })), "ค้นในตั้งค่าต้องเป็น Admin");
 
