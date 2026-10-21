@@ -11,9 +11,11 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
     "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.5",
     "@types/web-push": "^3.6.4",
     "next": "16.4.2",
     "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "web-push": "^3.6.7",

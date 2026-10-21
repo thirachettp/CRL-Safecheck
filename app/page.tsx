@@ -7,6 +7,7 @@ import LoginSheet from "@/components/LoginSheet";
 import { useUser, useAdmin } from "@/components/identity";
 import { api, usePoll, fmtTime, fmtDateTime, initials, KINDS, rangeText, freshness, lastTouch, ago } from "@/components/lib";
 import { NotifyCard } from "@/components/Notify";
+import ShareApp from "@/components/ShareApp";
 import { IClose } from "@/components/Icons";
 import { IFlag, ISearch, IChart, IUser, IAlert, ILock } from "@/components/Icons";
 
@@ -151,6 +152,7 @@ function Home() {
               <Tile href="/search" icon={<ISearch />} bg="#F3F2EE" title="ค้นหาคน" sub="ระหว่างซ้อม / เกิดเหตุ แอพจะเปิดหน้านี้ให้" />
               <Tile href="/dashboard" icon={<IChart />} bg="#F3F2EE" title="Dashboard" sub="ติดตามสถานการณ์ (เหมาะกับจอใหญ่)" />
             </div>
+            <ShareApp />
             <div className="card stack" style={{ padding: 16, gap: 10 }}>
               <b>ตอนเกิดเหตุ ทำ 3 ขั้น</b>
               <ol className="steps">
