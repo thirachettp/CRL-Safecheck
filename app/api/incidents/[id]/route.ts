@@ -1,3 +1,4 @@
+import { notify } from "@/lib/push";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole, viewerOf } from "@/lib/auth";
@@ -43,8 +44,12 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   if (b.action === "confirm") {
     const actor = await requireRole(req, ["admin", "safety"]);
     await confirmIncident(id, actor, Array.isArray(b.closedPoints) ? b.closedPoints.map(String) : []);
+    const inc = await getIncident(id);
+    const pushed = await notify("all", { title: `🚨 เหตุฉุกเฉิน: ${inc?.kind ?? ""} ${inc?.area ?? ""}`.trim(),
+      body: "อพยพไปที่จุดรวมพลทันที แล้วกดปลอดภัยในแอป" + ((inc?.closed_points?.length ?? 0) ? " · บางจุดรวมพลปิด ดูจุดสำรองในแอป" : ""),
+      url: "/search", tag: `incident-${id}`, urgent: true }).catch(() => null);
     fanOutSync(25_000).then(() => mergeIntoIncident(id, "sync")).catch(() => {});
-    return ok({ id });
+    return ok({ id, pushed });
   }
   if (b.action === "cancel") {
     await cancelIncident(id, String(b.by ?? ""));

@@ -24,7 +24,7 @@ const RETRY = new Set([502, 503, 504, 520, 522, 524]);
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** เทียบเท่าสูตร Power Query: POST rest/v1/rpc/<fn>?status_id=eq.2 (เฉพาะรถที่ยังอยู่ในลาน) พร้อม header apikey
- *  ได้ 502/503/504 หรือเชื่อมต่อไม่ได้ → ลองใหม่อีก 1 ครั้งหลังรอ 2.5 วินาที */
+ *  ล่ม (502/503/504/เชื่อมต่อไม่ได้) → ไม่ลองซ้ำทันที ระบบพัก 1 นาทีก่อนเรียกรอบถัดไป (ดู syncDriver) */
 export async function fetchKiosk(): Promise<Record<string, unknown>[]> {
   const base = process.env.KIOS_BASE_URL!.replace(/\/+$/, "");
   const fn = process.env.KIOS_RPC || "vms_dpark_withtransaction_detail";
@@ -32,7 +32,7 @@ export async function fetchKiosk(): Promise<Record<string, unknown>[]> {
   const url = `${base}/rest/v1/rpc/${fn}?status_id=eq.${encodeURIComponent(status)}`;
   const body = rpcBody();
   let lastErr: Error | null = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 1; attempt++) {
     let res: Response;
     try {
       res = await fetch(url, {
@@ -57,7 +57,7 @@ export async function fetchKiosk(): Promise<Record<string, unknown>[]> {
     if (attempt === 1 && RETRY.has(res.status)) { await wait(2500); continue; }
     break;
   }
-  throw new Error(`${lastErr!.message}${lastErr!.message.includes("ลองใหม่") ? "" : " (ลองใหม่แล้ว 1 ครั้ง)"}`);
+  throw new Error(`${lastErr!.message} · จะลองใหม่ได้ใน 1 นาที`);
 }
 
 /**

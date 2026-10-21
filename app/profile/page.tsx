@@ -8,6 +8,7 @@ import ProfileFields, { ProfileForm, toForm, problems } from "@/components/Profi
 import { useUser } from "@/components/identity";
 import { api } from "@/components/lib";
 import { IBack } from "@/components/Icons";
+import { NotifyCard } from "@/components/Notify";
 
 const ROLE: Record<string, [string, string]> = { admin: ["err", "Admin"], safety: ["warn", "Safety Officer"], user: ["grey", "ผู้ใช้ทั่วไป"] };
 
@@ -72,6 +73,7 @@ export default function ProfilePage() {
               <span className="muted small grow">ช่องที่มี * จำเป็น · ใช้ระบุตัวตนและช่วยค้นหาตอนเกิดเหตุเท่านั้น</span>
               <span className={`chip sm ${ROLE[user.role]?.[0] ?? "grey"}`}>{ROLE[user.role]?.[1] ?? user.role}</span>
             </div>
+            <NotifyCard />
             <ProfileFields f={f} set={setF} codeLocked onDeleteMedical={delMedical} />
 
             <div className="card stack" style={{ padding: 16 }}>

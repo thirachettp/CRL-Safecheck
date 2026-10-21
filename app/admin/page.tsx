@@ -5,6 +5,7 @@ import PcHeader from "@/components/PcHeader";
 import PinGate from "@/components/PinGate";
 import UsersPanel from "@/components/UsersPanel";
 import PlanEditor, { type FlagRow } from "@/components/PlanEditor";
+import { PushAdminCard } from "@/components/Notify";
 import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, rangeText } from "@/components/lib";
 import { IUpload } from "@/components/Icons";
@@ -110,6 +111,7 @@ function Admin() {
         <div className="wrap g2" style={{ display: "grid", alignItems: "start" }}>
           <SourcesCard />
           <ConfirmersCard />
+          <PushAdminCard />
         </div>
       )}
     </>

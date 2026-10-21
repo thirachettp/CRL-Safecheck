@@ -7,7 +7,7 @@ export const EMAIL_RE = /^[a-z0-9._%+-]+@central\.co\.th$/i;
 export type ProfileInput = {
   code?: string; prefix?: string; first_name?: string; last_name?: string; cost_center?: string;
   email?: string; tel?: string; gender?: string; emer_name?: string; emer_tel?: string;
-  consent?: boolean; blood?: string;
+  consent?: boolean; blood?: string; plate?: string;
 };
 
 const s = (v: unknown, max = 120) => String(v ?? "").trim().slice(0, max);
@@ -24,6 +24,7 @@ export async function validateProfile(b: ProfileInput, opts: { requireAll: boole
     email: s(b.email, 120).toLowerCase(),
     tel: cleanTel(b.tel),
     gender: ["ชาย", "หญิง", "ไม่ระบุ"].includes(String(b.gender)) ? String(b.gender) : null,
+    plate: s(b.plate, 20).replace(/\s+/g, " ") || null,
     emer_name: s(b.emer_name) || null,
     emer_tel: cleanTel(b.emer_tel) || null,
     consent: !!b.consent,
@@ -52,14 +53,14 @@ export async function validateProfile(b: ProfileInput, opts: { requireAll: boole
 export async function saveProfile(p: Awaited<ReturnType<typeof validateProfile>>) {
   const name = [p.first_name, p.last_name].filter(Boolean).join(" ") || null;
   await q(
-    `INSERT INTO profiles (code, prefix, first_name, last_name, name, cost_center, email, tel, gender, emer_name, emer_tel, blood, consent_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CASE WHEN $13 THEN now() END)
+    `INSERT INTO profiles (code, prefix, first_name, last_name, name, cost_center, email, tel, gender, emer_name, emer_tel, blood, consent_at, plate)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CASE WHEN $13 THEN now() END, $14)
      ON CONFLICT (code) DO UPDATE SET prefix = EXCLUDED.prefix, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
        name = EXCLUDED.name, cost_center = EXCLUDED.cost_center, email = EXCLUDED.email, tel = EXCLUDED.tel, gender = EXCLUDED.gender,
        emer_name = EXCLUDED.emer_name, emer_tel = EXCLUDED.emer_tel, blood = EXCLUDED.blood,
-       consent_at = CASE WHEN $13 THEN COALESCE(profiles.consent_at, now()) END, updated_at = now()`,
+       consent_at = CASE WHEN $13 THEN COALESCE(profiles.consent_at, now()) END, plate = EXCLUDED.plate, updated_at = now()`,
     [p.code, p.prefix || null, p.first_name || null, p.last_name || null, name, p.cost_center || null, p.email || null,
-      p.tel || null, p.gender, p.emer_name, p.emer_tel, p.blood, p.consent]);
+      p.tel || null, p.gender, p.emer_name, p.emer_tel, p.blood, p.consent, p.plate]);
   // ผูกอีเมลกับรหัสพนักงาน ให้การเช็คอิน MS Form จับคู่กับธงได้ (ไม่ทับลิงก์ที่ Admin ตั้งไว้)
   if (p.email)
     await q(`INSERT INTO person_links (email, emp_id, source) VALUES ($1, $2, 'register') ON CONFLICT (email) DO NOTHING`, [p.email, p.code]);
@@ -79,7 +80,7 @@ export async function prefillFor(code: string) {
     prefill: {
       code, prefix: pick("prefix"), first_name: first, last_name: last, cost_center: pick("cost_center"),
       gender: pick("gender"), tel: pick("tel"), email: pr?.email ?? "",
-      emer_name: pr?.emer_name ?? "", emer_tel: pr?.emer_tel ?? "", consent: !!pr?.consent_at, blood: pr?.blood ?? "",
+      emer_name: pr?.emer_name ?? "", emer_tel: pr?.emer_tel ?? "", consent: !!pr?.consent_at, blood: pr?.blood ?? "", plate: pr?.plate ?? "",
     },
   };
 }

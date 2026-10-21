@@ -45,7 +45,7 @@ test("โครงจริงของ KIOS: ตัดข้อมูลอ่�
   assert.equal(f.checkin_at, "visitor_checkin_date");
   assert.equal(f.checkin_alt, "dpark_checkin");
   assert.equal(f.zone, "places");
-  const { vehicles, skipped } = toVehicles(p, f);
+  const { vehicles, skipped } = toVehicles(p, f, new Date("2026-10-19T12:00:00Z"));
   assert.equal(skipped, 0);
   assert.equal(vehicles.length, 2);
   assert.equal(vehicles[0].driver_name, "สมศักดิ์ ส่งของ");
@@ -65,7 +65,7 @@ test("ทะเบียนที่พิมพ์ต่างกันได�
 });
 
 test("รถคันเดียวหลายแถว เหลือแถวที่เข้าล่าสุด และแถวไม่มีทะเบียนยังนับด้วยรหัสรายการ", () => {
-  const { vehicles, skipped } = toVehicles(rows, detectFields(rows));
+  const { vehicles, skipped } = toVehicles(rows, detectFields(rows), new Date("2026-10-19T12:00:00Z"));
   assert.equal(vehicles.length, 3);
   assert.equal(skipped, 0);
   const v = vehicles.find((x) => x.plate.startsWith("701234"))!;
@@ -102,26 +102,29 @@ test("KIOS: Body เลื่อนวันได้ {{today-2}}", async () => 
   delete process.env.KIOS_RPC_BODY;
 });
 
-test("KIOS: 502 แล้วลองใหม่ 1 ครั้ง", async () => {
+test("KIOS: ล่มแล้วไม่ยิงซ้ำทันที (พัก 1 นาทีที่ syncDriver)", async () => {
   const http = await import("node:http");
   let n = 0;
-  const srv = http.createServer((req, res) => {
-    n++;
-    if (n === 1) { res.writeHead(502, { "content-type": "text/html" }); res.end("<html><title>502</title></html>"); return; }
-    res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify([{ license_plate: "1กข1234" }]));
-  });
+  const srv = http.createServer((req, res) => { n++; res.writeHead(502, { "content-type": "text/html" }); res.end("<html></html>"); });
   await new Promise<void>((r) => srv.listen(0, r));
-  const port = (srv.address() as any).port;
-  process.env.KIOS_BASE_URL = `http://127.0.0.1:${port}`; process.env.KIOS_API_KEY = "k";
+  process.env.KIOS_BASE_URL = `http://127.0.0.1:${(srv.address() as any).port}`; process.env.KIOS_API_KEY = "k";
   const { fetchKiosk } = await import("../lib/kiosk.ts");
-  const rows = await fetchKiosk();
-  assert.equal(n, 2);
-  assert.equal(rows.length, 1);
-  n = -10; // ล้มทั้งสองรอบ
-  const srv2 = http.createServer((req, res) => { res.writeHead(502, { "content-type": "text/html" }); res.end("<html></html>"); });
-  await new Promise<void>((r) => srv2.listen(0, r));
-  process.env.KIOS_BASE_URL = `http://127.0.0.1:${(srv2.address() as any).port}`;
-  await assert.rejects(fetchKiosk(), /KIOS ไม่ตอบ \(502 Bad Gateway\).*ลองใหม่แล้ว 1 ครั้ง/);
-  srv.close(); srv2.close();
+  await assert.rejects(fetchKiosk(), /KIOS ไม่ตอบ \(502 Bad Gateway\).*ลองใหม่ได้ใน 1 นาที/);
+  assert.equal(n, 1);
+  srv.close();
   delete process.env.KIOS_BASE_URL; delete process.env.KIOS_API_KEY;
+});
+
+test("KIOS: ตัดทะเบียนที่เป็นลิงก์ (ใช้ทะเบียนสำรองถ้ามี) และรถที่เข้าเกิน 2 วัน", () => {
+  const now = new Date("2026-10-21T08:00:00Z");
+  const rows = [
+    { visitor_vehicle_plate: "https://lin.ee/6FJYb0T", dpark_car_plate: null, visitor_transaction_id: 1, visitor_checkin_time: "2026-10-21T07:00:00Z" },
+    { visitor_vehicle_plate: "https://lin.ee/6FJYb0T", dpark_car_plate: "ญฐ1748", visitor_transaction_id: 2, visitor_checkin_time: "2026-10-21T06:00:00Z" },
+    { visitor_vehicle_plate: "1กข1234", visitor_transaction_id: 3, visitor_checkin_time: "2026-10-17T06:00:00Z" },
+    { visitor_vehicle_plate: "2กข5678", visitor_transaction_id: 4, visitor_checkin_time: "2026-10-20T09:00:00Z" },
+  ];
+  const r = toVehicles(rows, detectFields(rows), now);
+  assert.deepEqual(r.vehicles.map((v) => v.plate_display).sort(), ["2กข5678", "ญฐ1748"]);
+  assert.equal(r.url, 1);
+  assert.equal(r.old, 1);
 });

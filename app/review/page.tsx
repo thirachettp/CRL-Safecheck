@@ -4,7 +4,7 @@ import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
 import { useUser, useAdmin } from "@/components/identity";
 import LoginSheet from "@/components/LoginSheet";
-import { api, usePoll, useWide, fmtDateTime, fmtTime } from "@/components/lib";
+import { api, usePoll, useWide, fmtDateTime, fmtTime, freshness, lastTouch, ago } from "@/components/lib";
 import { IBack, IFlag, IDown, IClose } from "@/components/Icons";
 import PlanSearch from "@/components/PlanSearch";
 
@@ -17,7 +17,7 @@ type Person = {
   added_manually: boolean; edited_note: string | null; edited_by: string | null; removed: boolean; removed_reason: string | null; removed_by: string | null;
 };
 type Data = {
-  flag: string | null; people: Person[]; cells: { flag_no: string; n: number; reviewed: boolean; reviewed_by?: string | null; reviewed_at?: string | null }[];
+  flag: string | null; people: Person[]; cells: { flag_no: string; n: number; reviewed: boolean; reviewed_by?: string | null; reviewed_at?: string | null; att_at?: string | null; att_by?: string | null }[];
   review: { reviewed_by: string; reviewed_at: string } | null; leader: any; points: any[]; viewer?: "anon" | "user" | "staff";
 };
 
@@ -281,14 +281,17 @@ function ReviewBody() {
             <div className="row"><b className="grow" style={{ fontSize: 17 }}>เลือกธง</b>
               <button className="fbtn" style={{ borderColor: "var(--line-2)", width: 44, justifyContent: "center", padding: 0 }} onClick={() => setPicker(false)} aria-label="ปิด"><IClose size={16} /></button></div>
             <div className="muted xs row" style={{ gap: 12 }}>
-              <span className="row" style={{ gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#93C5FD" }} />ตรวจทานแล้ว</span>
-              <span>ตัวเลขล่าง = จำนวนคน</span>
+              <span className="row" style={{ gap: 4 }}><span className="fk f-today" />ตรวจวันนี้</span>
+              <span className="row" style={{ gap: 4 }}><span className="fk f-recent" />1–2 วันก่อน</span>
+              <span className="row" style={{ gap: 4 }}><span className="fk" />นานกว่า / ยังไม่ตรวจ</span>
             </div>
             <div className="cells5">
               {(d.data?.cells ?? []).map((c) => (
-                <button key={c.flag_no} className={`cell${c.reviewed ? " rev" : ""}${c.flag_no === flag ? " on" : ""}`}
+                <button key={c.flag_no} className={`cell f-${freshness(lastTouch(c))}${c.flag_no === flag ? " on" : ""}`}
+                  title={lastTouch(c) ? `อัปเดตล่าสุด ${fmtDateTime(lastTouch(c))}${c.reviewed_by ? ` · ยืนยันโดย ${c.reviewed_by}` : ""}` : "ยังไม่เคยตรวจ"}
                   onClick={() => { setSel(c.flag_no); setPicker(false); setOpen(null); }}>
                   <b style={{ fontSize: 16 }}>{c.flag_no}</b><span className="mono" style={{ fontSize: 11 }}>{c.n} คน</span>
+                  <span style={{ fontSize: 9, opacity: .85 }}>{lastTouch(c) ? ago(lastTouch(c)) : "ยังไม่ตรวจ"}</span>
                 </button>
               ))}
             </div>

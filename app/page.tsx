@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import MobileShell from "@/components/MobileShell";
 import LoginSheet from "@/components/LoginSheet";
 import { useUser, useAdmin } from "@/components/identity";
-import { api, usePoll, fmtTime, initials, KINDS, rangeText } from "@/components/lib";
-import { IFlag, ISearch, IChart, IPlus, IUser, IAlert, ILock } from "@/components/Icons";
+import { api, usePoll, fmtTime, fmtDateTime, initials, KINDS, rangeText, freshness, lastTouch, ago } from "@/components/lib";
+import { NotifyCard } from "@/components/Notify";
+import { IClose } from "@/components/Icons";
+import { IFlag, ISearch, IChart, IUser, IAlert, ILock } from "@/components/Icons";
 
 type Point = { code: string; name: string; backup: string | null; flags: string[] | null };
 
@@ -20,7 +22,10 @@ function Home() {
   const { user } = useUser();
   const { admin, unlock } = useAdmin();
   const cur = usePoll<{ current: any }>("/api/incidents", 4000);
-  const plan = usePoll<{ flags: any[]; points: Point[] }>("/api/plan", 0);
+  const plan = usePoll<{ flags: any[]; points: Point[]; extra_areas?: string[] }>("/api/plan", 0);
+  const [otherKind, setOtherKind] = useState("");
+  const [drillPrep, setDrillPrep] = useState(false);
+  const staff = admin?.role === "admin" || admin?.role === "safety";
   const [showLogin, setShowLogin] = useState(false);
   const [kind, setKind] = useState(KINDS[0].id);
   const [area, setArea] = useState("");
@@ -32,7 +37,8 @@ function Home() {
   const inc = cur.data?.current ?? null;
   const step = !inc ? "idle" : inc.state === "pending" ? "pending" : "active";
   const areas = useMemo(
-    () => [...new Set((plan.data?.flags ?? []).map((f) => f.area).filter(Boolean))].sort() as string[],
+    () => [...new Set([...(plan.data?.flags ?? []).map((f) => f.area), ...(plan.data?.extra_areas ?? [])].filter(Boolean))]
+      .sort((a, b) => String(a).localeCompare(String(b), "th")) as string[],
     [plan.data]);
   const points = plan.data?.points ?? [];
 
@@ -45,7 +51,9 @@ function Home() {
     if (!user) return setShowLogin(true);
     setBusy(true); setErr(null);
     try {
-      await api("/api/incidents", { method: "POST", json: { action: "report", kind, area: area || areas[0] || "", by: user.name } });
+      const k = kind === "อื่นๆ" ? otherKind.trim() : kind;
+      if (!k) throw new Error("พิมพ์ประเภทเหตุ");
+      await api("/api/incidents", { method: "POST", json: { action: "report", kind: k, area: area.trim(), by: user.name } });
       cur.reload();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -108,14 +116,18 @@ function Home() {
                   <button key={k.id} className={`pill${kind === k.id ? " on" : ""}`} onClick={() => setKind(k.id)} aria-pressed={kind === k.id}>{k.label}</button>
                 ))}
               </div>
+              {kind === "อื่นๆ" && (
+                <label className="lb" style={{ fontSize: 13 }}>ระบุเหตุ
+                  <input className="in" value={otherKind} onChange={(e) => setOtherKind(e.target.value)} maxLength={60} placeholder="เช่น น้ำท่วม, ไฟฟ้าดับ, ระเบิด" autoFocus />
+                </label>
+              )}
               <label className="lb" style={{ fontSize: 13 }}>พื้นที่เกิดเหตุ
-                <select className="in" value={area} onChange={(e) => setArea(e.target.value)} style={{ height: 46 }}>
-                  {areas.length === 0 && <option value="">ยังไม่มีข้อมูลพื้นที่</option>}
-                  {areas.map((a) => <option key={a}>{a}</option>)}
-                  <option>อื่นๆ</option>
-                </select>
+                <input className="in" list="areas" value={area} onChange={(e) => setArea(e.target.value)} maxLength={80}
+                  placeholder="พิมพ์เพื่อค้นหา หรือพิมพ์พื้นที่ใหม่" style={{ height: 46 }} />
+                <datalist id="areas">{areas.map((a) => <option key={a} value={a} />)}</datalist>
               </label>
-              <button className="btn btn-red btn-block" style={{ minHeight: 56, fontSize: 17 }} onClick={report} disabled={!user || busy}>
+              {area.trim() && !areas.includes(area.trim()) && <div className="muted xs" style={{ marginTop: -6 }}>พื้นที่ใหม่ “{area.trim()}” จะถูกเพิ่มในรายการเมื่อแจ้งเหตุ</div>}
+              <button className="btn btn-red btn-block" style={{ minHeight: 56, fontSize: 17 }} onClick={report} disabled={!user || busy || (kind === "อื่นๆ" && !otherKind.trim())}>
                 <IAlert />แจ้งเหตุ
               </button>
               {!user && (
@@ -126,11 +138,18 @@ function Home() {
               )}
               {err && <p className="notice err">{err}</p>}
             </div>
+            {staff && (
+              <div className="card stack" style={{ padding: 16, gap: 8, background: "#FEF3C7", borderColor: "#FCD34D" }}>
+                <div className="row"><b className="grow" style={{ fontSize: 16 }}>ซ้อมอพยพ</b><span className="chip sm warn">Admin / Safety</span></div>
+                <p className="small" style={{ margin: 0 }}>ดูว่าแต่ละธงตรวจทานล่าสุดเมื่อไร แล้วเริ่มซ้อม · ทุกคนที่เปิดการแจ้งเตือนจะได้รับแจ้ง</p>
+                <button className="btn btn-dark btn-block" style={{ minHeight: 50 }} onClick={() => setDrillPrep(true)}>เตรียมซ้อม</button>
+              </div>
+            )}
+            {user && <NotifyCard compact />}
             <div className="stack" style={{ gap: 10 }}>
               <Tile href="/review" icon={<IFlag color="#1F3A5F" />} bg="#EEF2F7" title="ตรวจทานธง" sub="ผู้นำธง · เพิ่ม ลด แก้ไขคนในธง และมา/ไม่มาวันนี้" />
               <Tile href="/search" icon={<ISearch />} bg="#F3F2EE" title="ค้นหาคน" sub="ระหว่างซ้อม / เกิดเหตุ แอพจะเปิดหน้านี้ให้" />
               <Tile href="/dashboard" icon={<IChart />} bg="#F3F2EE" title="Dashboard" sub="ติดตามสถานการณ์ (เหมาะกับจอใหญ่)" />
-              <Tile href="/injury" icon={<IPlus color="#881337" />} bg="#FFE4E6" title="ผู้บาดเจ็บ (Safety)" sub="ระบุระดับสี · อาการ · รพ. · เฉพาะ Safety / Admin" />
             </div>
             <div className="card stack" style={{ padding: 16, gap: 10 }}>
               <b>ตอนเกิดเหตุ ทำ 3 ขั้น</b>
@@ -203,6 +222,7 @@ function Home() {
         )}
       </div>
       {showLogin && <LoginSheet onClose={() => setShowLogin(false)} />}
+      {drillPrep && <DrillPrep onClose={() => setDrillPrep(false)} onStarted={() => router.push("/dashboard")} />}
     </MobileShell>
   );
 }
@@ -213,5 +233,62 @@ function Tile({ href, icon, bg, title, sub }: { href: string; icon: React.ReactN
       <span className="tile-ic" style={{ background: bg }}>{icon}</span>
       <span className="grow"><b>{title}</b><br /><span className="muted small">{sub}</span></span>
     </Link>
+  );
+}
+
+type Cell = { flag_no: string; n: number; reviewed_by?: string | null; reviewed_at?: string | null; att_at?: string | null; att_by?: string | null;
+  att_today?: number; area?: string | null; leader_name?: string | null };
+
+/** ก่อนเริ่มซ้อม: รายงานแต่ละธงอัปเดตล่าสุดเมื่อไร */
+function DrillPrep({ onClose, onStarted }: { onClose: () => void; onStarted: () => void }) {
+  const d = usePoll<{ cells: Cell[] }>("/api/review", 0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [title, setTitle] = useState(`ซ้อมอพยพ ${new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`);
+  const cells = d.data?.cells ?? [];
+  const cnt = { today: 0, recent: 0, old: 0 };
+  for (const c of cells) cnt[freshness(lastTouch(c))]++;
+  async function start() {
+    setBusy(true); setErr(null);
+    try { await api("/api/incidents", { method: "POST", json: { action: "drill", title } }); onStarted(); }
+    catch (e: any) { setErr(e.message); setBusy(false); }
+  }
+  return (
+    <div className="sheet-bg" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="sheet" style={{ maxHeight: "92dvh" }}>
+        <div className="row"><b className="grow" style={{ fontSize: 17 }}>เตรียมซ้อมอพยพ</b>
+          <button className="fbtn" style={{ borderColor: "var(--line-2)", width: 44, justifyContent: "center", padding: 0 }} onClick={onClose} disabled={busy} aria-label="ปิด"><IClose size={16} /></button></div>
+        <div className="row xs" style={{ gap: 10 }}>
+          <span className="row" style={{ gap: 4 }}><span className="fk f-today" />ตรวจวันนี้ {cnt.today}</span>
+          <span className="row" style={{ gap: 4 }}><span className="fk f-recent" />1–2 วันก่อน {cnt.recent}</span>
+          <span className="row" style={{ gap: 4 }}><span className="fk" />นานกว่า/ยังไม่ตรวจ {cnt.old}</span>
+        </div>
+        {d.error && <p className="notice err">{d.error}</p>}
+        <div className="freeze" style={{ maxHeight: "48dvh", border: "1px solid var(--line-3)", borderRadius: 10 }}>
+          <table className="tbl">
+            <thead><tr><th>ธง</th><th>พื้นที่</th><th>คน</th><th>อัปเดตล่าสุด</th></tr></thead>
+            <tbody>
+              {!d.data && <tr><td colSpan={4} className="muted small">กำลังโหลด…</td></tr>}
+              {cells.map((c) => {
+                const t = lastTouch(c);
+                const f = freshness(t);
+                return (
+                  <tr key={c.flag_no}>
+                    <td><span className={`cell f-${f}`} style={{ display: "inline-flex", width: 40, height: 30, cursor: "default" }}><b>{c.flag_no}</b></span></td>
+                    <td className="small">{c.area ?? "—"}{c.leader_name && <div className="muted xs">{c.leader_name}</div>}</td>
+                    <td className="mono small">{c.n}{c.att_today ? <div className="muted xs">ระบุวันนี้ {c.att_today}</div> : null}</td>
+                    <td className="small">{t ? <>{ago(t)}<div className="muted xs">{fmtDateTime(t)}{c.reviewed_by ? ` · ${c.reviewed_by}` : c.att_by ? ` · ${c.att_by}` : ""}</div></> : <span className="muted">ยังไม่เคยตรวจ</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <label className="lb">ชื่อการซ้อม<input className="in" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} /></label>
+        <p className="muted xs" style={{ margin: 0 }}>กดเริ่มแล้ว ระบบดึงข้อมูลเข้า-ออกล่าสุดมาเทียบกับผลตรวจทานธง (ไม่เกิน ~15 วินาที) แล้วแจ้งเตือนทุกคน</p>
+        {err && <p className="notice err">{err}</p>}
+        <button className="btn btn-dark btn-lg" onClick={start} disabled={busy || !d.data}>{busy ? "กำลังดึงข้อมูลและเทียบ…" : "เริ่มซ้อม"}</button>
+      </div>
+    </div>
   );
 }

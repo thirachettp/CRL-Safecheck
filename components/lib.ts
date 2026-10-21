@@ -129,3 +129,14 @@ export function useWide(min = 900) {
   }, [min]);
   return wide;
 }
+
+/** ความสดของการตรวจทานธง (นับวันตามเวลาไทย): today = วันนี้ · recent = 1–2 วันก่อน · old = เก่ากว่า/ไม่เคย */
+export function freshness(iso: string | null | undefined, now = Date.now()): "today" | "recent" | "old" {
+  if (!iso) return "old";
+  const day = (t: number) => Math.floor((t + 7 * 3600e3) / 86400e3);
+  const diff = day(now) - day(new Date(iso).getTime());
+  return diff <= 0 ? "today" : diff <= 2 ? "recent" : "old";
+}
+/** อัปเดตล่าสุดของธง = ยืนยันว่าตรวจ หรือกด มา/ไม่มา ล่าสุด */
+export const lastTouch = (c: { reviewed_at?: string | null; att_at?: string | null }) =>
+  [c.reviewed_at, c.att_at].filter(Boolean).sort().pop() ?? null;

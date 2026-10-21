@@ -321,4 +321,17 @@ export const SCHEMA: string[] = [
        ALTER TABLE incident_people ALTER COLUMN flag_no TYPE text USING flag_no::text;
      END IF;
    END $m$`,
+  // v9: แจ้งเตือน (Web Push) · ทะเบียนรถในโปรไฟล์
+  `CREATE TABLE IF NOT EXISTS push_subs (
+    endpoint    text PRIMARY KEY,
+    p256dh      text NOT NULL,
+    auth        text NOT NULL,
+    code        text,
+    role        text,
+    ua          text,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    last_ok_at  timestamptz,
+    fails       int NOT NULL DEFAULT 0
+  )`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plate text`,
 ];

@@ -365,6 +365,41 @@ ok(p900?.status === "unk" && /ตรวจทานว่าไม่มา แ�
 ok(d3.people.filter((p: any) => p.person_key.startsWith("emp:3")).every((p: any) => p.status !== "abs" || /ตรวจทาน/.test(p.status_note ?? "")), "พนักงานประจำ (ยังไม่มี Cnext) ไม่ถูกเดาว่าไม่อยู่");
 await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } });
 
+// ---------- แจ้งเตือน (Web Push) ผ่านบริการ push จำลอง ----------
+{
+  // web-push ส่งแบบ https เสมอ: ใช้ใบรับรองทดสอบ (SMOKE_TLS_KEY / SMOKE_TLS_CERT) และรันเซิร์ฟเวอร์ด้วย NODE_TLS_REJECT_UNAUTHORIZED=0
+  const https = await import("node:https");
+  const fs = await import("node:fs");
+  const crypto = await import("node:crypto");
+  const got: { path: string; enc: string | undefined; ttl: string | undefined }[] = [];
+  const srv = https.createServer({ key: fs.readFileSync(process.env.SMOKE_TLS_KEY!), cert: fs.readFileSync(process.env.SMOKE_TLS_CERT!) }, (req, res) => { got.push({ path: req.url ?? "", enc: req.headers["content-encoding"] as string, ttl: req.headers["ttl"] as string }); req.resume(); req.on("end", () => { res.writeHead(201); res.end(); }); });
+  await new Promise<void>((r) => srv.listen(0, r));
+  const port = (srv.address() as any).port;
+  const ecdh = crypto.createECDH("prime256v1"); ecdh.generateKeys();
+  const keys = { p256dh: ecdh.getPublicKey().toString("base64url"), auth: crypto.randomBytes(16).toString("base64url") };
+  const pk = await j("/api/push", { tok: "x" });
+  ok(typeof pk.publicKey === "string" && pk.publicKey.length > 60, "แจ้งเตือน: มีกุญแจสาธารณะ (สร้างเองอัตโนมัติ)");
+  await j("/api/push", { method: "POST", json: { action: "subscribe", subscription: { endpoint: `https://127.0.0.1:${port}/user`, keys } }, tok: "x" });
+  await j("/api/push", { method: "POST", json: { action: "subscribe", subscription: { endpoint: `https://127.0.0.1:${port}/staff`, keys } } });
+  const t = await j("/api/push", { method: "POST", json: { action: "test", endpoint: `https://127.0.0.1:${port}/user` }, tok: "x" });
+  ok(t.sent === 1 && got.some((g) => g.path === "/user" && g.enc === "aes128gcm"), "ทดสอบแจ้งเตือนเครื่องตัวเอง: ส่งแบบเข้ารหัสได้");
+  got.length = 0;
+  const ts = await j("/api/push", { method: "POST", json: { action: "test-all", to: "staff" } });
+  ok(ts.sent === 1 && got.length === 1 && got[0].path === "/staff", "ทดสอบส่งเฉพาะ Admin/Safety: ไม่ไปถึงผู้ใช้ทั่วไป");
+  ok(await fails(j("/api/push", { method: "POST", json: { action: "test-all", to: "all" }, tok: "x" })), "ส่งทุกคนต้องเป็น Admin");
+  got.length = 0;
+  const { id: d4, pushed } = await j("/api/incidents", { method: "POST", json: { action: "drill", title: "ซ้อมทดสอบแจ้งเตือน" } });
+  ok(pushed?.sent === 2 && got.length === 2, "เริ่มซ้อม → แจ้งเตือนทุกคน");
+  await j(`/api/incidents/${d4}`, { method: "POST", json: { action: "close" } });
+  got.length = 0;
+  const rep = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "น้ำท่วม", area: "พื้นที่ใหม่ทดสอบ" }, tok: rvTok });
+  ok(rep.pushed?.sent === 1 && got[0]?.path === "/staff", "มีคนแจ้งเหตุ → แจ้งเตือนเฉพาะ Admin/Safety");
+  const pub = await j("/api/plan", { tok: "x" });
+  ok(pub.extra_areas?.includes("พื้นที่ใหม่ทดสอบ"), "พื้นที่ใหม่ที่พิมพ์ตอนแจ้งเหตุ ถูกเพิ่มในรายการ");
+  await j(`/api/incidents/${rep.id}`, { method: "POST", json: { action: "cancel", by: "ทดสอบ" } });
+  srv.close();
+}
+
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);
   ok(r.status === 200, `หน้า ${p} เปิดได้`);

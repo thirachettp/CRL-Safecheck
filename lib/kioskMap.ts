@@ -98,12 +98,27 @@ const str = (v: unknown) => {
   return s || null;
 };
 
-/** แปลงเป็นรายการรถ รถคันเดียวมีหลายแถว (หลายรายการขนส่ง) ให้เหลือแถวที่เข้าล่าสุด */
-export function toVehicles(rows: Record<string, unknown>[], f: KioskFields): { vehicles: Vehicle[]; skipped: number } {
+/** ค่าที่เป็นลิงก์ (เช่น https://lin.ee/… จากการลงทะเบียนผ่าน LINE) ไม่ใช่ทะเบียนรถ */
+export const isUrl = (v: string | null) => !!v && /^(https?:\/\/|www\.)|lin\.ee\//i.test(v.trim());
+
+/** ดึงเฉพาะรถที่เข้าลานภายในกี่ชั่วโมง (ไม่ดูประเภท freeMember / Visitor) */
+export const KIOS_WINDOW_H = 48;
+
+/**
+ * แปลงเป็นรายการรถ รถคันเดียวมีหลายแถว (หลายรายการขนส่ง) ให้เหลือแถวที่เข้าล่าสุด
+ * - ทะเบียนที่เป็นลิงก์ ใช้ทะเบียนสำรองแทน ถ้าไม่มีทะเบียนจริงเลย ไม่นำมาใช้
+ * - ไม่นับรถที่เข้าลานเกิน 2 วัน (ถ้ามีเวลาเข้าลาน)
+ */
+export function toVehicles(rows: Record<string, unknown>[], f: KioskFields, now = new Date()):
+  { vehicles: Vehicle[]; skipped: number; url: number; old: number } {
   const map = new Map<string, Vehicle>();
-  let skipped = 0;
+  let skipped = 0, url = 0, old = 0;
+  const since = now.getTime() - KIOS_WINDOW_H * 3600e3;
   for (const r of rows) {
-    const rawPlate = (f.plate ? str(r[f.plate]) : null) ?? (f.plate_alt ? str(r[f.plate_alt]) : null);
+    const a = f.plate ? str(r[f.plate]) : null;
+    const b = f.plate_alt ? str(r[f.plate_alt]) : null;
+    const rawPlate = [a, b].find((x) => x && !isUrl(x)) ?? null;
+    if (!rawPlate && (isUrl(a) || isUrl(b))) { url++; continue; }
     let plate = normalizePlate(rawPlate);
     if (!plate) {
       // ไม่มีทะเบียน: ยังต้องนับคน ใช้รหัสรายการแทน
@@ -114,6 +129,8 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields): { v
       }
       plate = `ID-${rid}`;
     }
+    const checkin_at = (f.checkin_at ? toIso(r[f.checkin_at]) : null) ?? (f.checkin_alt ? toIso(r[f.checkin_alt]) : null);
+    if (checkin_at && new Date(checkin_at).getTime() < since) { old++; continue; }
     const prov = f.province ? str(r[f.province]) : null;
     const v: Vehicle = {
       plate: prov ? plate + normalizePlate(prov) : plate,
@@ -122,7 +139,7 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields): { v
       phone: f.phone ? str(r[f.phone]) : null,
       company: f.company ? str(r[f.company]) : null,
       zone: f.zone ? str(r[f.zone]) : null,
-      checkin_at: (f.checkin_at ? toIso(r[f.checkin_at]) : null) ?? (f.checkin_alt ? toIso(r[f.checkin_alt]) : null),
+      checkin_at,
     };
     const prev = map.get(v.plate);
     if (!prev || (v.checkin_at ?? "") > (prev.checkin_at ?? "")) {
@@ -134,7 +151,7 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields): { v
       });
     }
   }
-  return { vehicles: [...map.values()], skipped };
+  return { vehicles: [...map.values()], skipped, url, old };
 }
 
 /** กันฟีดพัง: จำนวนลดลงเกิน 30% จากรอบก่อน (เมื่อรอบก่อนมีอย่างน้อย 10 คัน) ให้กักไว้ก่อน */

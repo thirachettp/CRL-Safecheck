@@ -1,4 +1,5 @@
 import { normFlag } from "./flag";
+import { normalizePlate } from "./kioskMap";
 import { UserError } from "./errors";
 import { q, one } from "./db";
 import { outsourcePresent } from "./outsource";
@@ -184,14 +185,28 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     });
   }
 
+  // ทะเบียนรถที่ลงทะเบียนไว้ในโปรไฟล์ → รู้ว่าเป็นใคร
+  const plates = (await q<any>(`SELECT code, name, cost_center, tel, plate FROM profiles WHERE plate IS NOT NULL AND plate <> ''`))
+    .map((p) => ({ ...p, key: normalizePlate(p.plate) })).filter((p) => p.key.length >= 4);
+  const byPlate = (vp: string) => plates.find((p) => vp === p.key || (vp.startsWith(p.key) && !/^\d/.test(vp.slice(p.key.length))));
+
   // คนขับจาก KIOS: หนึ่งคันหนึ่งคน key = ทะเบียนรถ
   for (const v of vehicles) {
     const key = `plate:${v.plate}`;
+    const owner = String(v.plate).startsWith("ID-") ? undefined : byPlate(String(v.plate));
+    const ownerPlan = owner ? planMap.get(owner.code) : null;
+    if (owner && ownerPlan) {
+      // เป็นพนักงานในชุดธง: ใช้แถวของคนนั้น (ไม่สร้างคนขับซ้ำ)
+      const c = out.get(`emp:${owner.code}`) ?? fromPlan(ownerPlan);
+      out.set(c.person_key, { ...c, plate: v.plate_display ?? v.plate, presence: "kiosk", presence_site: v.zone, presence_since: iso(v.checkin_at),
+        here: true, note: null, source: "Driver (KIOS) · ทะเบียนตรงโปรไฟล์" });
+      continue;
+    }
     out.set(key, {
-      person_key: key, emp_id: null, email: null, plate: v.plate_display ?? v.plate,
-      name: v.driver_name || `คนขับรถ ${v.plate_display ?? v.plate}`, gender: null,
-      area: ["คนขับ", v.company].filter(Boolean).join(" "), cost_center: "DRIVER", cc_name: "คนขับ (KIOS)",
-      tel: v.phone, flag_no: driverFlag ?? null, assembly_point: driverFlag != null ? flagPoint.get(driverFlag) ?? null : null,
+      person_key: key, emp_id: owner?.code ?? null, email: null, plate: v.plate_display ?? v.plate,
+      name: owner?.name || v.driver_name || `คนขับรถ ${v.plate_display ?? v.plate}`, gender: null,
+      area: ["คนขับ", v.company].filter(Boolean).join(" "), cost_center: owner?.cost_center ?? "DRIVER", cc_name: owner ? null : "คนขับ (KIOS)",
+      tel: owner?.tel ?? v.phone, flag_no: driverFlag ?? null, assembly_point: driverFlag != null ? flagPoint.get(driverFlag) ?? null : null,
       is_leader: false, presence: "kiosk", presence_site: v.zone, presence_since: iso(v.checkin_at),
       here: hereMap.get(key) ?? true, source: "Driver (KIOS)",
     });

@@ -127,6 +127,14 @@ function kioskOverride(): Partial<KioskFields> {
  */
 export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: boolean; held?: boolean; count?: number; message: string }> {
   if (!kioskConfigured()) return { ok: false, message: "ยังไม่ได้ตั้งค่า KIOS_BASE_URL / KIOS_API_KEY" };
+  // KIOS ล่มรอบก่อน → พัก 1 นาทีก่อนเรียกใหม่ (ไม่ซ้ำเติมเซิร์ฟเวอร์ที่ล่มอยู่) ใช้ข้อมูลเดิมไปก่อน
+  const st = await one<any>(`SELECT last_try_at, last_ok_at, last_error FROM source_status WHERE source = 'driver'`);
+  if (st?.last_error && st.last_try_at && (!st.last_ok_at || new Date(st.last_try_at) > new Date(st.last_ok_at))) {
+    const wait = 60 - Math.floor((Date.now() - new Date(st.last_try_at).getTime()) / 1000);
+    if (wait > 0 && !opts.force) {
+      return { ok: false, message: `KIOS ไม่ตอบรอบก่อน รออีก ${wait} วินาทีก่อนดึงใหม่ · ใช้ข้อมูลเดิมไปก่อน` };
+    }
+  }
   try {
     const rows = prepareRows(await fetchKiosk());
     await q(`INSERT INTO ingest_raw (source, batch_id, payload) VALUES ('driver', $1, $2) ON CONFLICT DO NOTHING`, [
@@ -143,7 +151,8 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
       await markStatus("driver", false, null, "หาคอลัมน์ทะเบียนรถไม่เจอ ตั้ง KIOS_FIELD_MAP");
       return { ok: false, message: `หาคอลัมน์ทะเบียนรถไม่เจอ คอลัมน์ที่มี: ${sampleKeys.join(", ")}` };
     }
-    const { vehicles, skipped } = toVehicles(rows, fields);
+    const { vehicles, skipped, url, old } = toVehicles(rows, fields);
+    const notes = [url && `ตัดทะเบียนที่เป็นลิงก์ ${url} แถว`, old && `ตัดรถที่เข้าลานเกิน 2 วัน ${old} คัน`].filter(Boolean).join(" · ");
 
     const prev = await one<{ n: number }>(`SELECT count(*)::int AS n FROM driver_presence`);
     if (!opts.force && shouldHold(prev?.n ?? 0, vehicles.length)) {
@@ -168,7 +177,7 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
     return {
       ok: true,
       count: vehicles.length,
-      message: `รถในลาน ${vehicles.length} คัน${skipped ? ` (ข้าม ${skipped} แถวที่ไม่มีทะเบียน)` : ""}`,
+      message: `รถในลาน ${vehicles.length} คัน${skipped ? ` (ข้าม ${skipped} แถวที่ไม่มีทะเบียน)` : ""}${notes ? ` · ${notes}` : ""}`,
     };
   } catch (e: any) {
     await markStatus("driver", false, null, e?.message ?? String(e));

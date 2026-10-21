@@ -1,12 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { SwRegister } from "@/components/Notify";
 
 export const metadata: Metadata = {
   title: "CRL SafeCheck",
   description: "นับคนและติดตามผู้สูญหายเมื่อเกิดเหตุฉุกเฉิน",
-  icons: { icon: "/icon.svg" },
+  icons: { icon: "/icon.svg", apple: "/icon-192.png" },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "SafeCheck", statusBarStyle: "default" },
 };
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#F3F2EE" };
+// ปิดการซูม ให้ใช้งานเหมือนแอปจริง
+export const viewport: Viewport = {
+  width: "device-width", initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: "cover", themeColor: "#F3F2EE",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" />
       </head>
-      <body>{children}</body>
+      <body>{children}<SwRegister /></body>
     </html>
   );
 }

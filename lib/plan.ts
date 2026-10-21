@@ -190,10 +190,15 @@ export async function reviewFlag(flag: string) {
 
 export async function flagCells() {
   return q<any>(
-    `SELECT f.flag_no, count(p.emp_id) FILTER (WHERE NOT p.removed)::int AS n, (max(r.flag_no) IS NOT NULL) AS reviewed,
-       max(r.reviewed_by) AS reviewed_by, max(r.reviewed_at) AS reviewed_at
+    `SELECT f.flag_no, count(DISTINCT p.emp_id) FILTER (WHERE NOT p.removed)::int AS n, (max(r.flag_no) IS NOT NULL) AS reviewed,
+       max(r.reviewed_by) AS reviewed_by, max(r.reviewed_at) AS reviewed_at,
+       max(a.at) AS att_at, (array_agg(a.by_name ORDER BY a.at DESC) FILTER (WHERE a.at IS NOT NULL))[1] AS att_by,
+       count(DISTINCT p.emp_id) FILTER (WHERE NOT p.removed AND a.day = (now() AT TIME ZONE 'Asia/Bangkok')::date)::int AS att_today,
+       COALESCE(max(l.area), mode() WITHIN GROUP (ORDER BY p.area)) AS area, max(l.leader_name) AS leader_name
      FROM (SELECT flag_no FROM evac_plan WHERE flag_no IS NOT NULL AND NOT removed UNION SELECT flag_no FROM flag_leaders) f
+     LEFT JOIN flag_leaders l ON l.flag_no = f.flag_no
      LEFT JOIN evac_plan p ON p.flag_no = f.flag_no
+     LEFT JOIN attendance a ON a.person_key = 'emp:' || p.emp_id AND NOT p.removed
      LEFT JOIN flag_reviews r ON r.flag_no = f.flag_no
      GROUP BY f.flag_no ORDER BY flag_key(f.flag_no), f.flag_no`);
 }

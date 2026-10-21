@@ -5,11 +5,11 @@ import { ICheck, ILock } from "./Icons";
 
 export type ProfileForm = {
   code: string; prefix: string; first_name: string; last_name: string; cost_center: string;
-  email: string; tel: string; gender: string; emer_name: string; emer_tel: string; consent: boolean; blood: string;
+  email: string; tel: string; gender: string; emer_name: string; emer_tel: string; consent: boolean; blood: string; plate: string;
 };
 export const EMPTY_PROFILE: ProfileForm = {
   code: "", prefix: "", first_name: "", last_name: "", cost_center: "", email: "", tel: "",
-  gender: "", emer_name: "", emer_tel: "", consent: false, blood: "",
+  gender: "", emer_name: "", emer_tel: "", consent: false, blood: "", plate: "",
 };
 export function toForm(p: Partial<Record<keyof ProfileForm, unknown>> | null | undefined): ProfileForm {
   const f = { ...EMPTY_PROFILE };
@@ -84,6 +84,9 @@ export default function ProfileFields({ f, set, codeLocked, onDeleteMedical }: {
         </label>
         {emailBad && <div className="xs" style={{ marginTop: -6, color: "#9F1239" }}>ต้องลงท้ายด้วย @central.co.th</div>}
         <label className="lb" style={L}>เบอร์โทร <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ</span><input className="in" inputMode="tel" autoComplete="tel" placeholder="08x-xxx-xxxx" value={f.tel} onChange={up("tel")} /></label>
+        <label className="lb" style={L}>ทะเบียนรถ <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ · ใช้จับคู่กับระบบลานจอด KIOS</span>
+          <input className="in" placeholder="เช่น 1กข1234 หรือ ญฐ 1748" value={f.plate} onChange={up("plate")} maxLength={20} autoComplete="off" />
+        </label>
         <div className="lb" style={L}>เพศ{req}
           <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: "nowrap" }}>
             {["ชาย", "หญิง", "ไม่ระบุ"].map((g) => <button type="button" key={g} className={`seg${f.gender === g ? " on" : ""}`} onClick={() => set({ ...f, gender: g })}>{g}</button>)}
