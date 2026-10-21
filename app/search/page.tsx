@@ -1,6 +1,6 @@
 "use client";
 import { cmpFlag } from "@/lib/flag";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
 import { useUser } from "@/components/identity";
@@ -36,6 +36,10 @@ function SearchIncident({ id }: { id: number }) {
   const d = usePoll<Data>(`/api/incidents/${id}`, 3000);
   const [q, setQ] = useState("");
   const [f, setF] = useState<string>("all");
+  // มาจาก Heatmap ใน Dashboard: /search?g=<ธง หรือ Cost Center>
+  useEffect(() => {
+    try { const g = new URLSearchParams(window.location.search).get("g"); if (g) setF(g); } catch {}
+  }, []);
   const [sf, setSf] = useState<string>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);

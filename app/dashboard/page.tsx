@@ -207,6 +207,8 @@ function IncidentDash({ id }: { id: number }) {
 
         <SourceStrip sources={d.data?.sources ?? []} people={people} now={now} incidentId={id} active={inc.state === "active"} onDone={d.reload} />
 
+        <Heatmap rows={m.rows} real={real} />
+
         <div className="g2">
           <section className="card">
             <div className="card-h" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -379,6 +381,41 @@ function SourceStrip({ sources, people, now, incidentId, active, onDone }: {
           {sources.filter((x) => x.ready && x.last_error && (!x.last_ok_at || new Date(x.last_try_at) > new Date(x.last_ok_at))).map((x) => `${x.label}: ${x.last_error}`).join(" · ")}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Heatmap ราย ธง (ซ้อม) / Cost Center (เหตุจริง) · เขียว = ครบ · ขาว = ยังนับไม่ครบ · แดง = มีคนขาด (ยังอยู่ในคลัง) · กดเพื่อดูรายชื่อ */
+function Heatmap({ rows, real }: { rows: { k: string; name: string; done: number; total: number; inn: number; unk: number; complete: boolean }[]; real: boolean }) {
+  const sorted = [...rows].sort((a, b) => (real ? a.k.localeCompare(b.k) : cmpFlag(a.k === "ไม่ระบุธง" ? null : a.k, b.k === "ไม่ระบุธง" ? null : b.k)));
+  const green = rows.filter((r) => r.complete).length, red = rows.filter((r) => r.inn > 0).length;
+  const white = rows.length - green - red;
+  const gid = (k: string) => (!real && k === "ไม่ระบุธง" ? "none" : k);
+  return (
+    <section className="card" style={{ padding: "14px 18px" }}>
+      <div className="row" style={{ gap: 14, marginBottom: 10 }}>
+        <b className="grow">ภาพรวมราย{real ? " Cost Center" : "ธง"}</b>
+        <span className="row xs" style={{ gap: 4 }}><span className="hm-key hm-ok" />ครบแล้ว {green}</span>
+        <span className="row xs" style={{ gap: 4 }}><span className="hm-key" />ยังไม่ครบ {white}</span>
+        <span className="row xs" style={{ gap: 4 }}><span className="hm-key hm-bad" />มีคนขาด {red}</span>
+        <span className="muted xs">กดช่องเพื่อดูรายชื่อ</span>
+      </div>
+      <div className="hm">
+        {sorted.map((r) => {
+          const cls = r.complete ? "hm-ok" : r.inn > 0 ? "hm-bad" : "";
+          const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
+          return (
+            <Link key={r.k} href={`/search?g=${encodeURIComponent(gid(r.k))}`} className={`hm-c ${cls}`}
+              title={`${real ? "Cost Center" : "ธง"} ${r.k}${r.name ? ` ${r.name}` : ""} · นับได้ ${r.done}/${r.total}${r.inn ? ` · ขาด (ในคลัง) ${r.inn}` : ""}${r.unk ? ` · ยังไม่ทราบ ${r.unk}` : ""}`}>
+              <b className="mono">{!real && r.k === "ไม่ระบุธง" ? "?" : r.k}</b>
+              {real && r.name && <span className="hm-n">{r.name}</span>}
+              <span className="mono hm-v">{r.done}/{r.total}</span>
+              {r.inn > 0 ? <span className="hm-t">ขาด {r.inn}</span> : !r.complete && <span className="hm-bar"><span style={{ width: `${pct}%` }} /></span>}
+            </Link>
+          );
+        })}
+        {rows.length === 0 && <span className="muted small">ยังไม่มีข้อมูล</span>}
+      </div>
     </section>
   );
 }
