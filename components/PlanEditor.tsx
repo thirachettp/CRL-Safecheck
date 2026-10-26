@@ -11,14 +11,14 @@ export type FlagRow = {
 type Leader = { flag_no: string; leader_name: string | null; area: string | null; assembly_point: string | null; flag_no_old: string | null; cost_center: string | null };
 type Point = { code: string; name: string };
 type Person = {
-  emp_id: string; prefix: string | null; first_name: string; last_name: string | null; gender: string | null; flag_no: string;
+  emp_id: string; prefix: string | null; first_name: string; last_name: string | null; name_en?: string | null; gender: string | null; flag_no: string;
   tel: string | null; cost_center: string | null; area: string | null; role: string | null; added_manually: boolean;
   removed: boolean; removed_reason: string | null; removed_by: string | null; edited_by: string | null;
 };
 
 const ROLES = ["ผู้อพยพ", "ผู้นำธงอพยพ", "ผู้ช่วยผู้นำธง"];
 const EMP_OK = /^[A-Z]{0,5}\d{4,12}$/i;
-const PREFIX = ["", "นาย", "นาง", "นางสาว"];
+const PREFIX = ["", "นาย", "นาง", "นางสาว", "Mr.", "Mrs.", "Ms.", "Miss"];
 const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไม่ได้ทำงานพื้นที่นี้", "ย้ายไปแผนกอื่น", "อื่นๆ"];
 const isLeader = (r: string | null) => /^\s*ผู้นำ/.test(r ?? "");
 
@@ -219,10 +219,10 @@ function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, on
     try { await call(json); setEdit(null); setDel(null); setAdding(false); d.reload(); onChanged(); return true; }
     catch (x: any) { setErr(x.message); return false; }
   }
-  const blank = { emp_id: "", prefix: "", first_name: "", last_name: "", gender: "ชาย", role: "ผู้อพยพ", cost_center: leader?.cost_center ?? "", area: leader?.area ?? row.area ?? "", tel: "", flag_no: flag };
+  const blank = { emp_id: "", prefix: "", first_name: "", last_name: "", name_en: "", gender: "ชาย", role: "ผู้อพยพ", cost_center: leader?.cost_center ?? "", area: leader?.area ?? row.area ?? "", tel: "", flag_no: flag };
   const start = (p: Person) => {
     setEdit(p.emp_id); setDel(null);
-    setDraft({ new_emp_id: p.emp_id, prefix: p.prefix ?? "", first_name: p.first_name, last_name: p.last_name ?? "", gender: p.gender ?? "", role: p.role ?? "ผู้อพยพ",
+    setDraft({ new_emp_id: p.emp_id, prefix: p.prefix ?? "", first_name: p.first_name, last_name: p.last_name ?? "", name_en: p.name_en ?? "", gender: p.gender ?? "", role: p.role ?? "ผู้อพยพ",
       cost_center: p.cost_center ?? "", area: p.area ?? "", tel: p.tel ?? "", flag_no: p.flag_no });
   };
   const fields = (v: any, set: (x: any) => void, withId: boolean) => (
@@ -235,6 +235,7 @@ function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, on
           <input className="in" style={{ marginTop: 0 }} placeholder="ชื่อ" value={v.first_name} onChange={(e) => set({ ...v, first_name: e.target.value })} aria-label="ชื่อ" />
           <input className="in" style={{ marginTop: 0 }} placeholder="นามสกุล" value={v.last_name} onChange={(e) => set({ ...v, last_name: e.target.value })} aria-label="นามสกุล" />
         </div>
+        <input className="in" style={{ marginTop: 4 }} placeholder="ชื่อ-นามสกุล ภาษาอังกฤษ (ไม่บังคับ)" lang="en" value={v.name_en ?? ""} onChange={(e) => set({ ...v, name_en: e.target.value })} aria-label="ชื่อภาษาอังกฤษ" />
       </td>
       <td><select className="in" style={{ marginTop: 0 }} value={v.gender} onChange={(e) => set({ ...v, gender: e.target.value })} aria-label="เพศ">
         <option value="">—</option><option>ชาย</option><option>หญิง</option><option>อื่นๆ</option></select></td>
@@ -306,6 +307,7 @@ function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, on
               <tr key={p.emp_id} id={`pe-${p.emp_id}`} className={hl === p.emp_id ? "hl" : ""}>
                 <td className="mono">{p.emp_id.startsWith("ไม่มีรหัส ") ? <span className="muted">—</span> : p.emp_id}{!EMP_OK.test(p.emp_id) && !p.emp_id.startsWith("ADD-") && <div><span className="chip sm warn" title="กดแก้ไขเพื่อใส่รหัสพนักงาน">{p.emp_id.startsWith("ไม่มีรหัส ") ? "ไม่มีรหัส" : "รหัสไม่ถูกต้อง"}</span></div>}</td>
                 <td><b>{p.prefix ? `${p.prefix} ` : ""}{p.first_name} {p.last_name}</b>
+                  {p.name_en && <div className="muted xs" lang="en">{p.name_en}</div>}
                   {p.added_manually && <span className="chip sm grey" style={{ marginLeft: 6 }}>เพิ่มเอง</span>}</td>
                 <td>{p.gender ?? "—"}</td>
                 <td>

@@ -5,7 +5,7 @@ import { api } from "./lib";
 import { ISearch, IClose } from "./Icons";
 
 export type PlanHit = {
-  emp_id: string; prefix: string | null; first_name: string; last_name: string | null; flag_no: string | null;
+  emp_id: string; prefix: string | null; first_name: string; last_name: string | null; name_en?: string | null; flag_no: string | null;
   cost_center: string | null; area: string | null; role: string | null; removed?: boolean;
 };
 
@@ -44,7 +44,7 @@ export default function PlanSearch({ endpoint, onPick, placeholder = "ค้น�
           {hits.map((h) => (
             <button key={h.emp_id} type="button" className="psearch-i" role="option" onClick={() => { onPick(h); setQ(""); }}>
               <span className="grow" style={{ minWidth: 0 }}>
-                <b>{h.prefix ? `${h.prefix} ` : ""}{h.first_name} {h.last_name}</b>{h.removed && <span className="chip sm grey" style={{ marginLeft: 6 }}>ลบออกแล้ว</span>}
+                <b>{h.prefix ? `${h.prefix} ` : ""}{h.first_name} {h.last_name}</b>{h.name_en && <span className="muted xs" lang="en" style={{ marginLeft: 6 }}>{h.name_en}</span>}{h.removed && <span className="chip sm grey" style={{ marginLeft: 6 }}>ลบออกแล้ว</span>}
                 <span className="muted xs" style={{ display: "block" }}><span className="mono">{h.emp_id}</span> · {[h.cost_center, h.area].filter(Boolean).join(" ") || "—"}{h.role && /^\s*ผู้นำ/.test(h.role) ? " · ผู้นำธง" : ""}</span>
               </span>
               <span className="chip sm" style={{ background: "#EEF2F7", color: "#1F3A5F" }}>ธง {h.flag_no ?? "—"}</span>

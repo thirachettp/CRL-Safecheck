@@ -1,4 +1,5 @@
 "use client";
+import { matchName, normName } from "@/lib/names";
 import { cmpFlag } from "@/lib/flag";
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
@@ -108,7 +109,7 @@ function IncidentDash({ id }: { id: number }) {
   const found = useMemo(() => {
     const t = dq.trim().toLowerCase().replace(/\s+/g, " ");
     if (!t) return [];
-    return people.filter((p) => [p.name, p.emp_id, p.cost_center, p.cc_name, p.area, p.plate, p.email]
+    return people.filter((p) => (normName(dq) && matchName(dq, [p.name, p.name_en]) >= 0) || [p.name, p.name_en, p.emp_id, p.cost_center, p.cc_name, p.area, p.plate, p.email]
       .some((x) => x && String(x).toLowerCase().includes(t)));
   }, [people, dq]);
   const list = dq.trim() ? found : m.missing;

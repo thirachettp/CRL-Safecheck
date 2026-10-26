@@ -217,6 +217,15 @@ let fo = await j("/api/plan");
 ok(fo.flags.some((f: any) => f.flag_no === "40" && f.people === 0 && f.area === "MZ9"), "ธงใหม่ที่ยังไม่มีคนแสดงในรายการ");
 await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 40, emp_id: "knn250593", prefix: "นางสาว", first_name: "ยาวียะ", last_name: "หามะ", gender: "หญิง", role: "ผู้นำธงอพยพ" } });
 ok(await fails(j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 40, emp_id: "KNN250593", first_name: "ซ้ำ" } })), "เพิ่มรหัสซ้ำไม่ได้");
+{
+  await j("/api/admin/flags", { method: "POST", json: { action: "person-edit", emp_id: "KNN250593", name_en: "Yawiya  Hama" } });
+  const hit = async (t: string) => ((await j(`/api/review?q=${encodeURIComponent(t)}`)).results as any[]).some((r) => r.emp_id === "KNN250593");
+  ok(await hit("hama"), "ค้นชื่ออังกฤษ (ตัวเล็ก) เจอ");
+  ok(await hit("นางสาว ยาวียะ"), "ค้นแบบมีคำนำหน้า เจอ");
+  ok(await hit("หามะ ยาวียะ"), "ค้นนามสกุลขึ้นก่อน เจอ");
+  const r = ((await j(`/api/review?q=hama`)).results as any[]).find((x) => x.emp_id === "KNN250593");
+  ok(r?.name_en === "Yawiya Hama", "ชื่ออังกฤษเก็บแบบตัดช่องว่างซ้ำ");
+}
 let fd = await j("/api/admin/flags?flag=40");
 ok(fd.people[0]?.emp_id === "KNN250593" && fd.people[0].assembly_point === "2" && fd.people[0].role === "ผู้นำธงอพยพ", "เพิ่มคน Outsource เข้าธง ได้จุดรวมพลของธง");
 await j("/api/admin/flags", { method: "POST", json: { action: "person-edit", emp_id: "KNN250593", first_name: "ยาวียะห์", role: "ผู้อพยพ", tel: "0812345678" } });
@@ -390,7 +399,10 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
   got.length = 0;
   const { id: d4, pushed } = await j("/api/incidents", { method: "POST", json: { action: "drill", title: "ซ้อมทดสอบแจ้งเตือน" } });
   ok(pushed?.sent === 2 && got.length === 2, "เริ่มซ้อม → แจ้งเตือนทุกคน");
-  await j(`/api/incidents/${d4}`, { method: "POST", json: { action: "close" } });
+  got.length = 0;
+  const cl = await j(`/api/incidents/${d4}`, { method: "POST", json: { action: "close" } });
+  ok(cl.pushed?.sent === 2 && got.length === 2, "จบการซ้อม → แจ้งเตือนทุกคน");
+  ok(typeof cl.summary?.pct === "number" && typeof cl.summary?.safe === "number" && /^\d+:\d{2}$/.test(cl.summary?.duration ?? ""), "จบการซ้อม → มีสรุปผล (จำนวน/เวลา)");
   got.length = 0;
   const rep = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "น้ำท่วม", area: "พื้นที่ใหม่ทดสอบ" }, tok: rvTok });
   ok(rep.pushed?.sent === 1 && got[0]?.path === "/staff", "มีคนแจ้งเหตุ → แจ้งเตือนเฉพาะ Admin/Safety");

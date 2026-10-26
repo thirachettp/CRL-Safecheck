@@ -57,7 +57,15 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   }
   if (b.action === "close") {
     const actor = await requireRole(req, ["admin", "safety"]);
-    return ok(await closeIncident(id, actor));
+    const r = await closeIncident(id, actor);
+    const m = r.summary;
+    const head = m.mode === "real" ? `✅ เหตุการณ์สิ้นสุด${m.kind ? `: ${m.kind}` : ""}` : `🏁 จบการซ้อมอพยพ${m.title ? ` · ${m.title}` : ""}`;
+    const body = [
+      `นับได้ ${m.safe + m.inj}/${m.pool} คน (${m.pct}%) · ${m.full ? "นับครบใน" : "ใช้เวลา"} ${m.duration} นาที`,
+      [m.inj && `บาดเจ็บ ${m.inj}`, m.inside && `ยังอยู่ในคลัง ${m.inside}`, m.unk && `ยังไม่ทราบ ${m.unk}`].filter(Boolean).join(" · "),
+    ].filter(Boolean).join("\n");
+    const pushed = await notify("all", { title: head, body, url: `/dashboard?id=${id}`, tag: `incident-${id}` }).catch(() => null);
+    return ok({ ...r, pushed });
   }
   return fail("ไม่รู้จักคำสั่ง");
 });

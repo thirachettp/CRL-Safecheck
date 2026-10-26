@@ -334,4 +334,8 @@ export const SCHEMA: string[] = [
     fails       int NOT NULL DEFAULT 0
   )`,
   `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plate text`,
+  // v10: ชื่อภาษาอังกฤษ
+  `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS name_en text`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS name_en text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS name_en text`,
 ];

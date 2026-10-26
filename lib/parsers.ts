@@ -3,6 +3,7 @@
 import type { WorkBook, WorkSheet } from "xlsx";
 import { utils } from "xlsx";
 import { normFlag, cmpFlag } from "./flag.ts";
+import { isLatin, EN_PREFIX_GENDER } from "./names.ts";
 
 export type PlanPerson = {
   emp_id: string;
@@ -16,6 +17,8 @@ export type PlanPerson = {
   flag_no: string | null;
   flag_no_old: string | null;
   role: string | null;
+  /** ชื่อ-นามสกุลภาษาอังกฤษ (ถ้ามี) */
+  name_en?: string | null;
   source_file: string;
   sheet?: string;
   /** รหัสพนักงานรูปแบบไม่ถูกต้อง (นำเข้าไว้ก่อน แก้ภายหลังได้) */
@@ -123,7 +126,9 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
       flagOld: col(H, "เบอร์ธงอพยพเดิม", "ธงเดิม"),
       emp: col(H, "รหัสพนักงาน"),
       prefix: col(H, "คำนำหน้า"),
-      name: col(H, "ชื่อ-นามสกุล", "ชื่อ-สกุล", "ชื่อ"),
+      // คอลัมน์ชื่ออังกฤษ (ถ้ามี) แยกออกก่อน ไม่ให้ชนกับชื่อไทย
+      nameEn: H.findIndex((h) => /อังกฤษ|english|\(en\)|name_?en|^name$|^fullname$/.test(h)),
+      name: H.findIndex((h, i) => /ชื่อ-นามสกุล|ชื่อ-สกุล|^ชื่อ/.test(h) && !/อังกฤษ|english|\(en\)/.test(h)),
       gender: col(H, "เพศ"),
       cc: col(H, "costcenter"),
       area: col(H, "แผนก/พื้นที่", "แผนก", "พื้นที่"),
@@ -182,7 +187,13 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
           filled.set(k, [...(filled.get(k) ?? []), r + 1]);
         } else issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัส ${emp} ไม่มีเบอร์ธงใหม่` });
       }
-      const gender = c.gender >= 0 ? normalizeGender(row[c.gender]) : null;
+      let gender = c.gender >= 0 ? normalizeGender(row[c.gender]) : null;
+      // ชื่ออังกฤษ: จากคอลัมน์อังกฤษ หรือถ้าช่องชื่อเดิมเป็นอักษรอังกฤษ ใช้ช่องนั้น
+      const enCol = c.nameEn >= 0 ? cell(row[c.nameEn]).replace(/\s+/g, " ").trim() : "";
+      const fullTyped = `${first} ${last}`.replace(/\s+/g, " ").trim();
+      const name_en = enCol || (isLatin(fullTyped) ? fullTyped : "") || null;
+      // ไม่มีเพศ แต่คำนำหน้าบอกได้ (นาย / Mr. = ชาย · นาง นางสาว / Mrs. Ms. Miss = หญิง)
+      if (!gender && prefix) gender = EN_PREFIX_GENDER[prefix.toLowerCase()] ?? (prefix === "นาย" ? "ชาย" : /^(นาง|นางสาว|น\.ส\.|นส\.)$/.test(prefix) ? "หญิง" : null);
       if (!gender) issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัส ${emp} ไม่ระบุเพศ` });
       if (prefix && gender && ((prefix === "นาย" && gender === "หญิง") || (/^(นาง|นางสาว|น\.ส\.|นส\.)$/.test(prefix) && gender === "ชาย"))) {
         issues.push({ file, level: "warn", message: `${S} แถว ${r + 1}: รหัส ${emp} คำนำหน้า "${prefix}" แต่เพศ "${gender}" ตรวจอีกครั้ง` });
@@ -200,6 +211,7 @@ export function parsePlanWorkbook(wb: WorkBook, file: string): PlanFileResult {
         flag_no: flag,
         flag_no_old: old,
         role: c.role >= 0 ? cell(row[c.role]) || null : null,
+        name_en,
         source_file: file,
         sheet: name,
         ...(badId ? { bad_id: true } : {}),
@@ -379,6 +391,7 @@ export function combinedRows(m: MergedPlan) {
     "รหัสพนักงาน": p.emp_id,
     "คำนำหน้า": p.prefix ?? "",
     "ชื่อ-นามสกุล": `${p.first_name} ${p.last_name}`.trim(),
+    "ชื่อ-นามสกุล (อังกฤษ)": p.name_en ?? "",
     "เพศ": p.gender ?? "",
     "Cost Center": p.cost_center ?? "",
     "แผนก/พื้นที่": p.area ?? "",

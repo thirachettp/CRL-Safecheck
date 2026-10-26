@@ -1,5 +1,6 @@
 import { normFlag } from "./flag";
 import { normalizePlate } from "./kioskMap";
+import { isLatin } from "./names";
 import { UserError } from "./errors";
 import { q, one } from "./db";
 import { outsourcePresent } from "./outsource";
@@ -58,6 +59,8 @@ type Candidate = {
   presence: string; presence_site: string | null; presence_since: string | null; here: boolean; source: string;
   /** เหตุผลที่ระบบตัดสิน มา/ไม่มา (เทียบผลตรวจทานธงกับข้อมูลเข้า-ออก) */
   note?: string | null;
+  /** ชื่อภาษาอังกฤษ (ชุดธง → โปรไฟล์ → ชื่อที่กรอกใน MS Form ถ้าเป็นภาษาอังกฤษ) */
+  name_en?: string | null;
 };
 
 /** รายชื่อที่ควรอยู่ในเหตุการณ์: แผนอพยพ (หักคนที่ลบ) + คนที่อยู่ในพื้นที่จากแต่ละแหล่ง */
@@ -77,7 +80,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
             UNION ALL
             SELECT cost_center, mode() WITHIN GROUP (ORDER BY area) FROM evac_plan
             WHERE cost_center IS NOT NULL AND cost_center NOT IN (SELECT code FROM cost_centers) GROUP BY cost_center`),
-    q<any>(`SELECT code, tel FROM profiles WHERE tel IS NOT NULL`),
+    q<any>(`SELECT code, tel, name_en FROM profiles WHERE tel IS NOT NULL OR name_en IS NOT NULL`),
     outsourcePresent(now),
     q<any>(`SELECT * FROM outsource_staff`),
   ]);
@@ -211,6 +214,14 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       here: hereMap.get(key) ?? true, source: "Driver (KIOS)",
     });
   }
+  // ชื่ออังกฤษ: ชุดธง → โปรไฟล์ → ชื่อใน MS Form ที่พิมพ์เป็นภาษาอังกฤษ
+  const enProf = new Map<string, string>(profiles.filter((p) => p.name_en).map((p) => [p.code, p.name_en]));
+  const enDiv = new Map<string, string>();
+  for (const c of checkins) if (c.full_name && isLatin(c.full_name)) enDiv.set(c.email, String(c.full_name).trim());
+  for (const c of out.values()) {
+    const pl = c.emp_id ? planMap.get(c.emp_id) : null;
+    c.name_en = pl?.name_en || (c.emp_id ? enProf.get(c.emp_id) : null) || (c.email ? enDiv.get(c.email) : null) || null;
+  }
   return [...out.values()];
 }
 
@@ -226,13 +237,14 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
   const col = <K extends keyof Candidate>(k: K) => C.map((c) => c[k]);
   const ins = await q(
     `INSERT INTO incident_people (incident_id, person_key, emp_id, email, plate, name, gender, area, cost_center, cc_name,
-       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by, status_note)
-     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20, nt
+       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by, status_note, name_en)
+     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20, nt, ne
      FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
-       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[], $21::text[])
-       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, nt)
+       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[], $21::text[], $22::text[])
+       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, nt, ne)
      ON CONFLICT (incident_id, person_key) DO UPDATE SET
        email = COALESCE(EXCLUDED.email, incident_people.email),
+       name_en = COALESCE(incident_people.name_en, EXCLUDED.name_en),
        presence = CASE WHEN EXCLUDED.presence IN ('div','kiosk','outsource') THEN EXCLUDED.presence ELSE incident_people.presence END,
        presence_site = COALESCE(EXCLUDED.presence_site, incident_people.presence_site),
        presence_since = COALESCE(EXCLUDED.presence_since, incident_people.presence_since),
@@ -241,7 +253,7 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
     [
       incidentId, col("person_key"), col("emp_id"), col("email"), col("plate"), col("name"), col("gender"), col("area"),
       col("cost_center"), col("cc_name"), col("tel"), col("flag_no"), col("assembly_point"), col("is_leader"), col("presence"),
-      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy, C.map((c) => c.note ?? null),
+      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy, C.map((c) => c.note ?? null), C.map((c) => c.name_en ?? null),
     ],
   );
   await q(
@@ -304,7 +316,29 @@ export async function closeIncident(id: number, actor: Actor) {
   const pend = await one<{ n: number }>(
     `SELECT count(*)::int AS n FROM incident_people WHERE incident_id = $1 AND status = 'abs'`, [id]);
   await q(`UPDATE incidents SET state = 'closed', closed_at = now(), closed_by = $2 WHERE id = $1 AND state = 'active'`, [id, actor.name]);
-  return { absPending: pend?.n ?? 0 };
+  return { absPending: pend?.n ?? 0, summary: await incidentSummary(id) };
+}
+
+/** สรุปผลคร่าว ๆ ตอนจบ (ใช้ในแจ้งเตือน) */
+export async function incidentSummary(id: number) {
+  const inc = await getIncident(id);
+  const r = await one<any>(
+    `SELECT count(*) FILTER (WHERE status NOT IN ('abs','gone'))::int AS pool,
+       count(*) FILTER (WHERE status IN ('safe','cmd'))::int AS safe,
+       count(*) FILTER (WHERE status = 'inj')::int AS inj,
+       count(*) FILTER (WHERE status = 'in')::int AS inside,
+       count(*) FILTER (WHERE status = 'unk')::int AS unk,
+       count(*) FILTER (WHERE status = 'abs')::int AS abs
+     FROM incident_people WHERE incident_id = $1`, [id]);
+  const end = inc?.first_full_at ?? inc?.closed_at ?? new Date().toISOString();
+  const ms = inc ? new Date(end).getTime() - new Date(inc.opened_at).getTime() : 0;
+  const mm = Math.max(0, Math.floor(ms / 60000)), ss = Math.max(0, Math.floor((ms % 60000) / 1000));
+  const pct = r?.pool ? Math.round(((r.safe + r.inj) / r.pool) * 100) : 0;
+  return {
+    mode: inc?.mode ?? "drill", title: inc?.title ?? null, kind: inc?.kind ?? null,
+    pool: r?.pool ?? 0, safe: r?.safe ?? 0, inj: r?.inj ?? 0, inside: r?.inside ?? 0, unk: r?.unk ?? 0, abs: r?.abs ?? 0,
+    pct, duration: `${mm}:${String(ss).padStart(2, "0")}`, full: !!inc?.first_full_at,
+  };
 }
 
 export async function getIncident(id: number): Promise<Incident | null> {

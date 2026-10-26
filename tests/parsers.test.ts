@@ -203,3 +203,28 @@ test("เบอร์ธงเป็นข้อความได้: 17A, OS-1
   assert.deepEqual(m.people.map((p) => p.flag_no), ["17A", "OS-1"]);
   assert.ok(!m.issues.some((i) => /ไม่มีเบอร์ธงใหม่/.test(i.message)));
 });
+
+test("ชื่อไทย/อังกฤษ: ตัดคำนำหน้า ค้นสลับลำดับ ค้นได้ทั้งสองภาษา", async () => {
+  const { normName, matchName, isLatin, stripPrefix } = await import("../lib/names.ts");
+  assert.equal(stripPrefix("นางสาว สมหญิง ใจดี"), "สมหญิง ใจดี");
+  assert.equal(normName("Mr.  Somchai   JAIDEE"), "somchai jaidee");
+  assert.equal(normName("Ms Somying"), "somying");
+  assert.ok(isLatin("Somchai Jaidee") && !isLatin("สมชาย Jaidee") && !isLatin("1234"));
+  assert.equal(matchName("jaidee somchai", ["สมชาย ใจดี", "Somchai Jaidee"]), 1, "สลับลำดับได้ เจอที่ชื่ออังกฤษ");
+  assert.equal(matchName("นาย สมชาย", ["สมชาย ใจดี", "Somchai Jaidee"]), 0, "คำนำหน้าในคำค้นไม่มีผล");
+  assert.equal(matchName("somchai xyz", ["สมชาย ใจดี", "Somchai Jaidee"]), -1);
+});
+
+test("นำเข้า: คอลัมน์ชื่ออังกฤษ และชื่อที่พิมพ์เป็นอังกฤษ", () => {
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, utils.aoa_to_sheet([["หัว"], ["แผนก"], [],
+    ["จุดรวมพล", "เบอร์ธงอพยพใหม่", "รหัสพนักงาน", "คำนำหน้า", "ชื่อ-นามสกุล", "ชื่อ-นามสกุล (อังกฤษ)", "เพศ", "Cost Center"],
+    [1, 3, 20000041, "นาย", "สมชาย ใจดี", "Somchai Jaidee", "ชาย", 1],
+    [1, 3, 20000042, "Mr.", "John Smith", "", "", 1]]), "s");
+  const r = parsePlanWorkbook(wb, "x.xlsx");
+  assert.equal(r.people[0].first_name, "สมชาย");
+  assert.equal(r.people[0].name_en, "Somchai Jaidee");
+  assert.equal(r.people[1].name_en, "John Smith");
+  assert.equal(r.people[1].first_name, "John");
+  assert.equal(r.people[1].gender, "ชาย", "เดาเพศจาก Mr.");
+});

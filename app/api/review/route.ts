@@ -36,7 +36,7 @@ export const POST = handle(async (req: Request) => {
     case "edit":
       await editPerson(String(b.emp_id), {
         // คนที่ไม่ได้เข้าสู่ระบบไม่เห็นเบอร์เดิม จึงไม่ให้เขียนทับเบอร์โทร
-        first_name: b.first_name, last_name: b.last_name, gender: b.gender, tel: b.tel, role: b.role,
+        first_name: b.first_name, last_name: b.last_name, name_en: b.name_en, gender: b.gender, tel: b.tel, role: b.role,
         cost_center: b.cost_center, area: b.area, flag_no: normFlag(b.flag_no) ?? undefined,
       }, by);
       await touchPlan();

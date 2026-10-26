@@ -4,6 +4,7 @@ import { q, one } from "./db";
 import { bangkokDay } from "./incident";
 import { getSetting, setSetting } from "./settings";
 import { normFlag } from "./flag";
+import { stripPrefix } from "./names";
 import type { PlanPerson, FlagLeader } from "./parsers";
 
 const vname = (n?: string | null) => {
@@ -85,13 +86,14 @@ export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, f
   await q(`DELETE FROM evac_plan`);
   await q(
     `INSERT INTO evac_plan (emp_id, prefix, first_name, last_name, gender, cost_center, area,
-       assembly_point, flag_no, flag_no_old, role, source_file, orig_flag)
-     SELECT a, b, c, d, e, f, g, h, i, j, k, l, i FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[],
-       $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[], $12::text[]) AS x(a,b,c,d,e,f,g,h,i,j,k,l)
+       assembly_point, flag_no, flag_no_old, role, source_file, orig_flag, name_en)
+     SELECT a, b, c, d, e, f, g, h, i, j, k, l, i, m FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[],
+       $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[]) AS x(a,b,c,d,e,f,g,h,i,j,k,l,m)
      ON CONFLICT (emp_id) DO NOTHING`,
     [P.map((p) => p.emp_id), P.map((p) => p.prefix), P.map((p) => p.first_name), P.map((p) => p.last_name),
      P.map((p) => p.gender), P.map((p) => p.cost_center), P.map((p) => p.area), P.map((p) => p.assembly_point),
-     P.map((p) => normFlag(p.flag_no)), P.map((p) => normFlag(p.flag_no_old)), P.map((p) => p.role), P.map((p) => p.source_file)]);
+     P.map((p) => normFlag(p.flag_no)), P.map((p) => normFlag(p.flag_no_old)), P.map((p) => p.role), P.map((p) => p.source_file),
+     P.map((p) => (p.name_en ?? "").trim() || null)]);
   await q(`DELETE FROM flag_leaders`);
   if (L.length) {
     await q(
@@ -212,7 +214,7 @@ export async function setAttendance(personKey: string, here: boolean, by: string
 
 export async function editPerson(
   empId: string,
-  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: string; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string; new_emp_id?: string },
+  f: { first_name?: string; last_name?: string; gender?: string; flag_no?: string; tel?: string; cost_center?: string; area?: string; role?: string; prefix?: string; new_emp_id?: string; name_en?: string },
   by: string,
 ) {
   let p = await one<any>(`SELECT * FROM evac_plan WHERE emp_id = $1`, [empId]);
@@ -228,7 +230,7 @@ export async function editPerson(
     empId = to;
     p = { ...p, emp_id: to };
   }
-  const personal = ["first_name", "last_name", "gender", "tel", "cost_center", "area", "role", "prefix"].some(
+  const personal = ["first_name", "last_name", "gender", "tel", "cost_center", "area", "role", "prefix", "name_en"].some(
     (k) => (f as any)[k] !== undefined && ((f as any)[k] ?? "") !== (p[k] ?? ""));
   const flag = (f.flag_no !== undefined ? normFlag(f.flag_no) : null) ?? p.flag_no;
   const ap = flag !== p.flag_no
@@ -238,11 +240,12 @@ export async function editPerson(
     `UPDATE evac_plan SET first_name = $2, last_name = $3, gender = $4, flag_no = $5, tel = $6, cost_center = $7, area = $8,
        assembly_point = $9, edited_by = $10, edited_at = now(), updated_at = now(),
        edited_note = CASE WHEN $11 THEN 'แก้ข้อมูลส่วนตัว' ELSE edited_note END,
-       role = $12, prefix = $13
+       role = $12, prefix = $13, name_en = $14
      WHERE emp_id = $1`,
     [empId, f.first_name ?? p.first_name, f.last_name ?? p.last_name, f.gender ?? p.gender, flag, f.tel ?? p.tel,
      f.cost_center ?? p.cost_center, f.area ?? p.area, ap, by || null, personal,
-     f.role !== undefined ? f.role || null : p.role, f.prefix !== undefined ? f.prefix || null : p.prefix]);
+     f.role !== undefined ? f.role || null : p.role, f.prefix !== undefined ? f.prefix || null : p.prefix,
+     f.name_en !== undefined ? String(f.name_en).replace(/\s+/g, " ").trim().slice(0, 120) || null : p.name_en]);
   // ตั้งเป็นผู้นำธง → ชื่อผู้นำธงของธงนั้นเปลี่ยนตาม
   const role = f.role !== undefined ? f.role || null : p.role;
   if (/^\s*ผู้นำ/.test(role ?? "") && flag != null) {
@@ -260,7 +263,7 @@ export async function removePerson(empId: string, reason: string, by: string, re
 }
 
 export async function addPlanPerson(
-  f: { first_name: string; last_name?: string; gender?: string; flag_no: string; tel?: string; cost_center?: string; area?: string; emp_id?: string; role?: string; prefix?: string },
+  f: { first_name: string; last_name?: string; gender?: string; flag_no: string; tel?: string; cost_center?: string; area?: string; emp_id?: string; role?: string; prefix?: string; name_en?: string },
   by: string,
 ) {
   if (!f.first_name?.trim()) throw new UserError("กรอกชื่อก่อน");
@@ -274,10 +277,10 @@ export async function addPlanPerson(
     [f.flag_no]))?.ap ?? null;
   await q(
     `INSERT INTO evac_plan (emp_id, first_name, last_name, gender, flag_no, tel, cost_center, area, assembly_point,
-       added_manually, edited_by, edited_at, role, prefix)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, now(), $11, $12)`,
+       added_manually, edited_by, edited_at, role, prefix, name_en)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, now(), $11, $12, $13)`,
     [id, f.first_name.trim(), f.last_name?.trim() || null, f.gender || null, f.flag_no, f.tel || null,
-     f.cost_center || null, f.area || null, ap, by || null, f.role || "ผู้อพยพ", f.prefix || null]);
+     f.cost_center || null, f.area || null, ap, by || null, f.role || "ผู้อพยพ", f.prefix || null, String(f.name_en ?? "").trim() || null]);
   return id;
 }
 
@@ -339,12 +342,13 @@ export async function deleteFlag(flag: string, o: { moveTo?: string | null; remo
 
 /** ค้นหาคนในชุดธงทุกธง: ชื่อ / รหัสพนักงาน / Cost Center / แผนก */
 export async function searchPlan(term: string, limit = 50) {
-  const t = term.trim().replace(/\s+/g, " ");
+  const t = stripPrefix(term).replace(/\s+/g, " ");
   if (t.length < 1) return [];
   return q<any>(
-    `SELECT emp_id, prefix, first_name, last_name, gender, flag_no, cost_center, area, role, removed, assembly_point
+    `SELECT emp_id, prefix, first_name, last_name, name_en, gender, flag_no, cost_center, area, role, removed, assembly_point
      FROM evac_plan
      WHERE emp_id ILIKE '%' || $1 || '%' OR concat_ws(' ', first_name, last_name) ILIKE '%' || $1 || '%'
+        OR name_en ILIKE '%' || $1 || '%' OR concat_ws(' ', last_name, first_name) ILIKE '%' || $1 || '%'
         OR cost_center ILIKE $1 || '%' OR area ILIKE '%' || $1 || '%'
      ORDER BY removed, (emp_id ILIKE $1 || '%') DESC, flag_key(flag_no), flag_no, first_name
      LIMIT $2`, [t, limit]);

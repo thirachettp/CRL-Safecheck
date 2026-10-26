@@ -12,7 +12,7 @@ const REASONS = ["ลาออกแล้ว", "ย้ายสาขา", "ไ
 const ROLES = ["ผู้อพยพ", "ผู้นำธงอพยพ", "ผู้ช่วยผู้นำธง"];
 
 type Person = {
-  emp_id: string; first_name: string; last_name: string | null; gender: string | null; flag_no: string; orig_flag: string | null;
+  emp_id: string; first_name: string; last_name: string | null; name_en?: string | null; gender: string | null; flag_no: string; orig_flag: string | null;
   tel: string | null; cost_center: string | null; area: string | null; role: string | null; here: boolean | null; here_by?: string | null; here_at?: string | null;
   added_manually: boolean; edited_note: string | null; edited_by: string | null; removed: boolean; removed_reason: string | null; removed_by: string | null;
 };
@@ -87,7 +87,7 @@ function ReviewBody() {
 
   function startEdit(p: Person) {
     setOpen({ id: p.emp_id, mode: "edit" });
-    setDraft({ first_name: p.first_name, last_name: p.last_name ?? "", gender: p.gender ?? "ชาย", flag_no: p.flag_no,
+    setDraft({ first_name: p.first_name, last_name: p.last_name ?? "", name_en: p.name_en ?? "", gender: p.gender ?? "ชาย", flag_no: p.flag_no,
       tel: p.tel ?? "", cost_center: p.cost_center ?? "", area: p.area ?? "", role: p.role ?? "ผู้อพยพ" });
   }
 
@@ -108,6 +108,7 @@ function ReviewBody() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     <label className="lb">ชื่อ<input className="in" value={draft.first_name} onChange={(e) => setDraft({ ...draft, first_name: e.target.value })} /></label>
                     <label className="lb">นามสกุล<input className="in" value={draft.last_name} onChange={(e) => setDraft({ ...draft, last_name: e.target.value })} /></label>
+                    <label className="lb" style={{ gridColumn: "1 / -1" }}>ชื่อ-นามสกุล (อังกฤษ) <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ</span><input className="in" lang="en" value={draft.name_en ?? ""} onChange={(e) => setDraft({ ...draft, name_en: e.target.value })} /></label>
                     <label className="lb">เพศ<select className="in" value={draft.gender} onChange={(e) => setDraft({ ...draft, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
                     <label className="lb">ธง<input className="in mono" value={draft.flag_no} onChange={(e) => setDraft({ ...draft, flag_no: e.target.value })} /></label>
                   </div>
@@ -201,7 +202,7 @@ function ReviewBody() {
                   return [
                     <tr key={p.emp_id} id={`p-${p.emp_id}`} className={`${isOpen ? "editing" : ""}${hl === p.emp_id ? " hl" : ""}`}>
                       <td className="mono">{p.emp_id}</td>
-                      <td><b>{p.first_name} {p.last_name}</b>{roleChip(p.role)}</td>
+                      <td><b>{p.first_name} {p.last_name}</b>{roleChip(p.role)}{p.name_en && <div className="muted xs" lang="en">{p.name_en}</div>}</td>
                       <td>{p.gender ?? "—"}</td>
                       <td className="small"><span className="mono">{p.cost_center ?? "—"}</span> {p.area ?? ""}</td>
                       <td className="small">{anon ? <span className="muted">เข้าสู่ระบบเพื่อดู</span> : p.tel ?? "—"}</td>
@@ -231,6 +232,7 @@ function ReviewBody() {
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{p.first_name} {p.last_name}</b>{p.gender && <span className="g">{p.gender}</span>}
                     {roleChip(p.role)}</div>
+                  {p.name_en && <div className="muted xs" lang="en">{p.name_en}</div>}
                   <div className="muted xs"><span className="mono">{p.emp_id}</span>{p.cost_center && <> · <span className="mono">{p.cost_center}</span></>} {p.area}</div>
                   <div className="row" style={{ marginTop: 6, gap: 6 }}>
                     <span className={`chip sm ${edited ? "src-edit" : "src-sys"}`}>{edited ? `แก้ไขโดย ${p.edited_by ?? "—"}` : "แผนอพยพ (Excel)"}</span>
@@ -317,7 +319,7 @@ function ReviewBody() {
 }
 
 function AddSheet({ flag, onClose, onSave }: { flag: string; onClose: () => void; onSave: (f: any) => Promise<void> }) {
-  const [f, setF] = useState({ first_name: "", last_name: "", gender: "ชาย", flag_no: String(flag), tel: "", cost_center: "", area: "", emp_id: "" });
+  const [f, setF] = useState({ first_name: "", last_name: "", name_en: "", gender: "ชาย", flag_no: String(flag), tel: "", cost_center: "", area: "", emp_id: "" });
   return (
     <div className="sheet-bg" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <form className="sheet" onSubmit={(e) => { e.preventDefault(); onSave(f); }}>
@@ -326,6 +328,7 @@ function AddSheet({ flag, onClose, onSave }: { flag: string; onClose: () => void
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <label className="lb">ชื่อ<input className="in" required value={f.first_name} onChange={(e) => setF({ ...f, first_name: e.target.value })} /></label>
           <label className="lb">นามสกุล<input className="in" value={f.last_name} onChange={(e) => setF({ ...f, last_name: e.target.value })} /></label>
+          <label className="lb" style={{ gridColumn: "1 / -1" }}>ชื่อ-นามสกุล (อังกฤษ) <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ</span><input className="in" lang="en" value={f.name_en} onChange={(e) => setF({ ...f, name_en: e.target.value })} /></label>
           <label className="lb">เพศ<select className="in" value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
           <label className="lb">ธง<input className="in mono" value={f.flag_no} onChange={(e) => setF({ ...f, flag_no: e.target.value })} /></label>
         </div>

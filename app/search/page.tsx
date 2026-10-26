@@ -1,5 +1,6 @@
 "use client";
 import { cmpFlag } from "@/lib/flag";
+import { matchName, normName } from "@/lib/names";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
@@ -88,8 +89,12 @@ function SearchIncident({ id }: { id: number }) {
   // ---------- ค้นหา / กรอง ----------
   const qq = q.trim().toLowerCase();
   const bypass = qq.length > 0;
+  const enHit = new Set<string>();
   const list = people.filter((p) => {
     if (bypass) {
+      // ชื่อ: ไม่สนคำนำหน้า ตัวเล็กใหญ่ ช่องว่าง และลำดับคำ ค้นได้ทั้งไทยและอังกฤษ
+      const nm = normName(q) ? matchName(q, [p.name, p.name_en]) : -1;
+      if (nm >= 0) { if (nm === 1) enHit.add(p.person_key); return true; }
       const hay = [p.name, p.emp_id, p.plate, p.email, p.tel, (p.tel ?? "").replace(/-/g, ""), p.cost_center, p.cc_name, p.area]
         .filter(Boolean).join(" ").toLowerCase();
       return hay.includes(qq) || hay.replace(/[\s-]/g, "").includes(qq.replace(/[\s-]/g, ""));
@@ -213,6 +218,7 @@ function SearchIncident({ id }: { id: number }) {
                           {p.gender && <span className="g">{p.gender}</span>}
                           {p.plate && <span className="g">{p.plate}</span>}
                         </div>
+                        {enHit.has(p.person_key) && <div className="xs ellip" style={{ color: "var(--navy)", fontWeight: 600 }} lang="en">{p.name_en}</div>}
                         <div className="muted xs ellip" style={{ marginTop: 1 }}>
                           {realMode ? `${p.cost_center ?? "—"} · ${p.cc_name ?? p.area ?? ""}` : `ธง ${p.flag_no ?? "?"} · ${[p.cost_center, p.area ?? p.cc_name].filter(Boolean).join(" ")}`}
                           {fromAbs && <span className="tag-abs" style={{ marginLeft: 6 }}>เดิม: ปลอดภัยตามระบบ</span>}
@@ -239,6 +245,7 @@ function SearchIncident({ id }: { id: number }) {
                       </button>
                       <div className="kv">
                         <span className="muted">รหัส</span><span className="mono">{p.emp_id ?? p.plate ?? p.email ?? "—"}</span>
+                        {p.name_en && p.name_en !== p.name && <><span className="muted">ชื่ออังกฤษ</span><span lang="en">{p.name_en}</span></>}
                         <span className="muted">เบอร์โทร</span>{anon ? hidden : p.tel ? <a href={`tel:${p.tel.replace(/[^\d+]/g, "")}`} style={{ fontWeight: 600 }}>{p.tel}</a> : <span>—</span>}
                         <span className="muted">ธง</span><span>{p.flag_no != null ? `ธง ${p.flag_no}` : "ไม่ระบุธง"}</span>
                         <span className="muted">จุดรวมพล</span><span>{pointLabel(p)}</span>

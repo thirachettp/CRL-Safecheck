@@ -5,11 +5,11 @@ import { ICheck, ILock } from "./Icons";
 
 export type ProfileForm = {
   code: string; prefix: string; first_name: string; last_name: string; cost_center: string;
-  email: string; tel: string; gender: string; emer_name: string; emer_tel: string; consent: boolean; blood: string; plate: string;
+  email: string; tel: string; gender: string; emer_name: string; emer_tel: string; consent: boolean; blood: string; plate: string; name_en: string;
 };
 export const EMPTY_PROFILE: ProfileForm = {
   code: "", prefix: "", first_name: "", last_name: "", cost_center: "", email: "", tel: "",
-  gender: "", emer_name: "", emer_tel: "", consent: false, blood: "", plate: "",
+  gender: "", emer_name: "", emer_tel: "", consent: false, blood: "", plate: "", name_en: "",
 };
 export function toForm(p: Partial<Record<keyof ProfileForm, unknown>> | null | undefined): ProfileForm {
   const f = { ...EMPTY_PROFILE };
@@ -21,7 +21,8 @@ export function toForm(p: Partial<Record<keyof ProfileForm, unknown>> | null | u
   return f;
 }
 
-const PREFIXES = ["นาย", "นาง", "นางสาว"];
+const PREFIXES = ["นาย", "นาง", "นางสาว", "Mr.", "Mrs.", "Ms.", "Miss"];
+const PREFIX_GENDER: Record<string, string> = { "นาย": "ชาย", "Mr.": "ชาย", "นาง": "หญิง", "นางสาว": "หญิง", "Mrs.": "หญิง", "Ms.": "หญิง", "Miss": "หญิง" };
 export const EMAIL_RE = /^[a-z0-9._%+-]+@central\.co\.th$/i;
 const telOk = (t: string) => /^\+?\d{9,12}$/.test(t.replace(/[^\d+]/g, ""));
 
@@ -56,20 +57,23 @@ export default function ProfileFields({ f, set, codeLocked, onDeleteMedical }: {
       <div className="card stack" style={{ padding: 16 }}>
         <b>ข้อมูลพนักงาน</b>
         <div className="lb" style={L}>คำนำหน้า{req}
-          <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: "nowrap" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginTop: 6 }}>
             {PREFIXES.map((p) => (
-              <button type="button" key={p} className={`seg${f.prefix === p && !otherOn ? " on" : ""}`}
-                onClick={() => { setOtherOn(false); set({ ...f, prefix: p }); }}>{p}</button>
+              <button type="button" key={p} style={{ order: PREFIXES.indexOf(p) < 3 ? 0 : 4 }} className={`seg${f.prefix === p && !otherOn ? " on" : ""}`}
+                onClick={() => { setOtherOn(false); set({ ...f, prefix: p, gender: f.gender || PREFIX_GENDER[p] || "" }); }}>{p}</button>
             ))}
             <button type="button" className={`seg${otherOn || other ? " on" : ""}`}
               onClick={() => { setOtherOn(true); if (PREFIXES.includes(f.prefix)) set({ ...f, prefix: "" }); }}>อื่นๆ</button>
           </div>
-          {(otherOn || other) && <input className="in" style={{ marginTop: 6 }} placeholder="เช่น ดร., Mr., Ms." value={f.prefix} onChange={up("prefix")} />}
+          {(otherOn || other) && <input className="in" style={{ marginTop: 6 }} placeholder="เช่น ดร., Dr." value={f.prefix} onChange={up("prefix")} />}
         </div>
         <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
           <label className="lb grow" style={L}>ชื่อ{req}<input className="in" value={f.first_name} onChange={up("first_name")} autoComplete="given-name" /></label>
           <label className="lb grow" style={L}>นามสกุล{req}<input className="in" value={f.last_name} onChange={up("last_name")} autoComplete="family-name" /></label>
         </div>
+        <label className="lb" style={L}>ชื่อ-นามสกุล (อังกฤษ) <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ · ช่วยให้ค้นหาเจอทั้ง 2 ภาษา</span>
+          <input className="in" placeholder="เช่น Somchai Jaidee" value={f.name_en} onChange={up("name_en")} maxLength={120} autoComplete="off" lang="en" />
+        </label>
         <label className="lb" style={L}>รหัสพนักงาน{req}
           <input className="in mono" value={f.code} onChange={up("code")} disabled={codeLocked} inputMode="numeric"
             style={codeLocked ? { background: "var(--bg)", color: "var(--muted)" } : undefined} />
