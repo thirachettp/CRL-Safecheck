@@ -43,6 +43,15 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   const b = await req.json();
   if (b.action === "confirm") {
     const actor = await requireRole(req, ["admin", "safety"]);
+    const pre = await getIncident(id);
+    if (pre?.mode === "drill") {
+      // ซ้อม: ดึงข้อมูลเข้า-ออกล่าสุดก่อน แล้วค่อยเทียบกับผลตรวจทานธง (เหมือนเริ่มซ้อมจากหน้าตั้งค่า)
+      await fanOutSync(15_000).catch(() => []);
+      await confirmIncident(id, actor, Array.isArray(b.closedPoints) ? b.closedPoints.map(String) : []);
+      const pushed = await notify("all", { title: "📣 เริ่มซ้อมอพยพ", body: `${pre.kind ?? "ซ้อมอพยพ"}${pre.area ? ` · ${pre.area}` : ""} · ไปที่จุดรวมพลของธงคุณ แล้วกดปลอดภัยในแอป`,
+        url: "/search", tag: `incident-${id}`, urgent: true }).catch(() => null);
+      return ok({ id, pushed });
+    }
     await confirmIncident(id, actor, Array.isArray(b.closedPoints) ? b.closedPoints.map(String) : []);
     const inc = await getIncident(id);
     const pushed = await notify("all", { title: `🚨 เหตุฉุกเฉิน: ${inc?.kind ?? ""} ${inc?.area ?? ""}`.trim(),

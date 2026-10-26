@@ -31,6 +31,7 @@ function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [kind, setKind] = useState(KINDS[0].id);
+  const [mode, setMode] = useState<"real" | "drill">("real");
   const [area, setArea] = useState("");
   const [off, setOff] = useState<Record<string, boolean>>({});
   const [pin, setPin] = useState("");
@@ -57,7 +58,7 @@ function Home() {
     try {
       const k = kind === "อื่นๆ" ? otherKind.trim() : kind;
       if (!k) throw new Error("พิมพ์ประเภทเหตุ");
-      await api("/api/incidents", { method: "POST", json: { action: "report", kind: k, area: area.trim(), by: user.name } });
+      await api("/api/incidents", { method: "POST", json: { action: "report", mode, kind: k, area: area.trim(), by: user.name } });
       cur.reload();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -113,8 +114,14 @@ function Home() {
               </div>
             )}
             <div className="card stack" style={{ padding: 16, borderColor: "#FCA5A5" }}>
-              <b style={{ fontSize: 17 }}>แจ้งเหตุฉุกเฉิน</b>
-              <p className="muted small">Admin / Safety Officer จะยืนยันก่อนเริ่ม Incident</p>
+              <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                <button className={`seg grow${mode === "real" ? " on" : ""}`} style={mode === "real" ? { background: "#B91C1C", borderColor: "#B91C1C" } : undefined}
+                  onClick={() => setMode("real")} aria-pressed={mode === "real"}>เหตุจริง</button>
+                <button className={`seg grow${mode === "drill" ? " on" : ""}`} style={mode === "drill" ? { background: "#A16207", borderColor: "#A16207" } : undefined}
+                  onClick={() => setMode("drill")} aria-pressed={mode === "drill"}>ซ้อมอพยพ</button>
+              </div>
+              <b style={{ fontSize: 17 }}>{mode === "drill" ? "ขอเริ่มซ้อมอพยพ" : "แจ้งเหตุฉุกเฉิน"}</b>
+              <p className="muted small">{mode === "drill" ? "เลือกสถานการณ์ที่จะซ้อม · Admin / Safety Officer ยืนยันแล้วจึงเริ่มซ้อม" : "Admin / Safety Officer จะยืนยันก่อนเริ่ม Incident"}</p>
               <div className="row" style={{ gap: 8 }}>
                 {KINDS.map((k) => (
                   <button key={k.id} className={`pill${kind === k.id ? " on" : ""}`} onClick={() => setKind(k.id)} aria-pressed={kind === k.id}>{k.label}</button>
@@ -131,12 +138,12 @@ function Home() {
                 <datalist id="areas">{areas.map((a) => <option key={a} value={a} />)}</datalist>
               </label>
               {area.trim() && !areas.includes(area.trim()) && <div className="muted xs" style={{ marginTop: -6 }}>พื้นที่ใหม่ “{area.trim()}” จะถูกเพิ่มในรายการเมื่อแจ้งเหตุ</div>}
-              <button className="btn btn-red btn-block" style={{ minHeight: 56, fontSize: 17 }} onClick={report} disabled={!user || busy || (kind === "อื่นๆ" && !otherKind.trim())}>
-                <IAlert />แจ้งเหตุ
+              <button className="btn btn-red btn-block" style={{ minHeight: 56, fontSize: 17, ...(mode === "drill" ? { background: "#A16207", borderColor: "#A16207" } : {}) }} onClick={report} disabled={!user || busy || (kind === "อื่นๆ" && !otherKind.trim())}>
+                <IAlert />{mode === "drill" ? "ขอเริ่มซ้อม" : "แจ้งเหตุ"}
               </button>
               {!user && (
                 <div className="small" style={{ color: "#881337", fontWeight: 600, textAlign: "center" }}>
-                  ต้องเข้าสู่ระบบก่อนแจ้งเหตุ{" "}
+                  ต้องเข้าสู่ระบบก่อน{mode === "drill" ? "ขอเริ่มซ้อม" : "แจ้งเหตุ"}{" "}
                   <button className="lk" style={{ textDecoration: "underline", padding: 0, minHeight: 32 }} onClick={() => setShowLogin(true)}>เข้าสู่ระบบ</button>
                 </div>
               )}
@@ -159,7 +166,7 @@ function Home() {
             <div className="card stack" style={{ padding: 16, gap: 10 }}>
               <b>ตอนเกิดเหตุ ทำ 3 ขั้น</b>
               <ol className="steps">
-                <li><b>แจ้งเหตุ</b><span className="muted small">กดปุ่มแดงด้านบน · Admin / Safety ยืนยันแล้วระบบเริ่มนับทันที</span></li>
+                <li><b>แจ้งเหตุ / ขอซ้อม</b><span className="muted small">กดปุ่มด้านบน · Admin / Safety ยืนยันแล้วระบบเริ่มนับทันที</span></li>
                 <li><b>ไปจุดรวมพลของธงคุณ</b><span className="muted small">ถ้าจุดเดิมใช้ไม่ได้ แอพจะบอกจุดสำรอง</span></li>
                 <li><b>ผู้นำธงกด “ปลอดภัย”</b><span className="muted small">ทีละคน หรือเช็คชื่อทั้งธงทีเดียว · คนที่ยังไม่ทราบขึ้นบน Dashboard</span></li>
               </ol>
@@ -169,14 +176,14 @@ function Home() {
 
         {step === "pending" && (
           <>
-            <div className="card stack" style={{ padding: 16, border: "2px solid #B91C1C", gap: 8 }}>
-              <b style={{ fontSize: 17, color: "#B91C1C" }}>แจ้งเหตุแล้ว · รอยืนยัน</b>
+            <div className="card stack" style={{ padding: 16, border: `2px solid ${inc.mode === "drill" ? "#A16207" : "#B91C1C"}`, gap: 8 }}>
+              <b style={{ fontSize: 17, color: inc.mode === "drill" ? "#A16207" : "#B91C1C" }}>{inc.mode === "drill" ? "ขอเริ่มซ้อมอพยพ · รอยืนยัน" : "แจ้งเหตุแล้ว · รอยืนยัน"}</b>
               {cur.data?.pending && cur.data?.current?.mode === "drill" && (
                 <div className="small" style={{ fontWeight: 600, background: "#FEF3C7", color: "#78350F", borderRadius: 8, padding: "6px 10px" }}>แจ้งระหว่างซ้อม · ยืนยันแล้วระบบจะจบการซ้อมให้อัตโนมัติ</div>
               )}
               <div>{inc.kind} · {inc.area || "ไม่ระบุพื้นที่"}</div>
               <div className="muted small">แจ้งโดย {inc.reported_by} · {fmtTime(inc.opened_at)} · รอ Admin / Safety Officer ยืนยัน</div>
-              <button className="btn btn-block" onClick={cancel} disabled={busy}>แจ้งผิด · ยกเลิกการแจ้ง</button>
+              <button className="btn btn-block" onClick={cancel} disabled={busy}>{inc.mode === "drill" ? "ยกเลิกคำขอซ้อม" : "แจ้งผิด · ยกเลิกการแจ้ง"}</button>
             </div>
             <div className="card stack" style={{ padding: 16, background: "#17191C", color: "#fff", borderColor: "#17191C" }}>
               <div className="row"><ILock size={18} /><b>สำหรับ Admin / Safety Officer</b></div>
@@ -206,8 +213,9 @@ function Home() {
                 </label>
               )}
               {err && <p className="notice err">{err}</p>}
-              <button className="btn btn-red btn-block" style={{ minHeight: 56 }} onClick={confirm} disabled={busy || (!admin && pin.length < 4)}>ยืนยัน เริ่ม Incident จริง</button>
-              <button className="btn btn-block" onClick={cancel} disabled={busy}>ไม่ใช่เหตุจริง · ยกเลิก</button>
+              <button className="btn btn-red btn-block" onClick={confirm} disabled={busy || (!admin && pin.length < 4)}
+                style={{ minHeight: 56, ...(inc.mode === "drill" ? { background: "#A16207", borderColor: "#A16207" } : {}) }}>{busy && inc.mode === "drill" ? "กำลังดึงข้อมูลเข้า-ออกล่าสุด…" : inc.mode === "drill" ? "ยืนยัน เริ่มซ้อมอพยพ" : "ยืนยัน เริ่ม Incident จริง"}</button>
+              <button className="btn btn-block" onClick={cancel} disabled={busy}>{inc.mode === "drill" ? "ไม่อนุมัติ · ยกเลิกการซ้อม" : "ไม่ใช่เหตุจริง · ยกเลิก"}</button>
             </div>
           </>
         )}

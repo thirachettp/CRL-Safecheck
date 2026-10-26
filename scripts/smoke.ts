@@ -413,6 +413,23 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
 }
 
 {
+  // ซ้อม: ขั้นตอนเดียวกับเหตุจริง (ผู้ใช้ขอ → Admin / Safety ยืนยัน)
+  ok(await fails(j("/api/incidents", { method: "POST", json: { action: "report", mode: "drill", kind: "ไฟไหม้" }, tok: "x" })), "ขอเริ่มซ้อมต้องเข้าสู่ระบบ");
+  const { id: rq } = await j("/api/incidents", { method: "POST", json: { action: "report", mode: "drill", kind: "ไฟไหม้", area: "Sort" }, tok: rvTok });
+  let g = await j("/api/incidents", { tok: "x" });
+  ok(g.current?.id === rq && g.current?.mode === "drill" && g.current?.state === "pending", "ผู้ใช้ขอเริ่มซ้อม → รอยืนยัน (ยังไม่เริ่มนับ)");
+  ok(await fails(j(`/api/incidents/${rq}`, { method: "POST", json: { action: "confirm" }, tok: rvTok })), "ผู้ใช้ทั่วไปยืนยันซ้อมเองไม่ได้");
+  const { id: rr } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "สารเคมีรั่ว" }, tok: rvTok });
+  g = await j("/api/incidents", { tok: "x" });
+  ok(rr !== rq && g.current?.id === rr && g.current?.mode === "real", "แจ้งเหตุจริงแทนคำขอซ้อมที่ยังรอยืนยัน");
+  await j(`/api/incidents/${rr}`, { method: "POST", json: { action: "cancel", by: "ทดสอบ" } });
+  const { id: rq2 } = await j("/api/incidents", { method: "POST", json: { action: "report", mode: "drill", kind: "แผ่นดินไหว" }, tok: rvTok });
+  const cf = await j(`/api/incidents/${rq2}`, { method: "POST", json: { action: "confirm", closedPoints: [] }, tok: safety });
+  const di = await j(`/api/incidents/${rq2}`);
+  ok(di.incident?.state === "active" && di.incident?.mode === "drill" && di.people.length > 0 && cf.pushed !== undefined, "Safety ยืนยัน → เริ่มซ้อม มีรายชื่อจากชุดธง");
+  await j(`/api/incidents/${rq2}`, { method: "POST", json: { action: "close" } });
+}
+{
   // เกิดเหตุจริงระหว่างซ้อม
   const { id: dr } = await j("/api/incidents", { method: "POST", json: { action: "drill", title: "ซ้อมแล้วเกิดเหตุจริง" } });
   ok(await fails(j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้" }, tok: "x" })), "ระหว่างซ้อม: แจ้งเหตุจริงต้องเข้าสู่ระบบ");

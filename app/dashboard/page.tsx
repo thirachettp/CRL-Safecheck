@@ -39,7 +39,7 @@ function Dash() {
   return (
     <div className="wrap">
       <div className="card stack" style={{ padding: 20 }}>
-        <h1 style={{ fontSize: 24 }}>{cur?.state === "pending" ? "มีการแจ้งเหตุ รอยืนยัน" : "ไม่มีเหตุการณ์หรือการซ้อมตอนนี้"}</h1>
+        <h1 style={{ fontSize: 24 }}>{cur?.state === "pending" ? (cur.mode === "drill" ? "มีคำขอเริ่มซ้อมอพยพ รอยืนยัน" : "มีการแจ้งเหตุ รอยืนยัน") : "ไม่มีเหตุการณ์หรือการซ้อมตอนนี้"}</h1>
         <p className="muted">{cur?.state === "pending" ? `${cur.kind} · ${cur.area} · แจ้งโดย ${cur.reported_by} — ยืนยันได้จากหน้าแรกบนมือถือ` : "Dashboard จะแสดงสด เมื่อเริ่มซ้อมจากหน้าตั้งค่า หรือยืนยันเหตุจริง"}</p>
       </div>
       <div className="card">

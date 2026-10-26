@@ -273,15 +273,20 @@ async function latestVersion() {
 }
 
 /** แจ้งเหตุ (ต้องระบุตัวตน) → รอ Admin / Safety Officer ยืนยัน */
-export async function reportIncident(o: { kind: string; area: string; by: string }) {
-  // ระหว่างซ้อมแจ้งเหตุจริงได้: สร้างเหตุจริงรอยืนยันคู่กับการซ้อม (ยืนยันแล้วจบการซ้อมให้อัตโนมัติ)
+export async function reportIncident(o: { kind: string; area: string; by: string; mode?: "real" | "drill" }) {
+  // ขั้นตอนเดียวกันทั้งเหตุจริงและซ้อม: ผู้ใช้แจ้ง → Admin / Safety ยืนยัน → เริ่มนับ
+  // ระหว่างซ้อมแจ้งเหตุจริงได้ (ยืนยันแล้วจบการซ้อมให้อัตโนมัติ) · เหตุจริงแทนคำขอซ้อมที่ยังรอยืนยันได้
+  const mode = o.mode === "drill" ? "drill" : "real";
   const pend = await pendingReal();
-  if (pend) return pend.id;
+  if (pend) {
+    if (!(mode === "real" && pend.mode === "drill")) return pend.id;
+    await cancelIncident(pend.id, `${o.by} (แจ้งเหตุจริงแทนคำขอซ้อม)`);
+  }
   const cur = await currentIncident();
-  if (cur && !(cur.state === "active" && cur.mode === "drill")) return cur.id;
+  if (cur && cur.state === "active" && (cur.mode === "real" || mode === "drill")) return cur.id;
   const r = await one<{ id: number }>(
-    `INSERT INTO incidents (mode, state, kind, area, reported_by, title) VALUES ('real', 'pending', $1, $2, $3, $4) RETURNING id`,
-    [o.kind, o.area, o.by, o.kind],
+    `INSERT INTO incidents (mode, state, kind, area, reported_by, title) VALUES ($5, 'pending', $1, $2, $3, $4) RETURNING id`,
+    [o.kind, o.area, o.by, mode === "drill" ? `ซ้อมอพยพ: ${o.kind}` : o.kind, mode],
   );
   return Number(r!.id);
 }
@@ -291,7 +296,7 @@ export async function confirmIncident(id: number, actor: Actor, closedPoints: st
   const inc = await getIncident(id);
   if (!inc || inc.state !== "pending") throw new UserError("เหตุการณ์นี้ไม่ได้รอยืนยัน");
   // เกิดเหตุจริงระหว่างซ้อม: จบการซ้อมก่อน แล้วเริ่มนับเหตุจริงใหม่
-  for (const d of await q<{ id: number }>(`SELECT id FROM incidents WHERE state = 'active' AND mode = 'drill'`))
+  if (inc.mode === "real") for (const d of await q<{ id: number }>(`SELECT id FROM incidents WHERE state = 'active' AND mode = 'drill'`))
     await q(`UPDATE incidents SET state = 'closed', closed_at = now(), closed_by = $2 WHERE id = $1 AND state = 'active'`,
       [d.id, `${actor.name} (เกิดเหตุจริงระหว่างซ้อม)`]);
   await q(
@@ -353,7 +358,7 @@ export async function getIncident(id: number): Promise<Incident | null> {
   return r ? rowToIncident(r) : null;
 }
 
-/** เหตุจริงที่แจ้งเข้ามาแล้วรอยืนยัน (อาจเกิดระหว่างที่กำลังซ้อมอยู่) */
+/** เหตุที่แจ้งเข้ามาแล้วรอยืนยัน (เหตุจริงอาจเกิดระหว่างที่กำลังซ้อมอยู่) */
 export async function pendingReal(): Promise<Incident | null> {
   const r = await one<any>(`SELECT i.*, NULL AS plan_name FROM incidents i WHERE i.state = 'pending' ORDER BY i.id DESC LIMIT 1`);
   return r ? rowToIncident(r) : null;

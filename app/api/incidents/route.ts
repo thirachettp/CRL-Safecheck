@@ -29,9 +29,11 @@ export const POST = handle(async (req: Request) => {
       const extra = await getSetting<string[]>("incident_areas", []);
       if (!extra.includes(b.area)) await setSetting("incident_areas", [...extra, b.area].slice(-200));
     }
-    const id = await reportIncident({ kind: b.kind, area: b.area ?? "", by: `${s.name} (${s.code})` });
+    const drill = b.mode === "drill";
+    const id = await reportIncident({ kind: b.kind, area: b.area ?? "", by: `${s.name} (${s.code})`, mode: drill ? "drill" : "real" });
     // แจ้ง Admin / Safety Officer ให้มายืนยัน
-    const pushed = await notify("staff", { title: `🚨 มีการแจ้งเหตุ: ${String(b.kind).trim()}`, body: `${String(b.area ?? "").trim() || "ไม่ระบุพื้นที่"} · แจ้งโดย ${s.name} · รอ Admin / Safety ยืนยัน`,
+    const pushed = await notify("staff", { title: drill ? `📣 ขอเริ่มซ้อมอพยพ: ${b.kind}` : `🚨 มีการแจ้งเหตุ: ${b.kind}`,
+      body: `${b.area || "ไม่ระบุพื้นที่"} · แจ้งโดย ${s.name} · รอ Admin / Safety ยืนยัน`,
       url: "/?stay=1", tag: `report-${id}`, urgent: true }).catch(() => null);
     return ok({ id, pushed });
   }
