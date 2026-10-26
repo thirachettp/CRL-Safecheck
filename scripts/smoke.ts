@@ -412,6 +412,21 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
   srv.close();
 }
 
+{
+  // เกิดเหตุจริงระหว่างซ้อม
+  const { id: dr } = await j("/api/incidents", { method: "POST", json: { action: "drill", title: "ซ้อมแล้วเกิดเหตุจริง" } });
+  ok(await fails(j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้" }, tok: "x" })), "ระหว่างซ้อม: แจ้งเหตุจริงต้องเข้าสู่ระบบ");
+  const { id: rid } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้", area: "Sort" }, tok: rvTok });
+  ok(rid !== dr, "ระหว่างซ้อม: แจ้งเหตุจริงได้ (แยกจากการซ้อม)");
+  const g = await j("/api/incidents", { tok: "x" });
+  ok(g.current?.id === dr && g.pending?.id === rid, "ระหว่างซ้อม: หน้าแอปเห็นเหตุจริงที่รอยืนยัน");
+  await j(`/api/incidents/${rid}`, { method: "POST", json: { action: "confirm", closedPoints: [] } });
+  const g2 = await j("/api/incidents", { tok: "x" });
+  const drRow = (g2.incidents as any[]).find((i) => i.id === dr);
+  ok(g2.current?.id === rid && g2.current?.mode === "real" && drRow?.state === "closed" && !g2.pending, "ยืนยันเหตุจริง → จบการซ้อมให้อัตโนมัติ");
+  await j(`/api/incidents/${rid}`, { method: "POST", json: { action: "close" } });
+}
+
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);
   ok(r.status === 200, `หน้า ${p} เปิดได้`);

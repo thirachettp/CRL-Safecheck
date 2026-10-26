@@ -2,14 +2,18 @@ import { notify } from "@/lib/push";
 import { getSetting, setSetting } from "@/lib/settings";
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole, sessionOf } from "@/lib/auth";
-import { currentIncident, listIncidents, reportIncident, startDrill } from "@/lib/incident";
+import { currentIncident, listIncidents, reportIncident, startDrill, pendingReal } from "@/lib/incident";
 import { fanOutSync } from "@/lib/sources";
 import { mergeIntoIncident } from "@/lib/incident";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export const GET = handle(async () => ok({ current: await currentIncident(), incidents: await listIncidents() }));
+export const GET = handle(async () => {
+  const [current, pending, incidents] = await Promise.all([currentIncident(), pendingReal(), listIncidents()]);
+  // pending = เหตุจริงรอยืนยัน แยกไว้เมื่อกำลังซ้อมอยู่ (current คือการซ้อม)
+  return ok({ current, pending: pending && pending.id !== current?.id ? pending : null, incidents });
+});
 
 export const POST = handle(async (req: Request) => {
   const b = await req.json();

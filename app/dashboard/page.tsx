@@ -20,11 +20,21 @@ export default function DashboardPage() {
 
 function Dash() {
   const qid = useSearchParams().get("id");
-  const list = usePoll<{ current: any; incidents: any[] }>("/api/incidents", 5000);
+  const list = usePoll<{ current: any; pending?: any; incidents: any[] }>("/api/incidents", 5000);
   const cur = list.data?.current;
   const id = qid ? Number(qid) : cur?.state === "active" ? cur.id : null;
   if (!list.data) return <div className="wrap"><p className="muted">กำลังโหลด…</p></div>;
-  if (id) return <IncidentDash id={id} />;
+  const pend = list.data.pending;
+  if (id) return (
+    <>
+      {pend && (
+        <Link href="/?stay=1" style={{ display: "block", background: "#B91C1C", color: "#fff", padding: "10px 16px", fontWeight: 700, textDecoration: "none" }}>
+          🚨 มีแจ้งเหตุจริงระหว่างซ้อม: {pend.kind} · {pend.area || "ไม่ระบุพื้นที่"} · แจ้งโดย {pend.reported_by} — ยืนยันที่หน้าแรก แล้วระบบจะจบการซ้อมให้
+        </Link>
+      )}
+      <IncidentDash id={id} />
+    </>
+  );
   const past = list.data.incidents.filter((i) => i.state === "closed");
   return (
     <div className="wrap">
@@ -91,9 +101,11 @@ function IncidentDash({ id }: { id: number }) {
       const done = mem.filter((p) => EVAC.includes(p.status));
       const inn = mem.filter((p) => p.status === "in").length, unk = mem.filter((p) => p.status === "unk").length;
       const complete = !inn && !unk;
+      // เริ่มนับแล้ว = มีคนในกลุ่มถูกระบุสถานะแล้วอย่างน้อย 1 คน (ปลอดภัย / บาดเจ็บ / ในคลัง)
+      const started = mem.some((p) => p.status !== "unk");
       const at = complete ? done.reduce((mx, p) => (p.status_at && p.status_at > mx ? p.status_at : mx), "") : "";
       return { k, name: real ? mem[0]?.cc_name ?? "" : "", pts: [...new Set(mem.map((p) => effPoint(p.assembly_point)))].join(", "),
-        done: done.length, total: mem.length, inn, unk, complete, at };
+        done: done.length, total: mem.length, inn, unk, complete, started, at };
     }).sort((a, b) => Number(a.complete) - Number(b.complete) || (a.complete ? a.at.localeCompare(b.at) : b.unk + b.inn - (a.unk + a.inn)));
     const firstDone = evac.reduce((mn, p) => (p.status_at && (!mn || p.status_at < mn) ? p.status_at : mn), "");
     return {
@@ -291,17 +303,17 @@ function IncidentDash({ id }: { id: number }) {
 
         <div className="g2">
           <section className="card">
-            <div className="card-h"><span className="grow">แยกตาม{real ? " Cost Center" : "ธง"} · ไม่ครบขึ้นก่อน</span><span className="muted xs" style={{ fontWeight: 500 }}>ไม่ครบ (แดง) = มีคนยังไม่ทราบ หรือยังอยู่ในคลัง</span></div>
+            <div className="card-h"><span className="grow">แยกตาม{real ? " Cost Center" : "ธง"} · ไม่ครบขึ้นก่อน</span><span className="muted xs" style={{ fontWeight: 500 }}>เขียว = ครบ · แดง = นับแล้วแต่ยังขาด (ในคลัง / ไม่ทราบ) · ขาว = ยังไม่เริ่มนับ</span></div>
             <div className="scroll-x"><table className="tbl">
               <thead><tr><th>{real ? "Cost Center" : "ธง"}</th><th>จุดรวมพล</th><th>นับได้</th><th>ในคลัง</th><th>ไม่ทราบ</th><th>เวลาครบ</th><th>สถานะ</th></tr></thead>
               <tbody>
                 {m.rows.map((r) => (
-                  <tr key={r.k} className={r.complete ? "" : "bad"}>
+                  <tr key={r.k} className={!r.complete && r.started ? "bad" : ""}>
                     <td><b className="mono">{r.k}</b> {r.name && <span className="muted">{r.name}</span>}</td>
                     <td className="small">{r.pts.split(", ").map((c) => (c === "ไม่ระบุจุด" ? c : pName(c))).join(", ")}</td>
                     <td className="mono">{r.done} / {r.total}</td><td className="mono">{r.inn || "–"}</td><td className="mono" style={{ fontWeight: 700 }}>{r.unk || "–"}</td>
                     <td className="mono">{r.complete && r.at ? fmtClock(r.at) : "—"}</td>
-                    <td><span className="chip" style={r.complete ? { background: "#DCFCE7", color: "#14532D" } : { background: "#FEE2E2", color: "#991B1B" }}>{r.complete ? "ครบ" : "ไม่ครบ"}</span></td>
+                    <td><span className="chip" style={r.complete ? { background: "#DCFCE7", color: "#14532D" } : r.started ? { background: "#FEE2E2", color: "#991B1B" } : { background: "#fff", color: "var(--muted)", border: "1px solid var(--line-2)" }}>{r.complete ? "ครบ" : r.started ? "ขาด" : "ยังไม่เริ่ม"}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -387,9 +399,10 @@ function SourceStrip({ sources, people, now, incidentId, active, onDone }: {
 }
 
 /** Heatmap ราย ธง (ซ้อม) / Cost Center (เหตุจริง) · เขียว = ครบ · ขาว = ยังนับไม่ครบ · แดง = มีคนขาด (ยังอยู่ในคลัง) · กดเพื่อดูรายชื่อ */
-function Heatmap({ rows, real }: { rows: { k: string; name: string; done: number; total: number; inn: number; unk: number; complete: boolean }[]; real: boolean }) {
+function Heatmap({ rows, real }: { rows: { k: string; name: string; done: number; total: number; inn: number; unk: number; complete: boolean; started: boolean }[]; real: boolean }) {
   const sorted = [...rows].sort((a, b) => (real ? a.k.localeCompare(b.k) : cmpFlag(a.k === "ไม่ระบุธง" ? null : a.k, b.k === "ไม่ระบุธง" ? null : b.k)));
-  const green = rows.filter((r) => r.complete).length, red = rows.filter((r) => r.inn > 0).length;
+  const isRed = (r: { complete: boolean; started: boolean }) => !r.complete && r.started;
+  const green = rows.filter((r) => r.complete).length, red = rows.filter(isRed).length;
   const white = rows.length - green - red;
   const gid = (k: string) => (!real && k === "ไม่ระบุธง" ? "none" : k);
   return (
@@ -397,13 +410,13 @@ function Heatmap({ rows, real }: { rows: { k: string; name: string; done: number
       <div className="row" style={{ gap: 14, marginBottom: 10 }}>
         <b className="grow">ภาพรวมราย{real ? " Cost Center" : "ธง"}</b>
         <span className="row xs" style={{ gap: 4 }}><span className="hm-key hm-ok" />ครบแล้ว {green}</span>
-        <span className="row xs" style={{ gap: 4 }}><span className="hm-key" />ยังไม่ครบ {white}</span>
-        <span className="row xs" style={{ gap: 4 }}><span className="hm-key hm-bad" />มีคนขาด {red}</span>
+        <span className="row xs" style={{ gap: 4 }}><span className="hm-key" />ยังไม่เริ่มนับ {white}</span>
+        <span className="row xs" style={{ gap: 4 }}><span className="hm-key hm-bad" />นับแล้วแต่ยังขาด (ในคลัง / ไม่ทราบ) {red}</span>
         <span className="muted xs">กดช่องเพื่อดูรายชื่อ</span>
       </div>
       <div className="hm">
         {sorted.map((r) => {
-          const cls = r.complete ? "hm-ok" : r.inn > 0 ? "hm-bad" : "";
+          const cls = r.complete ? "hm-ok" : isRed(r) ? "hm-bad" : "";
           const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
           return (
             <Link key={r.k} href={`/search?g=${encodeURIComponent(gid(r.k))}`} className={`hm-c ${cls}`}
@@ -411,7 +424,7 @@ function Heatmap({ rows, real }: { rows: { k: string; name: string; done: number
               <b className="mono">{!real && r.k === "ไม่ระบุธง" ? "?" : r.k}</b>
               {real && r.name && <span className="hm-n">{r.name}</span>}
               <span className="mono hm-v">{r.done}/{r.total}</span>
-              {r.inn > 0 ? <span className="hm-t">ขาด {r.inn}</span> : !r.complete && <span className="hm-bar"><span style={{ width: `${pct}%` }} /></span>}
+              {isRed(r) ? <span className="hm-t">ขาด {r.inn + r.unk}{r.inn ? ` · ในคลัง ${r.inn}` : ""}</span> : !r.complete && <span className="hm-bar"><span style={{ width: `${pct}%` }} /></span>}
             </Link>
           );
         })}

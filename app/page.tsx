@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import MobileShell from "@/components/MobileShell";
 import LoginSheet from "@/components/LoginSheet";
+import ReportSheet from "@/components/ReportSheet";
 import { useUser, useAdmin } from "@/components/identity";
 import { api, usePoll, fmtTime, fmtDateTime, initials, KINDS, rangeText, freshness, lastTouch, ago } from "@/components/lib";
 import { NotifyCard } from "@/components/Notify";
@@ -22,12 +23,13 @@ function Home() {
   const stay = useSearchParams().get("stay") === "1";
   const { user } = useUser();
   const { admin, unlock } = useAdmin();
-  const cur = usePoll<{ current: any }>("/api/incidents", 4000);
+  const cur = usePoll<{ current: any; pending?: any }>("/api/incidents", 4000);
   const plan = usePoll<{ flags: any[]; points: Point[]; extra_areas?: string[] }>("/api/plan", 0);
   const [otherKind, setOtherKind] = useState("");
   const [drillPrep, setDrillPrep] = useState(false);
   const staff = admin?.role === "admin" || admin?.role === "safety";
   const [showLogin, setShowLogin] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const [kind, setKind] = useState(KINDS[0].id);
   const [area, setArea] = useState("");
   const [off, setOff] = useState<Record<string, boolean>>({});
@@ -35,7 +37,8 @@ function Home() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const inc = cur.data?.current ?? null;
+  // เหตุจริงที่แจ้งระหว่างซ้อม ให้ขึ้นก่อน (Admin / Safety ยืนยันได้ทันที)
+  const inc = cur.data?.pending ?? cur.data?.current ?? null;
   const step = !inc ? "idle" : inc.state === "pending" ? "pending" : "active";
   const areas = useMemo(
     () => [...new Set([...(plan.data?.flags ?? []).map((f) => f.area), ...(plan.data?.extra_areas ?? [])].filter(Boolean))]
@@ -168,6 +171,9 @@ function Home() {
           <>
             <div className="card stack" style={{ padding: 16, border: "2px solid #B91C1C", gap: 8 }}>
               <b style={{ fontSize: 17, color: "#B91C1C" }}>แจ้งเหตุแล้ว · รอยืนยัน</b>
+              {cur.data?.pending && cur.data?.current?.mode === "drill" && (
+                <div className="small" style={{ fontWeight: 600, background: "#FEF3C7", color: "#78350F", borderRadius: 8, padding: "6px 10px" }}>แจ้งระหว่างซ้อม · ยืนยันแล้วระบบจะจบการซ้อมให้อัตโนมัติ</div>
+              )}
               <div>{inc.kind} · {inc.area || "ไม่ระบุพื้นที่"}</div>
               <div className="muted small">แจ้งโดย {inc.reported_by} · {fmtTime(inc.opened_at)} · รอ Admin / Safety Officer ยืนยัน</div>
               <button className="btn btn-block" onClick={cancel} disabled={busy}>แจ้งผิด · ยกเลิกการแจ้ง</button>
@@ -218,12 +224,13 @@ function Home() {
             <Link className="btn btn-dark btn-block" style={{ minHeight: 56, fontSize: 17 }} href="/search">ไปหน้าค้นหาคน</Link>
             <Link className="btn btn-block" href="/dashboard">Dashboard</Link>
             {inc.mode === "drill" && (
-              <p className="muted small">ถ้าเกิดเหตุจริงระหว่างซ้อม ให้ Admin จบการซ้อมก่อน แล้วแจ้งเหตุใหม่</p>
+              <button className="btn btn-block" style={{ color: "#B91C1C", borderColor: "#FCA5A5" }} onClick={() => setReporting(true)}>เกิดเหตุจริงระหว่างซ้อม · แจ้งเหตุจริง</button>
             )}
           </>
         )}
       </div>
       {showLogin && <LoginSheet onClose={() => setShowLogin(false)} />}
+      {reporting && <ReportSheet onClose={() => { setReporting(false); cur.reload(); }} />}
       {drillPrep && <DrillPrep onClose={() => setDrillPrep(false)} onStarted={() => router.push("/dashboard")} />}
     </MobileShell>
   );

@@ -4,6 +4,7 @@ import { matchName, normName } from "@/lib/names";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
+import ReportSheet from "@/components/ReportSheet";
 import { useUser } from "@/components/identity";
 import { api, usePoll, fmtTime, LBL, ORDER, EVAC, inPool, TRI } from "@/components/lib";
 import { IFlag, IBuilding, IDown, IUp, IClose, ISearch, ICheck } from "@/components/Icons";
@@ -12,7 +13,7 @@ type P = any;
 type Data = { incident: any; people: P[]; points: any[]; leaders: any[]; viewer?: "anon" | "user" | "staff" };
 
 export default function SearchPage() {
-  const cur = usePoll<{ current: any }>("/api/incidents", 5000);
+  const cur = usePoll<{ current: any; pending?: any }>("/api/incidents", 5000);
   const inc = cur.data?.current;
   if (cur.data && (!inc || inc.state !== "active")) {
     return (
@@ -28,10 +29,11 @@ export default function SearchPage() {
     );
   }
   if (!inc) return <MobileShell><p className="muted" style={{ padding: 16 }}>กำลังโหลด…</p></MobileShell>;
-  return <SearchIncident id={inc.id} />;
+  return <SearchIncident id={inc.id} pending={cur.data?.pending ?? null} />;
 }
 
-function SearchIncident({ id }: { id: number }) {
+function SearchIncident({ id, pending }: { id: number; pending: any }) {
+  const [reporting, setReporting] = useState(false);
   const { by } = useUser();
   const who = by || "ไม่ระบุชื่อ";
   const d = usePoll<Data>(`/api/incidents/${id}`, 3000);
@@ -116,11 +118,11 @@ function SearchIncident({ id }: { id: number }) {
   const SUMS = [["unk", "ยังไม่ทราบ", "#17191C"], ["in", "ในคลัง", "#9A3412"], ["safe", "ปลอดภัย", "#14532D"], ["inj", "บาดเจ็บ", "#881337"]];
 
   const groups = useMemo(() => {
-    const m = new Map<string, { id: string; name: string; mem: number; done: number }>();
+    const m = new Map<string, { id: string; name: string; mem: number; done: number; started: boolean }>();
     for (const p of people) {
       const g = grp(p);
-      const x = m.get(g) ?? { id: g, name: real ? p.cc_name ?? "" : "", mem: 0, done: 0 };
-      if (inPool(p.status)) { x.mem++; if (EVAC.includes(p.status)) x.done++; }
+      const x = m.get(g) ?? { id: g, name: real ? p.cc_name ?? "" : "", mem: 0, done: 0, started: false };
+      if (inPool(p.status)) { x.mem++; if (EVAC.includes(p.status)) x.done++; if (p.status !== "unk") x.started = true; }
       m.set(g, x);
     }
     return [...m.values()].sort((a, b) => (a.id === "none" ? 1 : b.id === "none" ? -1 : real ? a.id.localeCompare(b.id) : cmpFlag(a.id, b.id)));
@@ -176,9 +178,14 @@ function SearchIncident({ id }: { id: number }) {
           <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: ui.badgeBg, color: ui.badgeFg }}>{ui.badge}</span>
           <b className="grow" style={{ fontSize: 15 }}>{ui.title}</b>
           {realMode ? <Link href="/dashboard" style={{ color: "inherit", fontSize: 13, fontWeight: 600 }}>สรุปผล</Link>
-            : <Link href="/?stay=1" style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", background: "#fff", border: "1px solid #B91C1C", borderRadius: 8, padding: "6px 8px", textDecoration: "none" }}>แจ้งเหตุจริง</Link>}
+            : <button onClick={() => setReporting(true)} style={{ font: "inherit", fontSize: 12, fontWeight: 700, color: "#B91C1C", background: "#fff", border: "1px solid #B91C1C", borderRadius: 8, padding: "6px 8px", cursor: "pointer" }}>แจ้งเหตุจริง</button>}
         </div>
         <div className="xs" style={{ opacity: .9, marginTop: 4 }}>{ui.sub}</div>
+        {pending && (
+          <Link href="/?stay=1" className="small" style={{ display: "block", marginTop: 8, background: "#B91C1C", color: "#fff", borderRadius: 8, padding: "8px 10px", fontWeight: 700, textDecoration: "none" }}>
+            🚨 มีแจ้งเหตุจริง: {pending.kind} · {pending.area || "ไม่ระบุพื้นที่"} · รอ Admin / Safety ยืนยัน (แตะเพื่อดู)
+          </Link>
+        )}
       </div>
 
       {!roll && (
@@ -346,11 +353,12 @@ function SearchIncident({ id }: { id: number }) {
             </div>
             <div className="muted xs row" style={{ gap: 12 }}>
               <span className="row" style={{ gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#86EFAC" }} />ครบแล้ว</span>
-              <span className="row" style={{ gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#FCA5A5" }} />ไม่ครบ (ไม่ทราบ / ในคลัง)</span>
+              <span className="row" style={{ gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#FCA5A5" }} />นับแล้วแต่ยังขาด (ในคลัง / ไม่ทราบ)</span>
+              <span className="row" style={{ gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#fff", border: "1px solid var(--line-2)" }} />ยังไม่เริ่มนับ</span>
             </div>
             <div className={real ? "cells2" : "cells5"}>
               {groups.map((g) => (
-                <button key={g.id} className={`cell${real ? " ccell" : ""}${g.done === g.mem ? " done" : " bad"}${f === g.id ? " on" : ""}`}
+                <button key={g.id} className={`cell${real ? " ccell" : ""}${g.done === g.mem ? " done" : g.started ? " bad" : ""}${f === g.id ? " on" : ""}`}
                   onClick={() => { setF(g.id); setPicker(false); }}>
                   {real ? (
                     <>
@@ -367,6 +375,7 @@ function SearchIncident({ id }: { id: number }) {
         </div>
       )}
 
+      {reporting && <ReportSheet onClose={() => setReporting(false)} pending={pending} />}
       {adding && (
         <AddOutside defaultFlag={!real && f !== "all" && f !== "none" ? f : ""} onClose={() => setAdding(false)}
           onSave={async (x) => { await api(`/api/incidents/${id}/people`, { method: "POST", json: { ...x, by: who } }); setAdding(false); d.reload(); }} />
