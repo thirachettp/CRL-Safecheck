@@ -271,6 +271,33 @@ await j("/api/admin/versions", { method: "POST", json: { action: "delete", id: v
 fo = await j("/api/plan");
 ok(fo.versions.length === nBefore - 1 && !fo.versions.some((v: any) => v.id === vOld), "ลบเวอร์ชันที่ไม่ได้ใช้ได้");
 
+// ---------- ชื่อเวอร์ชัน · ทำสำเนา · เริ่มว่าง ----------
+{
+  fo = await j("/api/plan");
+  ok(fo.versions.every((v: any) => v.name && v.name.trim()), "ทุกเวอร์ชันมีชื่อ (ไม่ตั้ง = ใช้วันเวลา)");
+  const ac = fo.version.active, total = fo.total;
+  const dup = await j("/api/admin/versions", { method: "POST", json: { action: "duplicate", id: ac } });
+  fo = await j("/api/plan");
+  ok(dup.name === "ชุดธง 2569 (สำเนา)" && fo.version.active === ac && fo.versions.some((v: any) => v.id === dup.id), "ทำสำเนาเวอร์ชัน (ไม่เปลี่ยนตัวที่ใช้อยู่)");
+  const dup2 = await j("/api/admin/versions", { method: "POST", json: { action: "duplicate", id: ac } });
+  ok(dup2.name === "ชุดธง 2569 (สำเนา) (2)", "ชื่อซ้ำต่อท้าย (2)");
+  ok(await fails(j("/api/admin/versions", { method: "POST", json: { action: "rename", id: dup2.id, name: " " } })), "ชื่อเวอร์ชันห้ามว่าง");
+  const bl = await j("/api/admin/versions", { method: "POST", json: { action: "new-blank", name: "ชุดธงใหม่ 2570" } });
+  fo = await j("/api/plan");
+  ok(fo.version.active === bl.version && fo.total === 0 && fo.flags.length === 0 && fo.versions.some((v: any) => v.id === ac), "สร้างชุดธงว่างได้เลย เวอร์ชันเก่ายังอยู่");
+  // เพิ่มคน: กรอกรหัสที่เคยมีในเวอร์ชันเก่า → ได้ข้อมูลเดิม
+  const lk = await j(`/api/admin/flags?lookup=30000102`);
+  ok(lk.person?.first_name === "ชื่อ1-2" && lk.person?.cost_center === "82001" && lk.person?.gender === "ชาย" && !lk.person?.in_plan, "ค้นรหัสเดิมจากเวอร์ชันเก่า ได้ชื่อ เพศ Cost Center");
+  const lk2 = await j(`/api/review?lookup=30000101`);
+  ok(lk2.person?.first_name && lk2.person?.tel === null, "หน้าตรวจทาน: ค้นรหัสได้ แต่ไม่ส่งเบอร์โทร");
+  await j("/api/admin/versions", { method: "POST", json: { action: "activate", id: ac } });
+  fo = await j("/api/plan");
+  ok(fo.total === total, "กลับไปใช้เวอร์ชันเดิม ได้รายชื่อครบ");
+  const lk3 = await j(`/api/admin/flags?lookup=30000102`);
+  ok(lk3.person?.in_plan, "รหัสที่อยู่ในธงแล้ว ขึ้นเตือนว่าอยู่ธงไหน");
+  await j("/api/admin/versions", { method: "POST", json: { action: "delete", id: bl.version } });
+}
+
 // ---------- บทบาท + แก้รหัสพนักงาน ----------
 await j("/api/admin/flags", { method: "POST", json: { action: "person-add", flag_no: 2, emp_id: "ร้านค้าโรงอาหาร", first_name: "แม่ค้า", last_name: "ทดสอบ" } });
 await j("/api/admin/flags", { method: "POST", json: { action: "person-edit", emp_id: "ร้านค้าโรงอาหาร", role: "ผู้ช่วยผู้นำธง" } });

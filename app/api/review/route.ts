@@ -2,7 +2,7 @@ import { q } from "@/lib/db";
 import { viewerOf, requireUser } from "@/lib/auth";
 import { normFlag } from "@/lib/flag";
 import { handle, ok, fail } from "@/lib/http";
-import { reviewFlag, flagCells, searchPlan, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan, saveFlag, deleteFlag } from "@/lib/plan";
+import { reviewFlag, flagCells, searchPlan, setAttendance, editPerson, removePerson, addPlanPerson, markReviewed, touchPlan, saveFlag, deleteFlag, lookupPerson } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,9 @@ export const GET = handle(async (req: Request) => {
   if (viewerReq === "anon") return fail("ต้องเข้าสู่ระบบก่อนตรวจทานธง", 401);
   const term = new URL(req.url).searchParams.get("q");
   if (term != null) return ok({ results: (await searchPlan(term)).filter((p: any) => !p.removed) });
+  const lk = new URL(req.url).searchParams.get("lookup");
+  // หน้าตรวจทาน: ไม่ส่งเบอร์โทรจากโปรไฟล์
+  if (lk != null) return ok({ person: await lookupPerson(lk, false) });
   const f = normFlag(new URL(req.url).searchParams.get("flag"));
   const cells = await flagCells();
   const flag: string | null = f && cells.some((c: any) => c.flag_no === f) ? f : f ?? cells[0]?.flag_no ?? null;

@@ -167,7 +167,7 @@ function SearchIncident({ id, pending }: { id: number; pending: any }) {
   const ui = realMode
     ? { bg: "#B91C1C", fg: "#FFF", badgeBg: "#FFF", badgeFg: "#B91C1C", badge: "จริง", title: `INCIDENT · ${inc.kind ?? ""} ${inc.area ?? ""}`,
         sub: `ยืนยันโดย ${inc.confirmed_by ?? "—"} · ${closedNames.length ? `ปิด ${closedNames.join(", ")} ใช้จุดสำรอง` : "ใช้จุดรวมพลตามปกติ"}` }
-    : { bg: "#FCD34D", fg: "#422006", badgeBg: "#422006", badgeFg: "#FCD34D", badge: "ซ้อม", title: `${inc.title ?? "ซ้อมอพยพ"}${inc.plan_version ? ` · ชุดธง v${inc.plan_version}${inc.plan_name ? ` ${inc.plan_name}` : ""}` : ""}`,
+    : { bg: "#FCD34D", fg: "#422006", badgeBg: "#422006", badgeFg: "#FCD34D", badge: "ซ้อม", title: `${inc.title ?? "ซ้อมอพยพ"}${inc.plan_name ? ` · ชุดธง ${inc.plan_name}` : ""}`,
         sub: `เริ่มโดย ${inc.confirmed_by ?? "—"} · ${fmtTime(inc.opened_at)} · คุณ: ${by || "ไม่ระบุชื่อ"}` };
   const groupLabel = f === "all" ? (real ? "ทุก Cost Center" : "ทุกธง") : real ? `CC ${f}` : f === "none" ? "ไม่ระบุธง" : `ธง ${f}`;
 

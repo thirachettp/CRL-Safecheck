@@ -1,6 +1,6 @@
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole } from "@/lib/auth";
-import { saveVersion, activateVersion, renameVersion, overwriteVersion, deleteVersion } from "@/lib/plan";
+import { saveVersion, activateVersion, renameVersion, overwriteVersion, deleteVersion, newBlankVersion, duplicateVersion } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,10 @@ export const POST = handle(async (req: Request) => {
   switch (b.action) {
     case "save":
       return ok({ version: await saveVersion(String(b.note ?? "บันทึกหลังแก้ไข"), actor.name, b.name) });
+    case "new-blank":
+      return ok({ version: await newBlankVersion(String(b.name ?? ""), actor.name) });
+    case "duplicate":
+      return ok(await duplicateVersion(id, actor.name, b.name));
     case "activate":
     case "rollback":
       await activateVersion(id);

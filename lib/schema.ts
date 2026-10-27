@@ -338,4 +338,8 @@ export const SCHEMA: string[] = [
   `ALTER TABLE evac_plan ADD COLUMN IF NOT EXISTS name_en text`,
   `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS name_en text`,
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS name_en text`,
+  // v11: เวอร์ชันชุดธงใช้ชื่อที่ตั้ง (ไม่ใช้ v1 v2) · เวอร์ชันเก่าที่ไม่มีชื่อ ตั้งชื่อจากวันที่สร้าง
+  `UPDATE plan_versions SET name = 'ชุดธง ' || to_char(created_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/') ||
+     (extract(year FROM created_at AT TIME ZONE 'Asia/Bangkok')::int + 543) || to_char(created_at AT TIME ZONE 'Asia/Bangkok', ' HH24:MI') || ' #' || id
+   WHERE name IS NULL OR btrim(name) = ''`,
 ];

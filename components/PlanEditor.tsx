@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { api, usePoll } from "./lib";
 import PlanSearch from "./PlanSearch";
+import { usePersonLookup, LookupNote, genderOf } from "./PersonLookup";
 
 export type FlagRow = {
   flag_no: string | null; assembly_point: string | null; people: number; male: number; female: number; area: string | null;
@@ -261,7 +262,7 @@ function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, on
       <datalist id={`roles-${flag}`}>{roles.map((x) => <option key={x} value={x} />)}</datalist>
       <div className="row" style={{ padding: "10px 18px 6px" }}>
         <b className="grow">รายชื่อในธง {flag} ({active.length} คน)</b>
-        <button className="btn btn-sm" onClick={() => { setAdding(!adding); setDraft(blank); setEdit(null); }}>{adding ? "ยกเลิก" : "+ เพิ่มคน"}</button>
+        <button className="btn btn-sm" onClick={() => { setAdding(!adding); setEdit(null); }}>{adding ? "ยกเลิก" : "+ เพิ่มคน"}</button>
       </div>
       {err && <div style={{ padding: "0 18px 8px" }}><p className="notice err">{err}</p></div>}
       <div className="scroll-x" style={{ padding: "0 8px 12px" }}>
@@ -269,12 +270,11 @@ function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, on
           <thead><tr><th style={{ width: 110 }}>รหัส</th><th>ชื่อ-นามสกุล</th><th style={{ width: 64 }}>เพศ</th><th style={{ width: 150 }}>บทบาท</th><th>Cost Center · แผนก</th><th style={{ width: 110 }}>เบอร์โทร</th><th style={{ width: 70 }}>ธง</th><th style={{ width: 100 }} /></tr></thead>
           <tbody>
             {adding && (
-              <tr className="editing">
-                {fields(draft, setDraft, true)}
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button className="btn btn-sm btn-pri" disabled={!draft.first_name?.trim()} onClick={() => run({ action: "person-add", ...draft })}>เพิ่ม</button>
-                </td>
-              </tr>
+              <tr className="editing"><td colSpan={8} style={{ padding: 0 }}>
+                <AddPerson key={flag} blank={blank} flags={flags} roles={roles} flag={flag}
+                  onAdd={async (f) => { setErr(null); try { await call({ action: "person-add", ...f }); d.reload(); onChanged(); return true; } catch (x: any) { setErr(x.message); return false; } }}
+                  onClose={() => setAdding(false)} />
+              </td></tr>
             )}
             {!d.data && !d.error && <tr><td colSpan={8} className="muted small">กำลังโหลด…</td></tr>}
             {d.data && active.length === 0 && !adding && <tr><td colSpan={8} className="muted small">ยังไม่มีคนในธงนี้ กด + เพิ่มคน</td></tr>}
@@ -336,5 +336,69 @@ function FlagDetail({ flag, row, leader, points, roles, flags, hl, onChanged, on
         )}
       </div>
     </div>
+  );
+}
+
+/** ฟอร์มเพิ่มคน: กรอกรหัสก่อน ระบบเติมข้อมูลเดิมให้ · เพิ่มแล้วฟอร์มยังเปิดอยู่ เพิ่มคนถัดไปต่อได้ทันที */
+function AddPerson({ blank, flags, roles, flag, onAdd, onClose }: {
+  blank: any; flags: string[]; roles: string[]; flag: string; onAdd: (f: any) => Promise<boolean>; onClose: () => void;
+}) {
+  const [f, setF] = useState<any>(blank);
+  const [done, setDone] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const lk = usePersonLookup("/api/admin/flags", f.emp_id, f, setF);
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const blocked = !!lk.hit?.in_plan;
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!f.first_name?.trim() || blocked) return;
+    setBusy(true);
+    const name = [f.prefix, f.first_name, f.last_name].filter(Boolean).join(" ");
+    if (await onAdd(f)) {
+      setDone([name, ...done].slice(0, 5));
+      // คนถัดไป: เก็บธง Cost Center และแผนกไว้ ล้างที่เหลือ
+      setF({ ...blank, flag_no: f.flag_no, cost_center: f.cost_center, area: f.area });
+      lk.reset();
+      (document.getElementById(`add-code-${flag}`) as HTMLInputElement | null)?.focus();
+    }
+    setBusy(false);
+  }
+  const L = { fontSize: 12, fontWeight: 600 } as const;
+  return (
+    <form onSubmit={submit} style={{ padding: "12px 14px", display: "grid", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "180px minmax(0,1fr)", gap: 10, alignItems: "end" }}>
+        <label className="lb" style={L}>รหัสพนักงาน
+          <input id={`add-code-${flag}`} className="in mono" autoFocus value={f.emp_id} onChange={set("emp_id")} placeholder="เช่น 20371046" autoComplete="off" />
+        </label>
+        <div style={{ paddingBottom: 12 }}><LookupNote hit={lk.hit} busy={lk.busy} code={f.emp_id} /></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0,1fr) minmax(0,1fr) 100px", gap: 10 }}>
+        <label className="lb" style={L}>คำนำหน้า
+          <select className="in" value={f.prefix} onChange={(e) => setF({ ...f, prefix: e.target.value, gender: genderOf(e.target.value) || f.gender })}>
+            {PREFIX.map((x) => <option key={x} value={x}>{x || "—"}</option>)}</select></label>
+        <label className="lb" style={L}>ชื่อ<input className="in" value={f.first_name} onChange={set("first_name")} required /></label>
+        <label className="lb" style={L}>นามสกุล<input className="in" value={f.last_name} onChange={set("last_name")} /></label>
+        <label className="lb" style={L}>เพศ<select className="in" value={f.gender} onChange={set("gender")}>
+          <option value="">—</option><option>ชาย</option><option>หญิง</option><option>อื่นๆ</option></select></label>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr) 110px", gap: 10 }}>
+        <label className="lb" style={L}>ชื่อ-นามสกุล (อังกฤษ) <span className="muted" style={{ fontWeight: 400 }}>ไม่บังคับ</span>
+          <input className="in" lang="en" value={f.name_en ?? ""} onChange={set("name_en")} /></label>
+        <label className="lb" style={L}>บทบาท<input className="in" list={`roles-${flag}`} value={f.role} onChange={set("role")} placeholder="ผู้อพยพ" />
+          <datalist id={`roles-${flag}`}>{roles.map((x) => <option key={x} value={x} />)}</datalist></label>
+        <label className="lb" style={L}>ธง<select className="in mono" value={f.flag_no} onChange={set("flag_no")}>
+          {flags.map((x) => <option key={x} value={x}>ธง {x}</option>)}</select></label>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "120px minmax(0,1fr) 150px auto", gap: 10, alignItems: "end" }}>
+        <label className="lb" style={L}>Cost Center<input className="in mono" value={f.cost_center} onChange={set("cost_center")} /></label>
+        <label className="lb" style={L}>แผนก / พื้นที่<input className="in" value={f.area} onChange={set("area")} /></label>
+        <label className="lb" style={L}>เบอร์โทร<input className="in mono" value={f.tel} onChange={set("tel")} inputMode="tel" /></label>
+        <div className="row" style={{ gap: 6, flexWrap: "nowrap", paddingBottom: 2 }}>
+          <button className="btn btn-pri" type="submit" disabled={busy || !f.first_name?.trim() || blocked}>{busy ? "กำลังเพิ่ม…" : "+ เพิ่มเข้าธง"}</button>
+          <button className="btn" type="button" onClick={onClose}>ปิด</button>
+        </div>
+      </div>
+      {done.length > 0 && <div className="xs" style={{ color: "#166534" }}>เพิ่มแล้ว: {done.join(" · ")} · กรอกคนถัดไปได้เลย</div>}
+    </form>
   );
 }

@@ -26,14 +26,47 @@ async function snapshot() {
   return { count: people.filter((p: any) => !p.removed).length, data: JSON.stringify({ people, leaders, points }) };
 }
 
+/** ชื่อเวอร์ชันต้องมีและไม่ซ้ำ: ไม่ตั้ง = ใช้วันเวลา · ซ้ำ = ต่อท้าย (2), (3) */
+async function uniqueName(n: string | null | undefined, fallback: string, exceptId?: number) {
+  const base = vname(n) ?? fallback;
+  const taken = new Set((await q<{ name: string }>(`SELECT name FROM plan_versions WHERE name IS NOT NULL AND id <> $1`, [exceptId ?? -1]))
+    .map((r) => r.name.trim().toLowerCase()));
+  let name = base, i = 2;
+  while (taken.has(name.toLowerCase())) name = `${base} (${i++})`;
+  return name;
+}
+const stamp = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 16).replace(/^(\d{4})-(\d{2})-(\d{2})T/, (_, y, m, d) => `${d}/${m}/${Number(y) + 543} `);
+
 /** บันทึกชุดธงปัจจุบันเป็นเวอร์ชันใหม่ และตั้งเป็นเวอร์ชันที่ใช้อยู่ */
 export async function saveVersion(note: string, by: string, name?: string | null) {
   const s = await snapshot();
+  const nm = await uniqueName(name, `ชุดธง ${stamp()}`);
   const r = await one<{ id: number }>(
     `INSERT INTO plan_versions (note, created_by, people, data, name) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [note, by, s.count, s.data, vname(name)]);
+    [note, by, s.count, s.data, nm]);
   await setSetting(ACTIVE, r!.id);
+  await setSetting(CHANGED, null);
   return r!.id;
+}
+
+/** สร้างเวอร์ชันใหม่แบบว่าง (ไม่มีธงและรายชื่อ) แล้วใช้เลย · เวอร์ชันเก่ายังอยู่ครบ จุดรวมพลใช้ร่วมกัน */
+export async function newBlankVersion(name: string, by: string) {
+  await q(`DELETE FROM evac_plan`);
+  await q(`DELETE FROM flag_leaders`);
+  await q(`DELETE FROM flag_reviews`);
+  return saveVersion("เริ่มชุดธงใหม่ (ว่าง)", by, name);
+}
+
+/** ทำสำเนาเวอร์ชัน (ไม่เปลี่ยนเวอร์ชันที่ใช้อยู่) */
+export async function duplicateVersion(id: number, by: string, name?: string | null) {
+  const v = await one<{ name: string | null }>(`SELECT name FROM plan_versions WHERE id = $1`, [id]);
+  if (!v) throw new UserError("ไม่พบเวอร์ชันนี้");
+  const nm = await uniqueName(name, `${v.name ?? "ชุดธง"} (สำเนา)`);
+  const r = await one<{ id: number }>(
+    `INSERT INTO plan_versions (note, created_by, people, data, name)
+     SELECT $2, $3, people, data, $4 FROM plan_versions WHERE id = $1 RETURNING id`,
+    [id, `สำเนาจาก “${v.name ?? "ไม่มีชื่อ"}”`, by, nm]);
+  return { id: r!.id, name: nm };
 }
 
 export async function activeVersionId(): Promise<number | null> {
@@ -116,11 +149,13 @@ export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, f
      ON CONFLICT (code) DO NOTHING`);
   await q(`DELETE FROM flag_reviews`);
   const v = await saveVersion(`นำเข้าจาก Excel ${fileCount} ไฟล์`, by, name);
-  return { saved: P.length, leaders: L.length, version: v };
+  const vn = (await one<{ name: string }>(`SELECT name FROM plan_versions WHERE id = $1`, [v]))?.name ?? null;
+  return { saved: P.length, leaders: L.length, version: v, version_name: vn };
 }
 
 export async function renameVersion(id: number, name: string) {
-  const r = await one(`UPDATE plan_versions SET name = $2 WHERE id = $1 RETURNING id`, [id, vname(name)]);
+  if (!vname(name)) throw new UserError("ตั้งชื่อเวอร์ชันก่อน");
+  const r = await one(`UPDATE plan_versions SET name = $2 WHERE id = $1 RETURNING id`, [id, await uniqueName(name, "", id)]);
   if (!r) throw new UserError("ไม่พบเวอร์ชันนี้");
 }
 
@@ -271,10 +306,12 @@ export async function addPlanPerson(
   if (!f.flag_no) throw new UserError("ระบุธง");
   const id = f.emp_id?.trim().toUpperCase() || `ADD-${Date.now().toString(36).toUpperCase()}`;
   const dup = await one<any>(`SELECT flag_no, removed FROM evac_plan WHERE emp_id = $1`, [id]);
-  if (dup) throw new UserError(dup.removed ? `รหัส ${id} เคยอยู่ในชุดธงแล้วถูกลบ ไปที่ธง ${dup.flag_no ?? "—"} แล้วกดคืนค่า` : `รหัส ${id} อยู่ในธง ${dup.flag_no ?? "—"} แล้ว ใช้แก้ไข/ย้ายธงแทน`);
+  if (dup && !dup.removed) throw new UserError(`รหัส ${id} อยู่ในธง ${dup.flag_no ?? "—"} แล้ว ใช้แก้ไข/ย้ายธงแทน`);
   const ap = (await one<{ ap: string }>(
     `SELECT COALESCE((SELECT max(assembly_point) FROM evac_plan WHERE flag_no = $1), (SELECT assembly_point FROM flag_leaders WHERE flag_no = $1)) AS ap`,
     [f.flag_no]))?.ap ?? null;
+  // เคยอยู่ในชุดธงแล้วถูกลบ: คืนกลับมาเข้าธงนี้ด้วยข้อมูลใหม่
+  if (dup?.removed) await q(`DELETE FROM evac_plan WHERE emp_id = $1`, [id]);
   await q(
     `INSERT INTO evac_plan (emp_id, first_name, last_name, gender, flag_no, tel, cost_center, area, assembly_point,
        added_manually, edited_by, edited_at, role, prefix, name_en)
@@ -352,4 +389,38 @@ export async function searchPlan(term: string, limit = 50) {
         OR cost_center ILIKE $1 || '%' OR area ILIKE '%' || $1 || '%'
      ORDER BY removed, (emp_id ILIKE $1 || '%') DESC, flag_key(flag_no), flag_no, first_name
      LIMIT $2`, [t, limit]);
+}
+
+/**
+ * ค้นข้อมูลคนจากรหัสพนักงาน เพื่อเติมฟอร์มเพิ่มคนให้อัตโนมัติ
+ * ดูจาก: ชุดธงปัจจุบัน (รวมคนที่ลบออก) → เวอร์ชันชุดธงเก่า → โปรไฟล์ที่ลงทะเบียน → รายชื่อ Outsource (DC_FTE)
+ */
+export async function lookupPerson(code: string, withTel = true) {
+  const c = String(code ?? "").trim();
+  if (c.length < 3) return null;
+  const [plan, old, prof, os] = await Promise.all([
+    one<any>(`SELECT * FROM evac_plan WHERE upper(emp_id) = upper($1)`, [c]),
+    one<any>(
+      `SELECT p, v.name AS vname FROM plan_versions v, jsonb_array_elements(v.data->'people') p
+       WHERE upper(p->>'emp_id') = upper($1) ORDER BY v.id DESC LIMIT 1`, [c]),
+    one<any>(`SELECT * FROM profiles WHERE upper(code) = upper($1)`, [c]),
+    one<any>(`SELECT * FROM outsource_staff WHERE upper(emp_id) = upper($1)`, [c]),
+  ]);
+  const o = old?.p ?? null;
+  const pick = (k: string, ...src: any[]) => {
+    for (const s of src) { const v = s?.[k]; if (v !== null && v !== undefined && String(v).trim() !== "") return String(v); }
+    return null;
+  };
+  const S = [plan, o, prof, os];
+  if (!S.some(Boolean)) return null;
+  const from = plan ? (plan.removed ? "ชุดธงนี้ (เคยลบออก)" : "ชุดธงนี้") : o ? `ชุดธง “${old.vname ?? "เวอร์ชันเก่า"}”` : prof ? "โปรไฟล์ที่ลงทะเบียน" : "รายชื่อ Outsource (DC_FTE)";
+  return {
+    emp_id: pick("emp_id", plan, o) ?? pick("code", prof) ?? pick("emp_id", os) ?? c,
+    prefix: pick("prefix", ...S), first_name: pick("first_name", ...S), last_name: pick("last_name", ...S),
+    name_en: pick("name_en", ...S), gender: pick("gender", ...S), cost_center: pick("cost_center", ...S),
+    area: pick("area", plan, o), role: pick("role", plan, o), tel: withTel ? pick("tel", ...S) : null,
+    // อยู่ในชุดธงนี้แล้ว (เพิ่มซ้ำไม่ได้)
+    in_plan: plan && !plan.removed ? { flag_no: plan.flag_no } : null,
+    removed: !!plan?.removed, from,
+  };
 }

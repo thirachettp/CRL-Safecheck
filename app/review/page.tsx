@@ -1,4 +1,5 @@
 "use client";
+import { usePersonLookup, LookupNote } from "@/components/PersonLookup";
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import MobileShell from "@/components/MobileShell";
@@ -319,26 +320,29 @@ function ReviewBody() {
 }
 
 function AddSheet({ flag, onClose, onSave }: { flag: string; onClose: () => void; onSave: (f: any) => Promise<void> }) {
-  const [f, setF] = useState({ first_name: "", last_name: "", name_en: "", gender: "ชาย", flag_no: String(flag), tel: "", cost_center: "", area: "", emp_id: "" });
+  const [f, setF] = useState<any>({ prefix: "", first_name: "", last_name: "", name_en: "", gender: "", flag_no: String(flag), tel: "", cost_center: "", area: "", emp_id: "" });
+  const lk = usePersonLookup("/api/review", f.emp_id, f, setF);
   return (
     <div className="sheet-bg" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <form className="sheet" onSubmit={(e) => { e.preventDefault(); onSave(f); }}>
         <div className="row"><b className="grow" style={{ fontSize: 17 }}>เพิ่มคนเข้าธง</b>
           <button type="button" className="fbtn" style={{ borderColor: "var(--line-2)", width: 44, justifyContent: "center", padding: 0 }} onClick={onClose} aria-label="ปิด"><IClose size={16} /></button></div>
+        <label className="lb">รหัสพนักงาน <span className="muted xs" style={{ fontWeight: 400 }}>กรอกก่อน · ถ้าเคยมีข้อมูล ระบบเติมให้</span>
+          <input className="in mono" autoFocus value={f.emp_id} onChange={(e) => setF({ ...f, emp_id: e.target.value })} autoComplete="off" /></label>
+        <div style={{ marginTop: -4 }}><LookupNote hit={lk.hit} busy={lk.busy} code={f.emp_id} /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <label className="lb">ชื่อ<input className="in" required value={f.first_name} onChange={(e) => setF({ ...f, first_name: e.target.value })} /></label>
           <label className="lb">นามสกุล<input className="in" value={f.last_name} onChange={(e) => setF({ ...f, last_name: e.target.value })} /></label>
           <label className="lb" style={{ gridColumn: "1 / -1" }}>ชื่อ-นามสกุล (อังกฤษ) <span className="muted xs" style={{ fontWeight: 400 }}>ไม่บังคับ</span><input className="in" lang="en" value={f.name_en} onChange={(e) => setF({ ...f, name_en: e.target.value })} /></label>
-          <label className="lb">เพศ<select className="in" value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}><option>ชาย</option><option>หญิง</option></select></label>
+          <label className="lb">เพศ<select className="in" value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })} required><option value="">—</option><option>ชาย</option><option>หญิง</option></select></label>
           <label className="lb">ธง<input className="in mono" value={f.flag_no} onChange={(e) => setF({ ...f, flag_no: e.target.value })} /></label>
         </div>
-        <label className="lb">รหัสพนักงาน (ถ้ามี)<input className="in mono" value={f.emp_id} onChange={(e) => setF({ ...f, emp_id: e.target.value })} /></label>
         <label className="lb">เบอร์โทร<input className="in" inputMode="tel" value={f.tel} onChange={(e) => setF({ ...f, tel: e.target.value })} /></label>
         <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
           <label className="lb">Cost center<input className="in mono" value={f.cost_center} onChange={(e) => setF({ ...f, cost_center: e.target.value })} /></label>
           <label className="lb">แผนก/พื้นที่<input className="in" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} /></label>
         </div>
-        <button className="btn btn-pri btn-lg" type="submit">เพิ่มเข้าธง {f.flag_no}</button>
+        <button className="btn btn-pri btn-lg" type="submit" disabled={!!lk.hit?.in_plan}>เพิ่มเข้าธง {f.flag_no}</button>
       </form>
     </div>
   );

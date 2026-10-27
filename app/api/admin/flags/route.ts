@@ -1,7 +1,7 @@
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole } from "@/lib/auth";
 import { normFlag } from "@/lib/flag";
-import { reviewFlag, searchPlan, saveFlag, deleteFlag, editPerson, addPlanPerson, removePerson, touchPlan } from "@/lib/plan";
+import { reviewFlag, searchPlan, saveFlag, deleteFlag, editPerson, addPlanPerson, removePerson, touchPlan, lookupPerson } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,8 @@ export const GET = handle(async (req: Request) => {
   await requireRole(req, ["admin"]);
   const term = new URL(req.url).searchParams.get("q");
   if (term != null) return ok({ results: await searchPlan(term) });
+  const lk = new URL(req.url).searchParams.get("lookup");
+  if (lk != null) return ok({ person: await lookupPerson(lk) });
   const f = normFlag(new URL(req.url).searchParams.get("flag"));
   if (!f) return fail("ระบุธง");
   return ok(await reviewFlag(f));

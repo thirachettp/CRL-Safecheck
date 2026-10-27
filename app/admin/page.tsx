@@ -38,6 +38,8 @@ function Admin() {
   const [tab, setTab] = useTab("admin", ["plan", "points", "users", "codes", "system"] as const, "plan");
   const [naming, setNaming] = useState(false);
   const [vName, setVName] = useState("");
+  const [vMode, setVMode] = useState<"copy" | "blank">("copy");
+  const activeName = o.data?.versions.find((v) => v.id === o.data?.version.active)?.name ?? "เวอร์ชันที่ใช้อยู่";
 
   async function run(fn: () => Promise<any>, ok: string) {
     setMsg(null);
@@ -60,19 +62,29 @@ function Admin() {
           <h1 style={{ margin: "4px 0 0", fontSize: 28 }}>ตั้งค่า</h1>
         </div>
         <button className="btn" onClick={startDrill} disabled={!o.data?.total || starting} title="ดึงข้อมูลเข้า-ออกล่าสุด แล้วเทียบกับผลตรวจทานธง">{starting ? "กำลังดึงข้อมูลและเทียบ…" : "เริ่มซ้อม"}</button>
-        {naming ? (
-          <form className="row" style={{ gap: 8, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault();
-            run(() => api("/api/admin/versions", { method: "POST", json: { action: "save", note: "บันทึกหลังแก้ไข", name: vName } }),
-              `บันทึกเป็นเวอร์ชันใหม่${vName.trim() ? ` “${vName.trim()}”` : ""} และตั้งเป็นเวอร์ชันที่ใช้อยู่แล้ว`).then((done) => { if (done) { setNaming(false); setVName(""); } }); }}>
-            <input className="in" style={{ marginTop: 0, width: 280 }} autoFocus maxLength={80} placeholder={`ชื่อเวอร์ชัน เช่น ซ้อมใหญ่ ต.ค. ${new Date().getFullYear() + 543}`}
-              value={vName} onChange={(e) => setVName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
-            <button className="btn btn-pri" type="submit">บันทึกเวอร์ชันใหม่</button>
-            <button className="btn" type="button" onClick={() => setNaming(false)}>ยกเลิก</button>
-          </form>
-        ) : (
-          <button className="btn btn-pri" disabled={!o.data?.total} onClick={() => setNaming(true)}>+ บันทึกเป็นเวอร์ชันใหม่</button>
-        )}
+        <button className={`btn${naming ? "" : " btn-pri"}`} onClick={() => setNaming(!naming)}>{naming ? "ปิด" : "+ เวอร์ชันใหม่"}</button>
       </div>
+      {naming && (
+        <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}>
+          <form className="card stack" style={{ padding: 16, gap: 8, maxWidth: 560, marginLeft: "auto" }} onSubmit={(e) => { e.preventDefault();
+            run(() => api("/api/admin/versions", { method: "POST", json: vMode === "blank" ? { action: "new-blank", name: vName } : { action: "save", note: "บันทึกหลังแก้ไข", name: vName } }),
+              vMode === "blank" ? `สร้างชุดธงว่าง “${vName.trim()}” และใช้อยู่ตอนนี้แล้ว · เวอร์ชันเก่ายังอยู่ครบ` : `บันทึกเป็นเวอร์ชันใหม่ “${vName.trim()}” และใช้อยู่ตอนนี้แล้ว`)
+              .then((done) => { if (done) { setNaming(false); setVName(""); setVMode("copy"); } }); }}>
+            <b>สร้างเวอร์ชันใหม่</b>
+            <input className="in" style={{ marginTop: 0 }} autoFocus required maxLength={80} placeholder={`ชื่อเวอร์ชัน เช่น ซ้อมใหญ่ ต.ค. ${new Date().getFullYear() + 543}`}
+              value={vName} onChange={(e) => setVName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
+            <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+              <button type="button" className={`pill grow${vMode === "copy" ? " on" : ""}`} onClick={() => setVMode("copy")}>คัดลอกจากชุดธงปัจจุบัน ({o.data?.total ?? 0} คน)</button>
+              <button type="button" className={`pill grow${vMode === "blank" ? " on" : ""}`} onClick={() => setVMode("blank")}>เริ่มว่าง</button>
+            </div>
+            {vMode === "blank" && <div className="muted xs">ไม่ต้องลบธงทีละธง · เวอร์ชันเก่ายังอยู่ครบ กลับไปใช้ได้ · จุดรวมพลใช้ร่วมกัน{o.data?.version.dirty ? " · ⚠️ ที่แก้ไว้แต่ยังไม่บันทึกจะหาย บันทึกทับก่อนถ้ายังต้องการ" : ""}</div>}
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn btn-pri" type="submit" disabled={!vName.trim()}>{vMode === "blank" ? "สร้างชุดธงว่าง" : "บันทึกเวอร์ชันใหม่"}</button>
+              <button className="btn" type="button" onClick={() => setNaming(false)}>ยกเลิก</button>
+            </div>
+          </form>
+        </div>
+      )}
       {msg && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
       <div style={{ maxWidth: 1440, margin: "16px auto 0", padding: "0 32px" }}>
         <Tabs tabs={[
@@ -87,8 +99,8 @@ function Admin() {
         <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}>
           <div className="notice warn row" style={{ gap: 10 }}>
             <span className="grow">มีการแก้ชุดธงที่ยังไม่บันทึกลงเวอร์ชัน (แก้ล่าสุด {fmtDateTime(o.data.version.changed_at)}) · ตอนเริ่มซ้อม/เกิดเหตุ ระบบใช้ชุดธงปัจจุบันที่แก้แล้ว</span>
-            {o.data.version.active && <button className="btn btn-sm" onClick={() => run(() => api("/api/admin/versions", { method: "POST", json: { action: "overwrite", id: o.data!.version.active } }), `บันทึกทับ v${o.data!.version.active} แล้ว`)}>บันทึกทับ v{o.data.version.active}</button>}
-            <button className="btn btn-sm btn-pri" onClick={() => setNaming(true)}>บันทึกเป็นเวอร์ชันใหม่</button>
+            {o.data.version.active && <button className="btn btn-sm" onClick={() => run(() => api("/api/admin/versions", { method: "POST", json: { action: "overwrite", id: o.data!.version.active } }), `บันทึกทับ “${activeName}” แล้ว`)}>บันทึกทับ “{activeName}”</button>}
+            <button className="btn btn-sm btn-pri" onClick={() => { setVMode("copy"); setNaming(true); }}>บันทึกเป็นเวอร์ชันใหม่</button>
           </div>
         </div>
       )}
@@ -168,7 +180,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
     try {
       const people = m.people.map(({ sheet, bad_id, ...p }) => p);
       const r = await api("/api/plan", { method: "POST", json: { people, leaders: m.leaders, files: m.files, name } });
-      setMsg({ k: "ok", t: `บันทึกเป็นชุดธง v${r.version}${name.trim() ? ` “${name.trim()}”` : ""} แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
+      setMsg({ k: "ok", t: `บันทึกเป็นชุดธง “${r.version_name ?? name.trim()}” แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
       setRaw(null); onSaved();
     } catch (e: any) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
@@ -214,7 +226,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
             </div>
           )}
           <div className="row" style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)" }}>
-            <input className="in" style={{ marginTop: 0, width: 260 }} maxLength={80} placeholder="ชื่อเวอร์ชัน (ไม่บังคับ)" value={name} onChange={(e) => setName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
+            <input className="in" style={{ marginTop: 0, width: 260 }} maxLength={80} placeholder="ชื่อเวอร์ชัน (ไม่ตั้ง = ใช้วันเวลา)" value={name} onChange={(e) => setName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
             <button className="btn btn-pri" onClick={save} disabled={busy || !m.people.length}>บันทึกเป็นชุดธงใหม่ ({m.people.length} คน)</button>
             <button className="btn" onClick={() => setRaw(null)} disabled={busy}>ยกเลิก</button>
             <button className="btn" onClick={download} disabled={busy}>ดาวน์โหลดไฟล์รวม (.xlsx)</button>
@@ -395,22 +407,21 @@ function VersionsCard({ versions, state, onDone }: { versions: Overview["version
     catch (e: any) { setMsg({ k: "err", t: e.message }); }
   }
   const twice = (key: string, fn: () => void) => (arm === key ? fn() : setArm(key));
-  const label = (v: Overview["versions"][number]) => `v${v.id}${v.name ? ` “${v.name}”` : ""}`;
+  const label = (v: Overview["versions"][number]) => `“${v.name ?? "ไม่มีชื่อ"}”`;
   return (
     <div className="card">
       <div className="card-h"><span className="grow">เวอร์ชันชุดธง</span><span className="muted xs" style={{ fontWeight: 500 }}>{versions.length} เวอร์ชัน</span></div>
-      {versions.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มี นำเข้าไฟล์ธงหรือกด “บันทึกเป็นชุดธงใหม่” เพื่อสร้าง v1</div>}
+      {versions.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มี นำเข้าไฟล์ธง หรือกด “+ เวอร์ชันใหม่”</div>}
       <div style={{ maxHeight: 520, overflowY: "auto" }}>
         {versions.map((v) => {
           const active = v.id === state.active;
           return (
             <div key={v.id} className="vrow" style={{ background: active ? "#F0FDF4" : undefined }}>
               <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                <b className="mono">v{v.id}</b>
                 {ren === v.id ? (
                   <form className="row grow" style={{ gap: 6, flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault(); call({ action: "rename", id: v.id, name: val }, "แก้ชื่อแล้ว"); }}>
-                    <input className="in" style={{ marginTop: 0 }} autoFocus maxLength={80} value={val} onChange={(e) => setVal(e.target.value)} aria-label={`ชื่อ v${v.id}`} placeholder="ชื่อเวอร์ชัน" />
-                    <button className="btn btn-sm btn-pri" type="submit">บันทึก</button>
+                    <input className="in" style={{ marginTop: 0 }} autoFocus maxLength={80} value={val} onChange={(e) => setVal(e.target.value)} aria-label="ชื่อเวอร์ชัน" placeholder="ชื่อเวอร์ชัน" required />
+                    <button className="btn btn-sm btn-pri" type="submit" disabled={!val.trim()}>บันทึก</button>
                     <button className="lk" type="button" onClick={() => setRen(null)}>ยกเลิก</button>
                   </form>
                 ) : (
@@ -431,6 +442,7 @@ function VersionsCard({ versions, state, onDone }: { versions: Overview["version
                     onClick={() => twice(`ow${v.id}`, () => call({ action: "overwrite", id: v.id }, `บันทึกทับ ${label(v)} แล้ว`))}>
                     {arm === `ow${v.id}` ? "กดอีกครั้งเพื่อบันทึกทับ" : "บันทึกทับด้วยที่แก้ไว้"}</button>}
                   <button className="btn btn-sm" onClick={() => { setRen(v.id); setVal(v.name ?? ""); setArm(null); }}>{v.name ? "แก้ชื่อ" : "ตั้งชื่อ"}</button>
+                  <button className="btn btn-sm" onClick={() => call({ action: "duplicate", id: v.id }, `ทำสำเนา ${label(v)} แล้ว · ตั้งชื่อใหม่ได้ที่ "แก้ชื่อ"`)}>ทำสำเนา</button>
                   {!active && <button className="btn btn-sm" style={{ color: "#9F1239" }} onBlur={() => setArm(null)}
                     onClick={() => twice(`del${v.id}`, () => call({ action: "delete", id: v.id }, `ลบ ${label(v)} แล้ว`))}>
                     {arm === `del${v.id}` ? "กดอีกครั้งเพื่อลบ" : "ลบ"}</button>}
@@ -442,7 +454,7 @@ function VersionsCard({ versions, state, onDone }: { versions: Overview["version
       </div>
       {msg && <div style={{ padding: "8px 18px 12px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
       <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>
-        ใช้เวอร์ชันนี้ = โหลดรายชื่อ ธง และผู้นำธงของเวอร์ชันนั้นมาใช้ (ผลตรวจทานธงจะเริ่มใหม่) · เหตุการณ์ที่เปิดอยู่ไม่กระทบ · ลบเวอร์ชันที่ใช้อยู่ไม่ได้
+        ใช้เวอร์ชันนี้ = โหลดรายชื่อ ธง และผู้นำธงของเวอร์ชันนั้นมาใช้ (ผลตรวจทานธงจะเริ่มใหม่) · ทำสำเนา = สร้างเวอร์ชันใหม่จากเวอร์ชันนั้น (ไม่เปลี่ยนตัวที่ใช้อยู่) · เหตุการณ์ที่เปิดอยู่ไม่กระทบ · ลบเวอร์ชันที่ใช้อยู่ไม่ได้
       </div>
     </div>
   );
