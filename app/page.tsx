@@ -247,6 +247,7 @@ function Home() {
             )}
           </>
         )}
+        <Link className="btn btn-block" style={{ minHeight: 52, marginTop: 4 }} href="/feedback">รีวิว SafeCheck · ให้คะแนนหลังลองใช้</Link>
       </div>
       {showLogin && <LoginSheet onClose={() => setShowLogin(false)} />}
       {reporting && <ReportSheet onClose={() => { setReporting(false); cur.reload(); }} />}
