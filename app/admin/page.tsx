@@ -6,6 +6,7 @@ import PinGate from "@/components/PinGate";
 import UsersPanel from "@/components/UsersPanel";
 import PlanEditor, { type FlagRow } from "@/components/PlanEditor";
 import { PushAdminCard } from "@/components/Notify";
+import ReviewPanel from "@/components/ReviewPanel";
 import Tabs, { useTab } from "@/components/Tabs";
 import { api, usePoll, fmtDateTime, rangeText } from "@/components/lib";
 import { IUpload } from "@/components/Icons";
@@ -35,7 +36,7 @@ function Admin() {
   const router = useRouter();
   const o = usePoll<Overview>("/api/plan", 0);
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
-  const [tab, setTab] = useTab("admin", ["plan", "points", "users", "codes", "system"] as const, "plan");
+  const [tab, setTab] = useTab("admin", ["plan", "points", "users", "codes", "review", "system"] as const, "plan");
   const [naming, setNaming] = useState(false);
   const [vName, setVName] = useState("");
   const [vMode, setVMode] = useState<"copy" | "blank">("copy");
@@ -92,6 +93,7 @@ function Admin() {
           { id: "points", label: "จุดรวมพล", badge: o.data ? o.data.points.length : null },
           { id: "users", label: "ผู้ใช้และสิทธิ์" },
           { id: "codes", label: "Code ประกาศ" },
+          { id: "review", label: "รีวิว" },
           { id: "system", label: "แหล่งข้อมูล & PIN สำรอง" },
         ]} value={tab} onChange={setTab} />
       </div>
@@ -119,6 +121,7 @@ function Admin() {
       {tab === "points" && <div className="wrap">{o.data && <PointsCard points={o.data.points} flags={o.data.flags} onSaved={o.reload} />}</div>}
       {tab === "users" && <div className="wrap"><UsersPanel /></div>}
       {tab === "codes" && <div className="wrap"><div className="stack" style={{ maxWidth: 760, gap: 20 }}><KindsCard /><CodesCard /></div></div>}
+      {tab === "review" && <ReviewPanel />}
       {tab === "system" && (
         <div className="wrap g2" style={{ display: "grid", alignItems: "start" }}>
           <SourcesCard />

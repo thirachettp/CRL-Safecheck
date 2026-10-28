@@ -350,4 +350,18 @@ export const SCHEMA: string[] = [
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS pred_basis text`,
   // v14: เวลาที่มีคนแจ้ง (ตอนยืนยัน opened_at ถูกตั้งใหม่)
   `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reported_at timestamptz`,
+  // v15: แบบรีวิวหลังซ้อม (ไม่ต้อง login) · เครื่องเดิมส่งซ้ำ = ทับคำตอบเดิม
+  `CREATE TABLE IF NOT EXISTS feedback (
+    id          bigserial PRIMARY KEY,
+    client_id   text NOT NULL UNIQUE,
+    incident_id int,
+    name        text,
+    emp_id      text,
+    site        text,
+    answers     jsonb NOT NULL,
+    good        text,
+    improve     text,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+  )`,
 ];

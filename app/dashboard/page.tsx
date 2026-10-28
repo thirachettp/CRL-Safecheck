@@ -11,6 +11,7 @@ import { IClock } from "@/components/Icons";
 import CodePanel from "@/components/CodePanel";
 import Timeline from "@/components/Timeline";
 import AccuracyView from "@/components/AccuracyView";
+import ReviewQR from "@/components/ReviewQR";
 import Tabs, { useTab } from "@/components/Tabs";
 
 export default function DashboardPage() {
@@ -164,6 +165,10 @@ function IncidentDash({ id }: { id: number }) {
           <b style={{ fontSize: 18 }}>{[inc.kind, inc.area].filter(Boolean).join(" · ") || inc.title} · แจ้งโดย {inc.reported_by ?? "—"} {fmtClock(inc.opened_at).slice(0, 5)}</b>
         </div>
       </div>
+      {!active && !real && inc && (
+        <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><ReviewQR incidentId={id} /></div>
+      )}
+
       {ask && (
         <form onSubmit={submitPin} className="row" style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}>
           <b>ใส่รหัส Admin / Safety Officer</b>
