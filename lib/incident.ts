@@ -1,6 +1,8 @@
 import { normFlag } from "./flag";
 import { normalizePlate } from "./kioskMap";
 import { isLatin } from "./names";
+import { codeKind, type CodeKind } from "./codes";
+export type { CodeKind } from "./codes";
 import { UserError } from "./errors";
 import { q, one } from "./db";
 import { outsourcePresent } from "./outsource";
@@ -342,8 +344,11 @@ export async function incidentSummary(id: number) {
        count(*) FILTER (WHERE status = 'unk')::int AS unk,
        count(*) FILTER (WHERE status = 'abs')::int AS abs
      FROM incident_people WHERE incident_id = $1`, [id]);
+  // เวลานับรายชื่อ เริ่มเมื่อมีคนแรกยืนยัน
+  const first = await one<{ at: string | null }>(
+    `SELECT min(status_at) AS at FROM incident_people WHERE incident_id = $1 AND status IN ('safe','cmd','inj')`, [id]);
   const end = inc?.first_full_at ?? inc?.closed_at ?? new Date().toISOString();
-  const ms = inc ? new Date(end).getTime() - new Date(inc.opened_at).getTime() : 0;
+  const ms = inc && first?.at ? new Date(end).getTime() - new Date(first.at).getTime() : 0;
   const mm = Math.max(0, Math.floor(ms / 60000)), ss = Math.max(0, Math.floor((ms % 60000) / 1000));
   const pct = r?.pool ? Math.round(((r.safe + r.inj) / r.pool) * 100) : 0;
   return {
@@ -479,13 +484,35 @@ export async function addManualPerson(
   return key;
 }
 
-export async function announce(incidentId: number, codeId: number | null, label: string | null, actor: Actor) {
+const CODE_DEFAULT: Record<CodeKind, { label: string; tone: string; meaning: string }> = {
+  check: { label: "Code 500", tone: "warn", meaning: "ทีมฉุกเฉินไปตรวจสอบ · พนักงานเตรียมพร้อม ยังไม่ต้องอพยพ" },
+  urgent: { label: "Code 500 ด่วนมาก", tone: "err", meaning: "อพยพไปจุดรวมพลทันที" },
+  clear: { label: "คุณสบายใจ", tone: "grey", meaning: "สถานการณ์ปกติ" },
+  other: { label: "", tone: "grey", meaning: "" },
+};
+
+/**
+ * ประกาศ Code (ได้ทั้งตอนรอยืนยันและตอนเริ่มแล้ว) · ระบุ code_id หรือชนิด (kind) ก็ได้
+ * คุณสบายใจ: ตอนรอยืนยัน = ยกเลิก (ไม่ใช่เหตุ) · ตอนเริ่มแล้ว = ปิดเหตุการณ์
+ */
+export async function announce(incidentId: number, codeId: number | null, label: string | null, actor: Actor, kind?: CodeKind | null) {
   const inc = await getIncident(incidentId);
-  if (!inc || inc.state !== "active") throw new UserError("เหตุการณ์นี้ไม่ได้เปิดอยู่");
-  const code = codeId ? await one<any>(`SELECT * FROM announce_codes WHERE id = $1`, [codeId]) : null;
-  const text = code?.label ?? String(label ?? "").trim();
+  if (!inc || (inc.state !== "active" && inc.state !== "pending")) throw new UserError("เหตุการณ์นี้ไม่ได้เปิดอยู่");
+  let code = codeId ? await one<any>(`SELECT * FROM announce_codes WHERE id = $1`, [codeId]) : null;
+  if (!code && kind && kind !== "other")
+    code = (await q<any>(`SELECT * FROM announce_codes ORDER BY sort, id`)).find((c) => codeKind(c) === kind) ?? null;
+  const k: CodeKind = code ? codeKind(code) : kind ?? "other";
+  const text = code?.label ?? (String(label ?? "").trim() || CODE_DEFAULT[k].label);
   if (!text) throw new UserError("ต้องระบุ Code");
+  if (k === "urgent" && inc.state !== "active") throw new UserError("ยืนยันมีเหตุก่อน แล้วจึงแจ้ง 500 ด่วนมาก");
+  const meaning = code?.meaning || CODE_DEFAULT[k].meaning || null;
   await q(
     `INSERT INTO incident_announcements (incident_id, code_id, label, tone, meaning, by_name) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [incidentId, code?.id ?? null, text, code?.tone ?? "grey", code?.meaning ?? null, actor.name]);
+    [incidentId, code?.id ?? null, text, code?.tone ?? CODE_DEFAULT[k].tone, meaning, actor.name]);
+  let closed: any = null;
+  if (k === "clear") {
+    if (inc.state === "pending") await cancelIncident(incidentId, `${actor.name} (${text})`);
+    else closed = await closeIncident(incidentId, actor);
+  }
+  return { inc, label: text, kind: k, meaning, closed };
 }

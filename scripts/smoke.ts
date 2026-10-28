@@ -440,6 +440,27 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
 }
 
 {
+  // แจ้งรหัส: มีคนแจ้ง → Code 500 → ยืนยัน → 500 ด่วนมาก → คุณสบายใจ (ปิด)
+  const { id: ci } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้", area: "Sort ชั้น 2" }, tok: rvTok });
+  ok(await fails(j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "check" }, tok: rvTok })), "แจ้งรหัสต้องเป็น Admin / Safety");
+  ok(await fails(j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "urgent" }, tok: safety })), "500 ด่วนมาก ต้องยืนยันมีเหตุก่อน");
+  const a1 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "check" }, tok: safety });
+  let di = await j(`/api/incidents/${ci}`);
+  ok(a1.kind === "check" && di.incident.state === "pending" && di.announcements.some((a: any) => a.label === "Code 500"), "ก่อนยืนยัน แจ้ง Code 500 ได้ (ยังไม่เริ่มนับ)");
+  await j(`/api/incidents/${ci}`, { method: "POST", json: { action: "confirm", closedPoints: [] }, tok: safety });
+  const a2 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "urgent" }, tok: safety });
+  di = await j(`/api/incidents/${ci}`);
+  ok(a2.kind === "urgent" && di.incident.state === "active" && di.announcements.length === 2, "ยืนยันแล้วแจ้ง 500 ด่วนมาก");
+  const a3 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "clear" }, tok: safety });
+  di = await j(`/api/incidents/${ci}`);
+  ok(a3.closed && di.incident.state === "closed", "แจ้งคุณสบายใจ → ปิดเหตุการณ์");
+  // ไม่ใช่เหตุ: คุณสบายใจตอนรอยืนยัน = ยกเลิก
+  const { id: ci2 } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "สารเคมีรั่ว" }, tok: rvTok });
+  await j(`/api/incidents/${ci2}/announce`, { method: "POST", json: { kind: "clear" }, tok: safety });
+  const g0 = await j("/api/incidents", { tok: "x" });
+  ok(!g0.current && (g0.incidents as any[]).every((i) => i.id !== ci2 || i.state !== "pending"), "คุณสบายใจตอนรอยืนยัน → ยกเลิกการแจ้ง");
+}
+{
   // ซ้อม: ขั้นตอนเดียวกับเหตุจริง (ผู้ใช้ขอ → Admin / Safety ยืนยัน)
   ok(await fails(j("/api/incidents", { method: "POST", json: { action: "report", mode: "drill", kind: "ไฟไหม้" }, tok: "x" })), "ขอเริ่มซ้อมต้องเข้าสู่ระบบ");
   const { id: rq } = await j("/api/incidents", { method: "POST", json: { action: "report", mode: "drill", kind: "ไฟไหม้", area: "Sort" }, tok: rvTok });

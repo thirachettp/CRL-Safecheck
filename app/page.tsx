@@ -184,6 +184,7 @@ function Home() {
               <div>{inc.kind} · {inc.area || "ไม่ระบุพื้นที่"}</div>
               <div className="muted small">แจ้งโดย {inc.reported_by} · {fmtTime(inc.opened_at)} · รอ Admin / Safety Officer ยืนยัน</div>
               <button className="btn btn-block" onClick={cancel} disabled={busy}>{inc.mode === "drill" ? "ยกเลิกคำขอซ้อม" : "แจ้งผิด · ยกเลิกการแจ้ง"}</button>
+              {staff && <Link className="btn btn-block" href={`/dashboard?id=${inc.id}`}>แจ้งรหัส (Code 500) บน Dashboard</Link>}
             </div>
             <div className="card stack" style={{ padding: 16, background: "#17191C", color: "#fff", borderColor: "#17191C" }}>
               <div className="row"><ILock size={18} /><b>สำหรับ Admin / Safety Officer</b></div>

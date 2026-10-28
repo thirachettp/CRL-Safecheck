@@ -8,6 +8,7 @@ import PcHeader from "@/components/PcHeader";
 import { useAdmin } from "@/components/identity";
 import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI, rangeText, ago } from "@/components/lib";
 import { IClock } from "@/components/Icons";
+import CodePanel from "@/components/CodePanel";
 
 export default function DashboardPage() {
   return (
@@ -22,14 +23,14 @@ function Dash() {
   const qid = useSearchParams().get("id");
   const list = usePoll<{ current: any; pending?: any; incidents: any[] }>("/api/incidents", 5000);
   const cur = list.data?.current;
-  const id = qid ? Number(qid) : cur?.state === "active" ? cur.id : null;
+  const id = qid ? Number(qid) : cur?.state === "active" || cur?.state === "pending" ? cur.id : null;
   if (!list.data) return <div className="wrap"><p className="muted">กำลังโหลด…</p></div>;
   const pend = list.data.pending;
   if (id) return (
     <>
       {pend && (
-        <Link href="/?stay=1" style={{ display: "block", background: "#B91C1C", color: "#fff", padding: "10px 16px", fontWeight: 700, textDecoration: "none" }}>
-          🚨 มีแจ้งเหตุจริงระหว่างซ้อม: {pend.kind} · {pend.area || "ไม่ระบุพื้นที่"} · แจ้งโดย {pend.reported_by} — ยืนยันที่หน้าแรก แล้วระบบจะจบการซ้อมให้
+        <Link href={`/dashboard?id=${pend.id}`} style={{ display: "block", background: "#B91C1C", color: "#fff", padding: "10px 16px", fontWeight: 700, textDecoration: "none" }}>
+          🚨 มีแจ้งเหตุจริงระหว่างซ้อม: {pend.kind} · {pend.area || "ไม่ระบุพื้นที่"} · แจ้งโดย {pend.reported_by} — แตะเพื่อแจ้งรหัส / ยืนยัน (ยืนยันแล้วระบบจบการซ้อมให้)
         </Link>
       )}
       <IncidentDash id={id} />
@@ -140,13 +141,49 @@ function IncidentDash({ id }: { id: number }) {
   const active = inc.state === "active";
   const pct = m.pool.length ? Math.round((m.evac.length / m.pool.length) * 100) : 0;
   const target = d.data.target ?? 300;
-  const elapsedMs = new Date(inc.first_full_at ?? (inc.closed_at ?? new Date(now).toISOString())).getTime() - new Date(inc.opened_at).getTime();
+  // เวลานับรายชื่อ เริ่มเมื่อมีคนแรกยืนยัน
+  const tStart = m.firstDone || null;
+  const tEnd = inc.first_full_at ?? (inc.closed_at ?? new Date(now).toISOString());
+  const elapsedMs = tStart ? Math.max(0, new Date(tEnd).getTime() - new Date(tStart).getTime()) : 0;
   const over = elapsedMs > target * 1000;
   const completeGroups = m.rows.filter((r) => r.complete).length;
   const lastAt = inc.first_full_at;
   const C = 2 * Math.PI * 44;
   const codes: any[] = d.data.codes ?? [];
   const anns: any[] = d.data.announcements ?? [];
+
+  if (inc.state === "pending") return (
+    <>
+      <div style={{ background: real ? "#7F1D1D" : "#FCD34D", color: real ? "#fff" : "#422006" }}>
+        <div className="row" style={{ maxWidth: 1440, margin: "0 auto", padding: "12px 32px", gap: 16 }}>
+          <span className="chip" style={{ background: real ? "#fff" : "#422006", color: real ? "#7F1D1D" : "#FCD34D", fontSize: 13, padding: "5px 12px" }}>{real ? "แจ้งเหตุ · รอยืนยัน" : "ขอซ้อม · รอยืนยัน"}</span>
+          <b style={{ fontSize: 18 }}>{[inc.kind, inc.area].filter(Boolean).join(" · ") || inc.title} · แจ้งโดย {inc.reported_by ?? "—"} {fmtClock(inc.opened_at).slice(0, 5)}</b>
+        </div>
+      </div>
+      {ask && (
+        <form onSubmit={submitPin} className="row" style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}>
+          <b>ใส่รหัส Admin / Safety Officer</b>
+          <input className="in mono" style={{ width: 160, marginTop: 0 }} type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} autoFocus aria-label="รหัส" />
+          <button className="btn btn-pri btn-sm" type="submit">ยืนยัน</button><button className="btn btn-sm" type="button" onClick={() => setAsk(null)}>ยกเลิก</button>
+        </form>
+      )}
+      {err && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className="notice warn">{err}</p></div>}
+      <div className="wrap">
+        <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={0} complete={false} withPin={withPin} onDone={d.reload} />
+        <section className="card">
+          <div className="card-h">บันทึกการประกาศ</div>
+          {anns.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มีการประกาศ</div>}
+          {anns.map((a) => (
+            <div key={a.id} className="row" style={{ gap: 12, padding: "10px 18px", borderTop: "1px solid var(--line-3)", flexWrap: "nowrap" }}>
+              <span className="mono" style={{ fontWeight: 600, width: 64 }}>{fmtClock(a.at).slice(0, 5)}</span>
+              <span className={`chip ${a.tone ?? "grey"}`} style={{ fontSize: 13 }}>{a.label}</span>
+              <span className="muted small grow">{a.meaning ?? ""}</span><span className="muted xs">โดย {a.by_name ?? "—"}</span>
+            </div>
+          ))}
+        </section>
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -178,6 +215,10 @@ function IncidentDash({ id }: { id: number }) {
       {err && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className="notice warn">{err}</p></div>}
 
       <div className="wrap">
+        {(active || inc.state === "pending") && (
+          <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={m.missing.length}
+            complete={m.pool.length > 0 && m.missing.length === 0} withPin={withPin} onDone={d.reload} />
+        )}
         <div className="kpis">
           <div className="kpi">
             <div className="kpi-l">ฐานข้อมูล (snapshot)</div>
@@ -213,8 +254,8 @@ function IncidentDash({ id }: { id: number }) {
           <div className="small">{real ? "Cost Center" : "ธง"}ครบ <b>{completeGroups}</b> / {m.rows.length}</div>
           <div className="grow" />
           <div className="row" style={{ alignItems: "baseline", gap: 8, color: over ? "#B91C1C" : "#14532D" }}>
-            <span className="mono" style={{ fontSize: 30, fontWeight: 700 }}>{duration(inc.opened_at, inc.first_full_at ?? (inc.closed_at ?? new Date(now).toISOString()))}</span>
-            <span className="small" style={{ fontWeight: 700 }}>{over ? `เกินเป้า ${duration(new Date(0).toISOString(), new Date(elapsedMs - target * 1000).toISOString())}` : lastAt ? "นับครบในเป้า" : "ยังอยู่ในเป้า"}</span>
+            <span className="mono" style={{ fontSize: 30, fontWeight: 700 }}>{tStart ? duration(tStart, tEnd) : "0:00"}</span>
+            <span className="small" style={{ fontWeight: 700 }}>{!tStart ? "เริ่มจับเวลาเมื่อมีคนแรกยืนยัน" : over ? `เกินเป้า ${duration(new Date(0).toISOString(), new Date(elapsedMs - target * 1000).toISOString())}` : lastAt ? "นับครบในเป้า" : "ยังอยู่ในเป้า"}</span>
           </div>
         </section>
 
@@ -335,14 +376,6 @@ function IncidentDash({ id }: { id: number }) {
                 <span className="muted small grow">ยังไม่ประกาศ</span>
               </div>
             ))}
-            {active && (
-              <div className="row" style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)", gap: 8, background: "var(--subtle)", borderRadius: "0 0 14px 14px" }}>
-                <span className="muted xs" style={{ width: "100%" }}>บันทึกประกาศ (Safety / Admin เท่านั้น) · เวลาบันทึกอัตโนมัติ</span>
-                {codes.map((c) => (
-                  <button key={c.id} className="btn btn-sm" onClick={() => withPin(async () => { await api(`/api/incidents/${id}/announce`, { method: "POST", json: { code_id: c.id } }); d.reload(); })}>+ {c.label}</button>
-                ))}
-              </div>
-            )}
           </section>
         </div>
       </div>
