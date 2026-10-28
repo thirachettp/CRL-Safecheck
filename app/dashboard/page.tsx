@@ -9,6 +9,8 @@ import { useAdmin } from "@/components/identity";
 import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI, rangeText, ago } from "@/components/lib";
 import { IClock } from "@/components/Icons";
 import CodePanel from "@/components/CodePanel";
+import AccuracyView from "@/components/AccuracyView";
+import Tabs, { useTab } from "@/components/Tabs";
 
 export default function DashboardPage() {
   return (
@@ -70,6 +72,7 @@ function IncidentDash({ id }: { id: number }) {
   const [err, setErr] = useState<string | null>(null);
   const [dq, setDq] = useState("");
   const now = useNow(1000);
+  const [tab, setTab] = useTab("dash", ["live", "acc"] as const, "live");
 
   const inc = d.data?.incident;
   const real = inc?.mode === "real";
@@ -214,6 +217,10 @@ function IncidentDash({ id }: { id: number }) {
       )}
       {err && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className="notice warn">{err}</p></div>}
 
+      <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}>
+        <Tabs tabs={[{ id: "live", label: real ? "ภาพรวมเหตุการณ์" : "ภาพรวมการซ้อม" }, { id: "acc", label: "ตรวจความแม่นยำของระบบ" }]} value={tab} onChange={setTab} />
+      </div>
+      {tab === "acc" ? <AccuracyView id={id} real={real} /> : (
       <div className="wrap">
         {(active || inc.state === "pending") && (
           <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={m.missing.length}
@@ -379,6 +386,7 @@ function IncidentDash({ id }: { id: number }) {
           </section>
         </div>
       </div>
+      )}
     </>
   );
 }

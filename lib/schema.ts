@@ -345,4 +345,7 @@ export const SCHEMA: string[] = [
   // v12: เก็บชนิดของประกาศ (ตรวจสอบ / อพยพ / ปกติ) แยกจากข้อความ เพราะข้อความเปลี่ยนตามประเภทเหตุ
   `ALTER TABLE incident_announcements ADD COLUMN IF NOT EXISTS kind text`,
   `UPDATE announce_codes SET meaning = 'เหตุการณ์กลับเข้าสู่ภาวะปกติ' WHERE closes AND (meaning IS NULL OR meaning = 'ใช้ปิดเหตุการณ์')`,
+  // v13: เก็บสิ่งที่ระบบคาดไว้ตอนสร้างรายชื่อ (ไม่ถูกทับ) ใช้วัดความแม่นยำ
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS pred_note text`,
+  `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS pred_basis text`,
 ];

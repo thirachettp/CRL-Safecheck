@@ -451,6 +451,14 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
   const a2 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "urgent" }, tok: safety });
   di = await j(`/api/incidents/${ci}`);
   ok(a2.kind === "urgent" && di.incident.state === "active" && di.announcements[1]?.label === "คุณรัดประภา 500 ด่วนมาก ที่ Sort ชั้น 2", "ยืนยันแล้วแจ้ง รัดประภา 500 ด่วนมาก ที่ …");
+  // ตรวจความแม่นยำ: คาดว่าอยู่ แล้วเจอตัว = ถูก · คาดว่าอยู่ แต่ไม่อยู่จริง = ผิด
+  const unk = (di.people as any[]).filter((p) => p.status === "unk" && p.here).slice(0, 2);
+  await j(`/api/incidents/${ci}/people`, { method: "PATCH", json: { person_key: unk[0].person_key, status: "safe", by: "ทดสอบ" }, tok: safety });
+  await j(`/api/incidents/${ci}/people`, { method: "PATCH", json: { person_key: unk[1].person_key, status: "gone", by: "ทดสอบ" }, tok: safety });
+  const acc = await j(`/api/incidents/${ci}/accuracy`, { tok: safety });
+  ok(acc.present.correct === 1 && acc.present.wrong === 1 && acc.overall.accuracy === 50 && acc.wasted.length === 1 && acc.byBasis.length > 0, "ตรวจความแม่นยำ: ถูก 1 ผิด 1 = 50% · แยกตามเหตุผล");
+  ok(acc.history.some((h: any) => h.id === ci), "ตรวจความแม่นยำ: มีประวัติย้อนหลัง");
+  ok(await fails(j(`/api/incidents/${ci}/accuracy`, { tok: "x" })), "ตรวจความแม่นยำต้องเข้าสู่ระบบ");
   const a3 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "clear" }, tok: safety });
   di = await j(`/api/incidents/${ci}`);
   ok(a3.closed && di.incident.state === "closed", "แจ้งคุณสบายใจ → ปิดเหตุการณ์");

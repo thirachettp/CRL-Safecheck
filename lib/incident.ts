@@ -61,6 +61,8 @@ type Candidate = {
   presence: string; presence_site: string | null; presence_since: string | null; here: boolean; source: string;
   /** เหตุผลที่ระบบตัดสิน มา/ไม่มา (เทียบผลตรวจทานธงกับข้อมูลเข้า-ออก) */
   note?: string | null;
+  /** ระบบตัดสิน มา/ไม่มา จากอะไร (ใช้วัดความแม่นยำ) */
+  basis?: string;
   /** ชื่อภาษาอังกฤษ (ชุดธง → โปรไฟล์ → ชื่อที่กรอกใน MS Form ถ้าเป็นภาษาอังกฤษ) */
   name_en?: string | null;
 };
@@ -122,7 +124,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
   const osIn = new Map<string, any>(osPresent.map((a: any) => [a.emp_id, a]));
   const hhmm = (d: Date | string) => new Date(d).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
   /** เทียบผลตรวจทานธง (มา/ไม่มา) กับข้อมูลเข้า-ออกจากระบบ */
-  const decide = (emp: string, key: string): { here: boolean; note: string | null } => {
+  const decide = (emp: string, key: string): { here: boolean; note: string | null; basis: string } => {
     const marked = hereMap.get(key); // true = มา, false = ไม่มา, undefined = ยังไม่ตรวจ
     const os = osIn.get(emp);
     const dv = divByEmp.get(emp);
@@ -130,11 +132,11 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
     const sysKnown = sysIn || osKnown.has(emp) || !!dv;
     const where = os ? `Outsource เข้า ${hhmm(os.clock_in)}` : dv?.inNow ? `DIV+ เช็คอิน` : null;
     if (marked === false) {
-      return sysIn ? { here: true, note: `ตรวจทานว่าไม่มา แต่ระบบเห็นว่าอยู่ (${where}) ต้องนับ` } : { here: false, note: "ตรวจทานธง: ไม่มา" };
+      return sysIn ? { here: true, note: `ตรวจทานว่าไม่มา แต่ระบบเห็นว่าอยู่ (${where}) ต้องนับ`, basis: "review_out_sys_in" } : { here: false, note: "ตรวจทานธง: ไม่มา", basis: "review_out" };
     }
-    if (marked === true) return { here: true, note: null };
-    if (sysKnown && !sysIn) return { here: false, note: osKnown.has(emp) ? "ระบบ: Outsource ไม่ได้ Clock in / Clock out แล้ว" : `ระบบ: DIV+ เช็คเอาท์แล้ว (ล่าสุด ${hhmm(dv!.last)})` };
-    return { here: true, note: null };
+    if (marked === true) return { here: true, note: null, basis: "review_in" };
+    if (sysKnown && !sysIn) return { here: false, note: osKnown.has(emp) ? "ระบบ: Outsource ไม่ได้ Clock in / Clock out แล้ว" : `ระบบ: DIV+ เช็คเอาท์แล้ว (ล่าสุด ${hhmm(dv!.last)})`, basis: osKnown.has(emp) ? "sys_out_os" : "sys_out_div" };
+    return { here: true, note: null, basis: sysIn ? "sys_in" : "none" };
   };
 
   const out = new Map<string, Candidate>();
@@ -148,7 +150,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       tel: p.tel ?? telMap.get(p.emp_id) ?? null, flag_no: p.flag_no,
       assembly_point: p.assembly_point ?? (p.flag_no != null ? flagPoint.get(p.flag_no) ?? null : null),
       is_leader: /^\s*ผู้นำ/.test(p.role ?? ""), presence: "plan", presence_site: null, presence_since: null,
-      here: dc.here, note: dc.note, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
+      here: dc.here, note: dc.note, basis: dc.basis, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
     };
   };
   if (inc.include_plan) for (const p of plan) out.set(`emp:${p.emp_id}`, fromPlan(p));
@@ -204,7 +206,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       // เป็นพนักงานในชุดธง: ใช้แถวของคนนั้น (ไม่สร้างคนขับซ้ำ)
       const c = out.get(`emp:${owner.code}`) ?? fromPlan(ownerPlan);
       out.set(c.person_key, { ...c, plate: v.plate_display ?? v.plate, presence: "kiosk", presence_site: v.zone, presence_since: iso(v.checkin_at),
-        here: true, note: null, source: "Driver (KIOS) · ทะเบียนตรงโปรไฟล์" });
+        here: true, note: null, basis: "src_kiosk", source: "Driver (KIOS) · ทะเบียนตรงโปรไฟล์" });
       continue;
     }
     out.set(key, {
@@ -221,6 +223,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
   const enDiv = new Map<string, string>();
   for (const c of checkins) if (c.full_name && isLatin(c.full_name)) enDiv.set(c.email, String(c.full_name).trim());
   for (const c of out.values()) {
+    if (!c.basis) c.basis = hereMap.has(c.person_key) ? (hereMap.get(c.person_key) ? "review_in" : "review_out") : `src_${c.presence}`;
     const pl = c.emp_id ? planMap.get(c.emp_id) : null;
     c.name_en = pl?.name_en || (c.emp_id ? enProf.get(c.emp_id) : null) || (c.email ? enDiv.get(c.email) : null) || null;
   }
@@ -239,11 +242,11 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
   const col = <K extends keyof Candidate>(k: K) => C.map((c) => c[k]);
   const ins = await q(
     `INSERT INTO incident_people (incident_id, person_key, emp_id, email, plate, name, gender, area, cost_center, cc_name,
-       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by, status_note, name_en)
-     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20, nt, ne
+       tel, flag_no, assembly_point, is_leader, presence, presence_site, presence_since, here, source, status, added_by, status_note, name_en, pred_note, pred_basis)
+     SELECT $1, k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, CASE WHEN h THEN 'unk' ELSE 'abs' END, $20, nt, ne, nt, pb
      FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
-       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[], $21::text[], $22::text[])
-       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, nt, ne)
+       $11::text[], $12::text[], $13::text[], $14::bool[], $15::text[], $16::text[], $17::timestamptz[], $18::bool[], $19::text[], $21::text[], $22::text[], $23::text[])
+       AS x(k, e, m, pl, n, g, a, cc, ccn, t, f, ap, l, pr, ps, psi, h, src, nt, ne, pb)
      ON CONFLICT (incident_id, person_key) DO UPDATE SET
        email = COALESCE(EXCLUDED.email, incident_people.email),
        name_en = COALESCE(incident_people.name_en, EXCLUDED.name_en),
@@ -255,7 +258,7 @@ export async function mergeIntoIncident(incidentId: number, addedBy: "snapshot" 
     [
       incidentId, col("person_key"), col("emp_id"), col("email"), col("plate"), col("name"), col("gender"), col("area"),
       col("cost_center"), col("cc_name"), col("tel"), col("flag_no"), col("assembly_point"), col("is_leader"), col("presence"),
-      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy, C.map((c) => c.note ?? null), C.map((c) => c.name_en ?? null),
+      col("presence_site"), col("presence_since"), col("here"), col("source"), addedBy, C.map((c) => c.note ?? null), C.map((c) => c.name_en ?? null), C.map((c) => c.basis ?? null),
     ],
   );
   await q(
