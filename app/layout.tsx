@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SwRegister } from "@/components/Notify";
+import VercelAnalytics from "@/components/VercelAnalytics";
 
 export const metadata: Metadata = {
   title: "CRL SafeCheck",
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" />
       </head>
-      <body>{children}<SwRegister /></body>
+      <body>{children}<SwRegister /><VercelAnalytics /></body>
     </html>
   );
 }

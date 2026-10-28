@@ -9,6 +9,7 @@ import { useAdmin } from "@/components/identity";
 import { api, usePoll, fmtClock, fmtDateTime, duration, useNow, LBL, EVAC, inPool, TRI, rangeText, ago } from "@/components/lib";
 import { IClock } from "@/components/Icons";
 import CodePanel from "@/components/CodePanel";
+import Timeline from "@/components/Timeline";
 import AccuracyView from "@/components/AccuracyView";
 import Tabs, { useTab } from "@/components/Tabs";
 
@@ -222,6 +223,7 @@ function IncidentDash({ id }: { id: number }) {
       </div>
       {tab === "acc" ? <AccuracyView id={id} real={real} /> : (
       <div className="wrap">
+        {!active && <Timeline inc={inc} anns={anns} codes={codes} firstDone={m.firstDone || null} now={now} />}
         {(active || inc.state === "pending") && (
           <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={m.missing.length}
             complete={m.pool.length > 0 && m.missing.length === 0} withPin={withPin} onDone={d.reload} kinds={d.data.kinds} />
@@ -269,6 +271,8 @@ function IncidentDash({ id }: { id: number }) {
         <SourceStrip sources={d.data?.sources ?? []} people={people} now={now} incidentId={id} active={inc.state === "active"} onDone={d.reload} />
 
         <Heatmap rows={m.rows} real={real} />
+
+        {active && <Timeline inc={inc} anns={anns} codes={codes} firstDone={m.firstDone || null} now={now} />}
 
         <div className="g2">
           <section className="card">
@@ -367,22 +371,6 @@ function IncidentDash({ id }: { id: number }) {
               </tbody>
             </table></div>
             <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>นับได้ รวมคนที่อยู่กองอำนวยการกลาง</div>
-          </section>
-          <section className="card" style={{ alignSelf: "start" }}>
-            <div className="card-h">สรุปการประกาศสถานการณ์ฉุกเฉิน</div>
-            {anns.map((a) => (
-              <div key={a.id} className="row" style={{ gap: 12, padding: "10px 18px", borderTop: "1px solid var(--line-3)", flexWrap: "nowrap" }}>
-                <span className="mono" style={{ fontWeight: 600, width: 64 }}>{fmtClock(a.at).slice(0, 5)}</span>
-                <span className={`chip ${a.tone ?? "grey"}`} style={{ fontSize: 13 }}>{a.label}</span>
-                <span className="muted small grow">{a.meaning ?? ""}</span><span className="muted xs">โดย {a.by_name ?? "—"}</span>
-              </div>
-            ))}
-            {codes.filter((c) => !anns.some((a) => a.code_id === c.id)).map((c) => (
-              <div key={c.id} className="row" style={{ gap: 12, padding: "10px 18px", borderTop: "1px solid var(--line-3)", flexWrap: "nowrap" }}>
-                <span className="mono" style={{ fontWeight: 600, width: 64 }}>—</span><span className="chip grey" style={{ fontSize: 13, color: "#4B5058" }}>{c.label}</span>
-                <span className="muted small grow">ยังไม่ประกาศ</span>
-              </div>
-            ))}
           </section>
         </div>
       </div>

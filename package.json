@@ -13,6 +13,7 @@
     "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.5",
     "@types/web-push": "^3.6.4",
+    "@vercel/analytics": "^2.0.1",
     "next": "16.4.2",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",

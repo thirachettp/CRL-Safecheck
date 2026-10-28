@@ -348,4 +348,6 @@ export const SCHEMA: string[] = [
   // v13: เก็บสิ่งที่ระบบคาดไว้ตอนสร้างรายชื่อ (ไม่ถูกทับ) ใช้วัดความแม่นยำ
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS pred_note text`,
   `ALTER TABLE incident_people ADD COLUMN IF NOT EXISTS pred_basis text`,
+  // v14: เวลาที่มีคนแจ้ง (ตอนยืนยัน opened_at ถูกตั้งใหม่)
+  `ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reported_at timestamptz`,
 ];

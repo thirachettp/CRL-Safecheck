@@ -36,6 +36,8 @@ export type Incident = {
   closed_at: string | null;
   closed_by: string | null;
   first_full_at: string | null;
+  /** เวลาที่มีคนแจ้ง (ก่อนยืนยัน) */
+  reported_at?: string | null;
 };
 
 const iso = (v: any) => (v ? new Date(v).toISOString() : null);
@@ -48,6 +50,7 @@ function rowToIncident(r: any): Incident {
     closed_at: iso(r.closed_at),
     confirmed_at: iso(r.confirmed_at),
     first_full_at: iso(r.first_full_at),
+    reported_at: iso(r.reported_at),
   };
 }
 
@@ -290,7 +293,7 @@ export async function reportIncident(o: { kind: string; area: string; by: string
   const cur = await currentIncident();
   if (cur && cur.state === "active" && (cur.mode === "real" || mode === "drill")) return cur.id;
   const r = await one<{ id: number }>(
-    `INSERT INTO incidents (mode, state, kind, area, reported_by, title) VALUES ($5, 'pending', $1, $2, $3, $4) RETURNING id`,
+    `INSERT INTO incidents (mode, state, kind, area, reported_by, title, reported_at) VALUES ($5, 'pending', $1, $2, $3, $4, now()) RETURNING id`,
     [o.kind, o.area, o.by, mode === "drill" ? `ซ้อมอพยพ: ${o.kind}` : o.kind, mode],
   );
   return Number(r!.id);
