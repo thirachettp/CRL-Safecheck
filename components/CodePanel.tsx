@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { codeKind, type CodeKind } from "@/lib/codes";
+import { codeKind, codePhrase, codeMeaning, DEFAULT_KINDS, type CodeKind, type KindsCfg } from "@/lib/codes";
 import { api, fmtClock } from "./lib";
 
 type Step = { key: string; title: string; at: string | null; by?: string | null };
@@ -9,8 +9,8 @@ type Step = { key: string; title: string; at: string | null; by?: string | null 
  * แจ้งรหัส (Admin / Safety): แสดงลำดับขั้น + ขั้นถัดไปที่ควรทำ
  * 1 มีคนแจ้งเหตุ → 2 Code 500 (ไปตรวจสอบ) → 3 ยืนยันมีเหตุ (เริ่มนับคน) → 4 500 ด่วนมาก (อพยพ) → 5 คุณสบายใจ (ปิด)
  */
-export default function CodePanel({ id, inc, anns, codes, points, missing, complete, withPin, onDone }: {
-  id: number; inc: any; anns: any[]; codes: any[]; points: any[]; missing: number; complete: boolean;
+export default function CodePanel({ id, inc, anns, codes, points, missing, complete, withPin, onDone, kinds }: {
+  id: number; inc: any; anns: any[]; codes: any[]; points: any[]; missing: number; complete: boolean; kinds?: KindsCfg;
   withPin: (fn: () => Promise<void>) => void; onDone: () => void;
 }) {
   const [off, setOff] = useState<Record<string, boolean>>({});
@@ -20,11 +20,14 @@ export default function CodePanel({ id, inc, anns, codes, points, missing, compl
   const drill = inc.mode === "drill";
   const pending = inc.state === "pending";
   const active = inc.state === "active";
-  const kindOf = (a: any): CodeKind => codeKind(codes.find((c) => c.id === a.code_id) ?? { label: a.label });
+  const kindOf = (a: any): CodeKind => a.kind ?? codeKind(codes.find((c) => c.id === a.code_id) ?? { label: a.label });
   const firstAnn = (k: CodeKind) => anns.find((a) => kindOf(a) === k) ?? null;
   const a500 = firstAnn("check"), aUrgent = firstAnn("urgent"), aClear = firstAnn("clear");
   const codeLabel = (k: CodeKind, fb: string) => codes.find((c) => codeKind(c) === k)?.label ?? fb;
-  const L500 = codeLabel("check", "Code 500"), LUrg = codeLabel("urgent", "Code 500 ด่วนมาก"), LClr = codeLabel("clear", "คุณสบายใจ");
+  // ข้อความประกาศตามประเภทเหตุ เช่น "รัดประภา 520 ที่ ห้องเครื่อง"
+  const cfg = kinds ?? DEFAULT_KINDS;
+  const L500 = codePhrase(cfg, inc.kind, inc.area, false), LUrg = codePhrase(cfg, inc.kind, inc.area, true), LClr = codeLabel("clear", "คุณสบายใจ");
+  const M500 = codeMeaning(cfg, inc.kind, false), MUrg = codeMeaning(cfg, inc.kind, true);
   const tag = drill ? "(ซ้อม) " : "";
   const what = [inc.kind, inc.area].filter(Boolean).join(" · ") || inc.title || "";
 
@@ -50,13 +53,13 @@ export default function CodePanel({ id, inc, anns, codes, points, missing, compl
   type Next = { text: string; hint: string; btn?: { label: string; tone: string; key: string; fn: () => Promise<any>; ok: string; twice?: boolean } };
   let next: Next;
   if (pending && !a500) next = {
-    text: `มีคนแจ้ง${drill ? "ขอซ้อม" : "เหตุ"}: ${what}`, hint: `แจ้ง ${L500} ให้ทีมฉุกเฉินไปตรวจสอบ · พนักงานเตรียมพร้อม ยังไม่อพยพ`,
+    text: `มีคนแจ้ง${drill ? "ขอซ้อม" : "เหตุ"}: ${what}`, hint: `แจ้ง “${L500}” = ${M500 || "เจ้าหน้าที่เข้าตรวจสอบ ยังไม่ต้องอพยพ"}`,
     btn: { label: `📢 แจ้ง ${tag}${L500}`, tone: "warn", key: "500", fn: ann("check"), ok: `แจ้ง ${L500} แล้ว · ส่งแจ้งเตือนทุกคน` } };
   else if (pending) next = {
     text: `ตรวจสอบแล้ว${drill ? "พร้อมซ้อม" : "เป็นเหตุจริง"}?`, hint: `กดยืนยัน = เริ่มนับคน · ถัดไปแจ้ง ${LUrg} ให้อพยพ · ถ้าไม่ใช่เหตุ แจ้ง ${LClr} เพื่อยกเลิก`,
     btn: { label: drill ? "ยืนยันเริ่มซ้อม" : "ยืนยันมีเหตุ · เริ่มนับคน", tone: "red", key: "confirm", fn: confirm, ok: "ยืนยันแล้ว · เริ่มนับคน", twice: true } };
   else if (active && !aUrgent) next = {
-    text: "ยืนยันแล้ว · เริ่มนับคน", hint: `แจ้ง ${LUrg} ให้ทุกคนอพยพไปจุดรวมพลทันที`,
+    text: "ยืนยันแล้ว · เริ่มนับคน", hint: `แจ้ง “${LUrg}” = ${MUrg || "อพยพไปจุดรวมพลทันที"}`,
     btn: { label: `📢 แจ้ง ${tag}${LUrg}`, tone: "red", key: "urgent", fn: ann("urgent"), ok: `แจ้ง ${LUrg} แล้ว · ส่งแจ้งเตือนทุกคน` } };
   else if (active && !complete) next = { text: `กำลังนับคน · ยังขาด ${missing} คน`, hint: `ติดตามรายชื่อผู้สูญหายด้านล่าง · นับครบแล้วระบบจะแนะนำ ${LClr}` };
   else if (active) next = {

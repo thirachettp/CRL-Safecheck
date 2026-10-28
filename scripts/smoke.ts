@@ -92,7 +92,7 @@ ok(P("emp:30000105").triage === "yellow" && P("emp:30000105").symptoms === "ข�
 const codes = (await j("/api/admin/codes")).codes;
 await j(`/api/incidents/${drill}/announce`, { method: "POST", json: { code_id: codes[0].id }, tok: safety });
 s = await j(`/api/incidents/${drill}`);
-ok(s.announcements.length === 1 && s.announcements[0].label === "Code 500", "บันทึกประกาศ Code 500");
+ok(s.announcements.length === 1 && s.announcements[0].label === "คุณรัดประภา 500", "บันทึกประกาศ คุณรัดประภา 500 (ไม่ระบุประเภท = 500)");
 ok(await fails(j("/api/incidents", { method: "POST", json: { action: "drill" } })), "เริ่มซ้อมซ้อนไม่ได้");
 const closeRes = await j(`/api/incidents/${drill}`, { method: "POST", json: { action: "close" }, tok: safety });
 ok(closeRes.absPending === 1, "ปิดการซ้อมได้ และเตือนปลอดภัยตามระบบที่รอยืนยัน 1 คน");
@@ -446,14 +446,25 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
   ok(await fails(j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "urgent" }, tok: safety })), "500 ด่วนมาก ต้องยืนยันมีเหตุก่อน");
   const a1 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "check" }, tok: safety });
   let di = await j(`/api/incidents/${ci}`);
-  ok(a1.kind === "check" && di.incident.state === "pending" && di.announcements.some((a: any) => a.label === "Code 500"), "ก่อนยืนยัน แจ้ง Code 500 ได้ (ยังไม่เริ่มนับ)");
+  ok(a1.kind === "check" && di.incident.state === "pending" && di.announcements.some((a: any) => a.label === "คุณรัดประภา 500 ที่ Sort ชั้น 2"), "ก่อนยืนยัน แจ้ง Code 500 ได้ (ยังไม่เริ่มนับ)");
   await j(`/api/incidents/${ci}`, { method: "POST", json: { action: "confirm", closedPoints: [] }, tok: safety });
   const a2 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "urgent" }, tok: safety });
   di = await j(`/api/incidents/${ci}`);
-  ok(a2.kind === "urgent" && di.incident.state === "active" && di.announcements.length === 2, "ยืนยันแล้วแจ้ง 500 ด่วนมาก");
+  ok(a2.kind === "urgent" && di.incident.state === "active" && di.announcements[1]?.label === "คุณรัดประภา 500 ด่วนมาก ที่ Sort ชั้น 2", "ยืนยันแล้วแจ้ง รัดประภา 500 ด่วนมาก ที่ …");
   const a3 = await j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "clear" }, tok: safety });
   di = await j(`/api/incidents/${ci}`);
   ok(a3.closed && di.incident.state === "closed", "แจ้งคุณสบายใจ → ปิดเหตุการณ์");
+  // ประเภทเหตุ → เลขรหัส
+  const kc = await j("/api/admin/codes");
+  ok(kc.kinds.kinds.some((k: any) => k.name === "แอมโมเนียรั่ว" && k.code === "520") && kc.kinds.kinds.some((k: any) => k.name === "แผ่นดินไหว" && k.code === "800"), "ค่าเริ่มต้น: แอมโมเนีย 520 · แผ่นดินไหว 800");
+  const { id: am } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "แอมโมเนียรั่ว", area: "ห้องเครื่อง" }, tok: rvTok });
+  await j(`/api/incidents/${am}/announce`, { method: "POST", json: { kind: "check" }, tok: safety });
+  let da = await j(`/api/incidents/${am}`);
+  ok(da.announcements[0]?.label === "คุณรัดประภา 520 ที่ ห้องเครื่อง", "แอมโมเนีย → รัดประภา 520 ที่ ห้องเครื่อง");
+  await j(`/api/incidents/${am}/announce`, { method: "POST", json: { kind: "clear" }, tok: safety });
+  await j("/api/admin/codes", { method: "POST", json: { action: "kinds", cfg: { ...kc.kinds, kinds: [...kc.kinds.kinds, { name: "ระเบิด", code: "900" }] } } });
+  const pl = await j("/api/plan", { tok: "x" });
+  ok(pl.kinds.kinds.some((k: any) => k.name === "ระเบิด"), "เพิ่มประเภทเหตุใหม่ → หน้าแจ้งเหตุเห็น");
   // ไม่ใช่เหตุ: คุณสบายใจตอนรอยืนยัน = ยกเลิก
   const { id: ci2 } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "สารเคมีรั่ว" }, tok: rvTok });
   await j(`/api/incidents/${ci2}/announce`, { method: "POST", json: { kind: "clear" }, tok: safety });

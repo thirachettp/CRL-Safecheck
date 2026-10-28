@@ -118,7 +118,7 @@ function Admin() {
       )}
       {tab === "points" && <div className="wrap">{o.data && <PointsCard points={o.data.points} flags={o.data.flags} onSaved={o.reload} />}</div>}
       {tab === "users" && <div className="wrap"><UsersPanel /></div>}
-      {tab === "codes" && <div className="wrap"><div style={{ maxWidth: 760 }}><CodesCard /></div></div>}
+      {tab === "codes" && <div className="wrap"><div className="stack" style={{ maxWidth: 760, gap: 20 }}><KindsCard /><CodesCard /></div></div>}
       {tab === "system" && (
         <div className="wrap g2" style={{ display: "grid", alignItems: "start" }}>
           <SourcesCard />
@@ -455,6 +455,57 @@ function VersionsCard({ versions, state, onDone }: { versions: Overview["version
       {msg && <div style={{ padding: "8px 18px 12px" }}><p className={`notice ${msg.k}`}>{msg.t}</p></div>}
       <div className="muted xs" style={{ padding: "10px 18px", borderTop: "1px solid var(--line-3)" }}>
         ใช้เวอร์ชันนี้ = โหลดรายชื่อ ธง และผู้นำธงของเวอร์ชันนั้นมาใช้ (ผลตรวจทานธงจะเริ่มใหม่) · ทำสำเนา = สร้างเวอร์ชันใหม่จากเวอร์ชันนั้น (ไม่เปลี่ยนตัวที่ใช้อยู่) · เหตุการณ์ที่เปิดอยู่ไม่กระทบ · ลบเวอร์ชันที่ใช้อยู่ไม่ได้
+      </div>
+    </div>
+  );
+}
+
+/** ประเภทเหตุ → เลขรหัสที่ประกาศ เช่น ไฟไหม้ = รัดประภา 500 ที่ ... */
+function KindsCard() {
+  const c = usePoll<{ kinds: { word: string; fallback: string; kinds: any[] } }>("/api/admin/codes", 0);
+  const [f, setF] = useState<any>(null);
+  const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
+  const cfg = f ?? c.data?.kinds;
+  if (!cfg) return null;
+  const set = (x: any) => { setF(x); setMsg(null); };
+  const row = (i: number, k: string, v: string | boolean) => set({ ...cfg, kinds: cfg.kinds.map((r: any, j: number) => (j === i ? { ...r, [k]: v } : r)) });
+  async function save() {
+    try { const r = await api("/api/admin/codes", { method: "POST", json: { action: "kinds", cfg } }); setF(r.kinds); setMsg({ k: "ok", t: "บันทึกแล้ว" }); c.reload(); }
+    catch (e: any) { setMsg({ k: "err", t: e.message }); }
+  }
+  const ex = cfg.kinds[0];
+  return (
+    <div className="card">
+      <div className="card-h"><span className="grow">ประเภทเหตุ และรหัสที่ประกาศ</span></div>
+      <div style={{ padding: "12px 18px", display: "grid", gap: 10 }}>
+        <div className="row" style={{ gap: 10 }}>
+          <label className="lb" style={{ fontSize: 13 }}>คำรหัส<input className="in" style={{ width: 160 }} value={cfg.word} onChange={(e) => set({ ...cfg, word: e.target.value })} /></label>
+          <label className="lb" style={{ fontSize: 13 }}>เลขสำหรับเหตุอื่นๆ<input className="in mono" style={{ width: 120 }} value={cfg.fallback} onChange={(e) => set({ ...cfg, fallback: e.target.value })} /></label>
+        </div>
+        <div className="stack" style={{ gap: 8 }}>
+          {cfg.kinds.map((k: any, i: number) => (
+            <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 12, padding: 10, display: "grid", gap: 6 }}>
+              <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                <input className="in grow" style={{ marginTop: 0 }} value={k.name} onChange={(e) => row(i, "name", e.target.value)} placeholder="ประเภทเหตุ" aria-label="ประเภทเหตุ" />
+                <input className="in mono" style={{ marginTop: 0, width: 90 }} value={k.code} onChange={(e) => row(i, "code", e.target.value)} placeholder="เลข" aria-label="เลขรหัส" />
+                <label className="row small" style={{ gap: 4, whiteSpace: "nowrap" }}><input type="checkbox" checked={k.main !== false} onChange={(e) => row(i, "main", e.target.checked as any)} />ปุ่มหลัก</label>
+                <button className="lk del" onClick={() => set({ ...cfg, kinds: cfg.kinds.filter((_: any, j: number) => j !== i) })}>ลบ</button>
+              </div>
+              <label className="small"><b>{cfg.word} {k.code || cfg.fallback}</b> :
+                <input className="in" style={{ marginTop: 2 }} value={k.meaning ?? ""} onChange={(e) => row(i, "meaning", e.target.value)} placeholder="ความหมาย เช่น เจ้าหน้าที่เข้าตรวจสอบ ยังไม่ต้องอพยพ" /></label>
+              <label className="small"><b>{cfg.word} {k.code || cfg.fallback} ด่วนมาก</b> :
+                <input className="in" style={{ marginTop: 2 }} value={k.urgent_meaning ?? ""} onChange={(e) => row(i, "urgent_meaning", e.target.value)} placeholder="ความหมาย เช่น ต้องอพยพทันที" /></label>
+            </div>
+          ))}
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn btn-sm" onClick={() => set({ ...cfg, kinds: [...cfg.kinds, { name: "", code: "", meaning: "", urgent_meaning: "", main: false }] })}>+ เพิ่มประเภทเหตุ</button>
+          <span className="grow" />
+          {f && <button className="btn btn-sm" onClick={() => set(null)}>ยกเลิก</button>}
+          <button className="btn btn-sm btn-pri" disabled={!f} onClick={save}>บันทึก</button>
+        </div>
+        {msg && <p className={`notice ${msg.k}`}>{msg.t}</p>}
+        <div className="muted xs">ปุ่มหลัก = ขึ้นให้เลือกทันทีตอนแจ้งเหตุ · ที่เหลืออยู่ใต้ “อื่นๆ” · ปุ่ม “แจ้งรหัส” บน Dashboard ใช้ข้อความนี้ตามประเภทเหตุที่แจ้ง และพื้นที่เกิดเหตุ{ex ? ` เช่น ${ex.name} → “${cfg.word} ${ex.code || cfg.fallback} ที่ Sort ชั้น 2”` : ""} · คุณสบายใจ (ปิด) ตั้งได้ที่รายการ Code ด้านล่าง</div>
       </div>
     </div>
   );

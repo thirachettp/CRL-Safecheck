@@ -342,4 +342,7 @@ export const SCHEMA: string[] = [
   `UPDATE plan_versions SET name = 'ชุดธง ' || to_char(created_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/') ||
      (extract(year FROM created_at AT TIME ZONE 'Asia/Bangkok')::int + 543) || to_char(created_at AT TIME ZONE 'Asia/Bangkok', ' HH24:MI') || ' #' || id
    WHERE name IS NULL OR btrim(name) = ''`,
+  // v12: เก็บชนิดของประกาศ (ตรวจสอบ / อพยพ / ปกติ) แยกจากข้อความ เพราะข้อความเปลี่ยนตามประเภทเหตุ
+  `ALTER TABLE incident_announcements ADD COLUMN IF NOT EXISTS kind text`,
+  `UPDATE announce_codes SET meaning = 'เหตุการณ์กลับเข้าสู่ภาวะปกติ' WHERE closes AND (meaning IS NULL OR meaning = 'ใช้ปิดเหตุการณ์')`,
 ];

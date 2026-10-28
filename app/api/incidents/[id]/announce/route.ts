@@ -19,7 +19,7 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
   if (r.kind === "clear") body = r.closed
     ? `${where ? `${where} · ` : ""}สถานการณ์ปกติแล้ว · นับได้ ${r.closed.summary.safe + r.closed.summary.inj}/${r.closed.summary.pool} คน (${r.closed.summary.pct}%)`
     : `${where ? `${where} · ` : ""}ไม่ใช่เหตุฉุกเฉิน · ทำงานตามปกติ`;
-  if (r.kind === "urgent") body = `${where ? `${where} · ` : ""}อพยพไปจุดรวมพลของธงคุณทันที แล้วกดปลอดภัยในแอป`;
+  if (r.kind === "urgent") body = `${where ? `${where} · ` : ""}${r.meaning ? `${r.meaning} · ` : ""}ไปจุดรวมพลของธงคุณ แล้วกดปลอดภัยในแอป`;
   const pushed = await notify("all", {
     title: `📢 ${drill ? "(ซ้อม) " : ""}${r.label}`, body,
     url: r.kind === "urgent" ? "/search" : `/dashboard?id=${id}`, tag: `incident-${id}`, urgent: r.kind === "urgent" || r.kind === "check",

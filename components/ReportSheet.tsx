@@ -2,14 +2,19 @@
 import { useState } from "react";
 import LoginSheet from "./LoginSheet";
 import { useUser } from "./identity";
-import { api, KINDS } from "./lib";
+import { api, usePoll } from "./lib";
+import { DEFAULT_KINDS } from "@/lib/codes";
 import { IAlert, IClose, ILock } from "./Icons";
 
 /** แจ้งเหตุจริงระหว่างซ้อม: ต้องเข้าสู่ระบบก่อน ยืนยันโดย Admin / Safety แล้วระบบจบการซ้อมให้อัตโนมัติ */
 export default function ReportSheet({ onClose, pending }: { onClose: () => void; pending?: any }) {
   const { user } = useUser();
   const [login, setLogin] = useState(false);
-  const [kind, setKind] = useState(KINDS[0].id);
+  const plan = usePoll<{ kinds?: { kinds: { name: string; code: string; main?: boolean }[] } }>("/api/plan", 0);
+  const KINDS = [...(plan.data?.kinds?.kinds ?? DEFAULT_KINDS.kinds).filter((k) => k.main !== false).map((k) => ({ id: k.name, label: k.name })), { id: "อื่นๆ", label: "อื่นๆ" }];
+  const SUBKINDS = (plan.data?.kinds?.kinds ?? DEFAULT_KINDS.kinds).filter((k) => k.main === false);
+  const [kindSel, setKind] = useState<string | null>(null);
+  const kind = kindSel ?? KINDS[0].id;
   const [other, setOther] = useState("");
   const [area, setArea] = useState("");
   const [busy, setBusy] = useState(false);
@@ -60,11 +65,16 @@ export default function ReportSheet({ onClose, pending }: { onClose: () => void;
                 <button key={k.id} className={`pill${kind === k.id ? " on" : ""}`} onClick={() => setKind(k.id)} aria-pressed={kind === k.id}>{k.label}</button>
               ))}
             </div>
-            {kind === "อื่นๆ" && (
-              <label className="lb" style={{ fontSize: 13 }}>ระบุเหตุ
-                <input className="in" value={other} onChange={(e) => setOther(e.target.value)} maxLength={60} placeholder="เช่น น้ำท่วม, ไฟฟ้าดับ" autoFocus />
+            {kind === "อื่นๆ" && (<>
+                <div className="row" style={{ gap: 6 }}>
+                  {SUBKINDS.map((k) => (
+                    <button key={k.name} type="button" className={`pill${other.trim() === k.name ? " on" : ""}`} onClick={() => setOther(k.name)}>{k.name} <span className="mono xs" style={{ opacity: .7 }}>{k.code}</span></button>
+                  ))}
+                </div>
+              <label className="lb" style={{ fontSize: 13 }}>หรือพิมพ์เหตุเอง
+                <input className="in" value={other} onChange={(e) => setOther(e.target.value)} maxLength={60} placeholder="เช่น น้ำท่วม, ไฟฟ้าดับ" />
               </label>
-            )}
+            </>)}
             <label className="lb" style={{ fontSize: 13 }}>พื้นที่เกิดเหตุ
               <input className="in" value={area} onChange={(e) => setArea(e.target.value)} maxLength={80} placeholder="เช่น Sort ชั้น 2" />
             </label>

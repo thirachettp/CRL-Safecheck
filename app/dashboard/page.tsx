@@ -169,7 +169,7 @@ function IncidentDash({ id }: { id: number }) {
       )}
       {err && <div style={{ maxWidth: 1440, margin: "12px auto 0", padding: "0 32px" }}><p className="notice warn">{err}</p></div>}
       <div className="wrap">
-        <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={0} complete={false} withPin={withPin} onDone={d.reload} />
+        <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={0} complete={false} withPin={withPin} onDone={d.reload} kinds={d.data.kinds} />
         <section className="card">
           <div className="card-h">บันทึกการประกาศ</div>
           {anns.length === 0 && <div className="tr muted small" style={{ gridTemplateColumns: "1fr" }}>ยังไม่มีการประกาศ</div>}
@@ -217,7 +217,7 @@ function IncidentDash({ id }: { id: number }) {
       <div className="wrap">
         {(active || inc.state === "pending") && (
           <CodePanel id={id} inc={inc} anns={anns} codes={codes} points={points} missing={m.missing.length}
-            complete={m.pool.length > 0 && m.missing.length === 0} withPin={withPin} onDone={d.reload} />
+            complete={m.pool.length > 0 && m.missing.length === 0} withPin={withPin} onDone={d.reload} kinds={d.data.kinds} />
         )}
         <div className="kpis">
           <div className="kpi">

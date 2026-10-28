@@ -1,7 +1,7 @@
 import { normFlag } from "./flag";
 import { normalizePlate } from "./kioskMap";
 import { isLatin } from "./names";
-import { codeKind, type CodeKind } from "./codes";
+import { codeKind, codePhrase, codeMeaning, cleanKinds, DEFAULT_KINDS, type CodeKind } from "./codes";
 export type { CodeKind } from "./codes";
 import { UserError } from "./errors";
 import { q, one } from "./db";
@@ -487,7 +487,7 @@ export async function addManualPerson(
 const CODE_DEFAULT: Record<CodeKind, { label: string; tone: string; meaning: string }> = {
   check: { label: "Code 500", tone: "warn", meaning: "ทีมฉุกเฉินไปตรวจสอบ · พนักงานเตรียมพร้อม ยังไม่ต้องอพยพ" },
   urgent: { label: "Code 500 ด่วนมาก", tone: "err", meaning: "อพยพไปจุดรวมพลทันที" },
-  clear: { label: "คุณสบายใจ", tone: "grey", meaning: "สถานการณ์ปกติ" },
+  clear: { label: "คุณสบายใจ", tone: "grey", meaning: "เหตุการณ์กลับเข้าสู่ภาวะปกติ" },
   other: { label: "", tone: "grey", meaning: "" },
 };
 
@@ -502,13 +502,17 @@ export async function announce(incidentId: number, codeId: number | null, label:
   if (!code && kind && kind !== "other")
     code = (await q<any>(`SELECT * FROM announce_codes ORDER BY sort, id`)).find((c) => codeKind(c) === kind) ?? null;
   const k: CodeKind = code ? codeKind(code) : kind ?? "other";
-  const text = code?.label ?? (String(label ?? "").trim() || CODE_DEFAULT[k].label);
+  // 500 / ด่วนมาก: ข้อความตามประเภทเหตุ เช่น "รัดประภา 520 ด่วนมาก ที่ ห้องเครื่อง"
+  const cfg = cleanKinds(await getSetting("incident_kinds", DEFAULT_KINDS));
+  const text = k === "check" || k === "urgent" ? codePhrase(cfg, inc.kind, inc.area, k === "urgent")
+    : code?.label ?? (String(label ?? "").trim() || CODE_DEFAULT[k].label);
   if (!text) throw new UserError("ต้องระบุ Code");
   if (k === "urgent" && inc.state !== "active") throw new UserError("ยืนยันมีเหตุก่อน แล้วจึงแจ้ง 500 ด่วนมาก");
-  const meaning = code?.meaning || CODE_DEFAULT[k].meaning || null;
+  const meaning = (k === "check" || k === "urgent" ? codeMeaning(cfg, inc.kind, k === "urgent") : "")
+    || code?.meaning || CODE_DEFAULT[k].meaning || null;
   await q(
-    `INSERT INTO incident_announcements (incident_id, code_id, label, tone, meaning, by_name) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [incidentId, code?.id ?? null, text, code?.tone ?? CODE_DEFAULT[k].tone, meaning, actor.name]);
+    `INSERT INTO incident_announcements (incident_id, code_id, label, tone, meaning, by_name, kind) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [incidentId, code?.id ?? null, text, code?.tone ?? CODE_DEFAULT[k].tone, meaning, actor.name, k]);
   let closed: any = null;
   if (k === "clear") {
     if (inc.state === "pending") await cancelIncident(incidentId, `${actor.name} (${text})`);

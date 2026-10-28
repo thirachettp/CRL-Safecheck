@@ -1,3 +1,4 @@
+import { cleanKinds, DEFAULT_KINDS } from "@/lib/codes";
 import { notify } from "@/lib/push";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
@@ -35,7 +36,7 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
     if (viewer === "anon") { full.tel = null; full.emer = null; full.email = null; }
     return full;
   });
-  return ok({ incident, people: ppl, points, leaders, announcements, codes, sources, target, viewer, now: new Date().toISOString() });
+  return ok({ incident, people: ppl, points, leaders, announcements, codes, sources, target, viewer, kinds: cleanKinds(await getSetting("incident_kinds", DEFAULT_KINDS)), now: new Date().toISOString() });
 });
 
 export const POST = handle(async (req: Request, { params }: Ctx) => {
