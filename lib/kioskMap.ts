@@ -172,3 +172,30 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields, now 
 export function shouldHold(prev: number, next: number) {
   return prev >= 10 && next < prev * 0.7;
 }
+
+/** หาคอลัมน์ "รูปแบบการทำรายการ" (ค่าแบบ freeMember / Visitor / Member) */
+export function typeColumn(rows: Record<string, unknown>[]): string | null {
+  const keys = new Set<string>();
+  for (const r of rows.slice(0, 200)) for (const [k, v] of Object.entries(r)) if (typeof v === "string") keys.add(k);
+  let best: string | null = null;
+  for (const k of keys) {
+    const vals = new Set(rows.slice(0, 500).map((r) => r[k]).filter((v) => typeof v === "string") as string[]);
+    if (vals.size > 0 && vals.size <= 12 && [...vals].some((v) => /free.?member|^visitor$|^member$/i.test(v.trim()))) {
+      if (!best || /type|mode|kind|รูปแบบ/i.test(k)) best = k;
+    }
+  }
+  return best ?? ([...keys].find((k) => /transaction.?type|visit.?type|member.?type|^type$/i.test(k)) ?? null);
+}
+
+/** นับแยกตามรูปแบบการทำรายการ: KIOS ส่งมากี่แถว และเหลือเป็นรถในลานกี่คัน */
+export function typeBreakdown(rows: Record<string, unknown>[], f: KioskFields, now = new Date()) {
+  const col = typeColumn(rows);
+  if (!col) return { column: null as string | null, types: [] as { type: string; rows: number; in_lot: number; out: number; old: number; skipped: number }[] };
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const r of rows) { const t = str(r[col]) ?? "(ว่าง)"; groups.set(t, [...(groups.get(t) ?? []), r]); }
+  const types = [...groups.entries()].map(([type, rs]) => {
+    const v = toVehicles(rs, f, now);
+    return { type, rows: rs.length, in_lot: v.vehicles.length, out: v.out, old: v.old, skipped: v.skipped + v.url };
+  }).sort((a, b) => b.rows - a.rows);
+  return { column: col, types };
+}

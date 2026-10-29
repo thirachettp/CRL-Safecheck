@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectFields, normalizePlate, toVehicles, toIso, shouldHold, prepareRows } from "../lib/kioskMap.ts";
+import { detectFields, normalizePlate, toVehicles, toIso, shouldHold, prepareRows, typeBreakdown } from "../lib/kioskMap.ts";
 
 const rows = [
   { id: 1, license_plate: "70-1234", province: "กรุงเทพมหานคร", driver_name: "สมชาย ขับดี", driver_phone: "0812345678", transport_company: "ABC ขนส่ง", dock_no: "D12", checkin_time: "2026-10-19 08:15:00", status_id: 2 },
@@ -142,4 +142,19 @@ test("ยังอยู่ = ยังไม่มีเวลาออก (ไ
   const r = toVehicles(rows, f, now);
   assert.deepEqual(r.vehicles.map((v) => v.plate_display).sort(), ["2ฒก4564", "605282"]);
   assert.equal(r.out, 1);
+});
+
+test("แยกตามรูปแบบการทำรายการ freeMember / Visitor", () => {
+  const now = new Date("2026-10-29T10:00:00Z");
+  const rows = [
+    { visitor_transaction_id: 1, visitor_vehicle_plate: "1กข1", visitor_checkin_date: "2026-10-29T15:00:00", visitor_checkout_date: null, transaction_type: "Visitor" },
+    { visitor_transaction_id: null, visitor_vehicle_plate: null, dpark_car_plate: "2ฒก4564", dpark_checkin: "2026-10-29T15:28:22", transaction_type: "freeMember" },
+    { visitor_transaction_id: 3, visitor_vehicle_plate: "3คค3", visitor_checkin_date: "2026-10-29T15:00:00", visitor_checkout_date: "2026-10-29T16:00:00", transaction_type: "Visitor" },
+  ];
+  const b = typeBreakdown(rows, detectFields(rows), now);
+  assert.equal(b.column, "transaction_type");
+  const fm = b.types.find((t) => t.type === "freeMember")!;
+  assert.equal(fm.rows, 1); assert.equal(fm.in_lot, 1);
+  const vi = b.types.find((t) => t.type === "Visitor")!;
+  assert.equal(vi.rows, 2); assert.equal(vi.in_lot, 1); assert.equal(vi.out, 1);
 });

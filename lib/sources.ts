@@ -2,7 +2,7 @@ import { q, one } from "./db";
 import { fetchListDelta, graphConfigured } from "./graph";
 import { normalizeGender, type FormCheckin } from "./parsers";
 import { fetchKiosk, kioskConfigured } from "./kiosk";
-import { detectFields, toVehicles, shouldHold, prepareRows, type KioskFields } from "./kioskMap";
+import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, type KioskFields } from "./kioskMap";
 import { setSetting } from "./settings";
 
 export const SOURCES = [
@@ -146,7 +146,9 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
 
     const fields = detectFields(rows, kioskOverride());
     const sampleKeys = rows[0] ? Object.keys(rows[0]) : [];
-    await setSetting("driver_fields", { fields, sampleKeys, sample: rows.slice(0, 3) });
+    // แยกตามรูปแบบการทำรายการ (freeMember / Visitor …) ไว้ตรวจว่าข้อมูลแต่ละแบบมาครบไหม
+    const types = typeBreakdown(rows, fields);
+    await setSetting("driver_fields", { fields, sampleKeys, sample: rows.slice(0, 3), types, total_rows: rows.length, at: new Date().toISOString() });
     if (rows.length && !fields.plate) {
       await markStatus("driver", false, null, "หาคอลัมน์ทะเบียนรถไม่เจอ ตั้ง KIOS_FIELD_MAP");
       return { ok: false, message: `หาคอลัมน์ทะเบียนรถไม่เจอ คอลัมน์ที่มี: ${sampleKeys.join(", ")}` };

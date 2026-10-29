@@ -223,6 +223,7 @@ function TestCheckin({ sites, onDone }: { sites: string[]; onDone: () => void })
 const FIELD_LABEL: Record<string, string> = {
   plate: "ทะเบียนรถ", province: "จังหวัด", driver_name: "ชื่อคนขับ", phone: "เบอร์โทร",
   company: "บริษัทขนส่ง", checkin_at: "เวลาเข้าลาน", zone: "ช่องจอด/โซน",
+  plate_alt: "ทะเบียนสำรอง", checkin_alt: "เวลาเข้าสำรอง", checkout_at: "เวลาออก", checkout_alt: "เวลาออกสำรอง",
 };
 
 function DriverPanel({ onDone }: { onDone: () => void }) {
@@ -273,6 +274,23 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
             {Object.entries(FIELD_LABEL).map(([k, l]) => <span key={k} className={`chip sm ${f[k] ? "ok" : k === "plate" ? "err" : "grey"}`}>{l}: {f[k] ?? "ไม่พบ"}</span>)}
           </div>
           <p className="muted xs" style={{ marginTop: 6 }}>คอลัมน์ทั้งหมดจาก KIOS: {(d.data?.fields?.sampleKeys ?? []).join(", ")} · ถ้าจับผิด ตั้ง KIOS_FIELD_MAP</p>
+        </div>
+      )}
+      {d.data?.fields && (
+        <div>
+          <b className="small">แยกตามรูปแบบการทำรายการ{d.data.fields.types?.column ? <span className="muted xs" style={{ fontWeight: 400 }}> (คอลัมน์ {d.data.fields.types.column})</span> : ""}</b>
+          {d.data.fields.types?.types?.length ? (
+            <div className="scroll-x" style={{ marginTop: 6 }}><table className="tbl">
+              <thead><tr><th>รูปแบบ</th><th>KIOS ส่งมา (แถว)</th><th>รถในลาน (คัน)</th><th>ออกแล้ว</th><th>เข้าเกิน 2 วัน</th><th>ไม่มีทะเบียน/ลิงก์</th></tr></thead>
+              <tbody>{d.data.fields.types.types.map((t: any) => (
+                <tr key={t.type}><td><b>{t.type}</b></td><td className="mono">{t.rows}</td><td className="mono" style={{ fontWeight: 700 }}>{t.in_lot}</td>
+                  <td className="mono">{t.out}</td><td className="mono">{t.old}</td><td className="mono">{t.skipped}</td></tr>
+              ))}</tbody>
+            </table></div>
+          ) : <p className="muted xs" style={{ marginTop: 4 }}>{d.data.fields.total_rows != null ? `KIOS ส่งมา ${d.data.fields.total_rows} แถว · ไม่พบคอลัมน์รูปแบบการทำรายการ (เช่น freeMember / Visitor) ในข้อมูล` : "กด “ดึงข้อมูลตอนนี้” เพื่อดูการแยกตามรูปแบบ"}</p>}
+          {d.data.fields.types?.types?.length > 0 && !d.data.fields.types.types.some((t: any) => /free.?member/i.test(t.type)) && (
+            <p className="notice warn" style={{ marginTop: 6 }}>KIOS ไม่ได้ส่งรายการ freeMember มาเลยในรอบนี้ · แปลว่า API ที่ใช้ ({d.data.kios?.rpc}) ไม่ได้รวม freeMember หรือ Body จำกัดไว้ ไม่ใช่แอปตัดทิ้ง</p>
+          )}
         </div>
       )}
       {!!d.data?.vehicles.length && (
