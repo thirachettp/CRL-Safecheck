@@ -303,7 +303,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
     <section className="card stack" style={{ padding: 18, alignSelf: "start" }}>
       <div>
         <b style={{ fontSize: 16 }}>Driver (KIOS)</b>
-        <p className="muted small" style={{ marginTop: 4 }}>เรียก API ของ KIOS ตรง (สูตรเดียวกับใน Power BI) ดึงรถที่อยู่ในลาน ใช้ทะเบียนรถเป็นตัวระบุคน หนึ่งคันนับหนึ่งคน</p>
+        <p className="muted small" style={{ marginTop: 4 }}>เรียก API ของ KIOS ตรง ดึงรถที่อยู่ในลาน ใช้ทะเบียนรถเป็นตัวระบุคน หนึ่งคันนับหนึ่งคน · <b>อัปเดตอัตโนมัติทุก ~1 นาที</b> ระหว่างซ้อม/เกิดเหตุ และตอนเปิดหน้านี้ค้างไว้</p>
       </div>
       {d.data && !d.data.configured && <p className="notice warn">ยังไม่ได้ตั้งค่า ใส่ KIOS_BASE_URL และ KIOS_API_KEY ใน Vercel แล้ว Redeploy</p>}
       {d.data?.kios && (

@@ -4,7 +4,8 @@ import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole, viewerOf, medicalOf } from "@/lib/auth";
 import { getIncident, getPeople, confirmIncident, cancelIncident, closeIncident, mergeIntoIncident } from "@/lib/incident";
-import { sourceStates, fanOutSync } from "@/lib/sources";
+import { sourceStates, fanOutSync, syncDriverIfStale } from "@/lib/sources";
+import { after } from "next/server";
 import { getSetting } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,11 @@ export const GET = handle(async (req: Request, { params }: Ctx) => {
   const id = Number((await params).id);
   const incident = await getIncident(id);
   if (!incident) return fail("ไม่พบเหตุการณ์", 404);
+  // ระหว่างเหตุการณ์: อัปเดตรถในลานจาก KIOS อัตโนมัติทุก ~1 นาที (หลังตอบหน้าจอแล้ว ไม่ทำให้ช้า)
+  if (incident.state === "active") after(async () => {
+    const r = await syncDriverIfStale(60).catch(() => null);
+    if (r?.ok) await mergeIntoIncident(id, "sync").catch(() => {});
+  });
   const [people, points, leaders, announcements, codes, sources, emer, target] = await Promise.all([
     getPeople(id),
     q(`SELECT * FROM assembly_points ORDER BY sort, code`),
