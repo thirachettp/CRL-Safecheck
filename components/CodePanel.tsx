@@ -78,7 +78,7 @@ export default function CodePanel({ id, inc, anns, codes, points, missing, compl
     <section className="card" style={{ padding: "14px 18px", borderColor: pending ? "#B45309" : undefined }}>
       <div className="row" style={{ gap: 10, marginBottom: 10 }}>
         <b className="grow" style={{ fontSize: 16 }}>แจ้งรหัส {drill && <span className="chip warn sm">ซ้อม</span>}</b>
-        <span className="muted xs">Admin / Safety · ทุก Code ส่งแจ้งเตือนถึงทุกคน</span>
+        <span className="muted xs">Admin / Safety / LP · ทุก Code ส่งแจ้งเตือนถึงทุกคน</span>
       </div>
       <div className="code-steps">
         {steps.map((s, i) => (

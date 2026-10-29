@@ -445,6 +445,24 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
 }
 
 {
+  // บทบาท Loss Prevention: ยืนยัน/ประกาศรหัส/ปิดได้ · เข้าแหล่งข้อมูล ตั้งค่า ข้อมูลการแพทย์ไม่ได้
+  await j("/api/admin/confirmers", { method: "POST", json: { name: "LP ทดสอบ", role: "lp", pin: "4321" } });
+  const lp = (await j("/api/auth", { method: "POST", json: { pin: "4321" } })).token;
+  ok(await fails(j("/api/sources", { tok: lp })), "LP เข้าแหล่งข้อมูลไม่ได้");
+  ok(await fails(j("/api/admin/versions", { method: "POST", json: { action: "save" }, tok: lp })), "LP แก้ตั้งค่าไม่ได้");
+  const { id: lq } = await j("/api/incidents", { method: "POST", json: { action: "report", mode: "drill", kind: "ไฟไหม้" }, tok: rvTok });
+  await j(`/api/incidents/${lq}/announce`, { method: "POST", json: { kind: "check" }, tok: lp });
+  await j(`/api/incidents/${lq}`, { method: "POST", json: { action: "confirm", closedPoints: [] }, tok: lp });
+  const li = await j(`/api/incidents/${lq}`, { tok: lp });
+  ok(li.incident.state === "active" && li.incident.confirmed_by === "LP ทดสอบ", "LP ยืนยันเริ่มซ้อมได้");
+  ok(li.people.every((p: any) => p.symptoms == null && p.hospital == null) && li.viewer === "staff", "LP ไม่เห็นข้อมูลการแพทย์");
+  ok(await fails(j(`/api/incidents/${lq}/injury`, { tok: lp })), "LP เข้าหน้าผู้บาดเจ็บไม่ได้");
+  ok(li.people.every((p: any) => p.person_key.startsWith("emp:") && p.flag_no), "ซ้อม: มีเฉพาะคนที่มีรายชื่อในธง");
+  ok(await fails(j(`/api/incidents/${lq}/people`, { method: "POST", json: { name: "คนนอก", by: "x" } })), "ซ้อม: เพิ่มคนนอกรายชื่อไม่ได้");
+  await j(`/api/incidents/${lq}/announce`, { method: "POST", json: { kind: "clear" }, tok: lp });
+  ok((await j(`/api/incidents/${lq}`)).incident.state === "closed", "LP ปิดการซ้อมด้วยคุณสบายใจได้");
+}
+{
   // แจ้งรหัส: มีคนแจ้ง → Code 500 → ยืนยัน → 500 ด่วนมาก → คุณสบายใจ (ปิด)
   const { id: ci } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้", area: "Sort ชั้น 2" }, tok: rvTok });
   ok(await fails(j(`/api/incidents/${ci}/announce`, { method: "POST", json: { kind: "check" }, tok: rvTok })), "แจ้งรหัสต้องเป็น Admin / Safety");

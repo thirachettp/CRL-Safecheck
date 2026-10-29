@@ -50,7 +50,7 @@ export async function notify(to: Audience, p: Payload) {
     : to === "staff"
       ? await q<any>(
           `SELECT s.* FROM push_subs s LEFT JOIN profiles p ON p.code = s.code
-           WHERE s.role IN ('admin','safety') OR p.role IN ('admin','safety') OR s.code = ANY($1::text[])`, [boot])
+           WHERE s.role IN ('admin','safety','lp') OR p.role IN ('admin','safety','lp') OR s.code = ANY($1::text[])`, [boot])
       : await q<any>(`SELECT * FROM push_subs`);
   const body = JSON.stringify({ ...p, url: p.url ?? "/" });
   let sent = 0, failed = 0;

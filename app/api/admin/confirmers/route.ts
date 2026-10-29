@@ -24,7 +24,7 @@ export const POST = handle(async (req: Request) => {
       [Number(b.id), b.name || null, b.role || null, b.pin ? hashPin(String(b.pin)) : null]);
     return ok({ saved: true });
   }
-  if (!String(b.name ?? "").trim() || !["admin", "safety"].includes(b.role)) return fail("ระบุชื่อและบทบาท");
+  if (!String(b.name ?? "").trim() || !["admin", "safety", "lp"].includes(b.role)) return fail("ระบุชื่อและบทบาท");
   await q(`INSERT INTO confirmers (name, role, pin_hash) VALUES ($1, $2, $3)`,
     [b.name.trim(), b.role, b.pin ? hashPin(String(b.pin)) : null]);
   return ok({ saved: true });

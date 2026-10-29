@@ -2,9 +2,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./lib";
 
-export type Role = "user" | "safety" | "admin";
+export type Role = "user" | "safety" | "lp" | "admin";
 export type User = { code: string; name: string; role: Role; token: string; mustChange?: boolean };
-export type Admin = { token: string; name: string; role: "admin" | "safety"; exp: number; viaAccount?: boolean };
+export type Admin = { token: string; name: string; role: "admin" | "safety" | "lp"; exp: number; viaAccount?: boolean };
 
 const EVT = "sc-auth";
 const ping = () => { try { window.dispatchEvent(new Event(EVT)); } catch {} };
@@ -102,10 +102,10 @@ export function useUser() {
 export function useAdmin() {
   const { user, pin, ready } = useAuthState();
   const admin: Admin | null = pin
-    ?? (user && (user.role === "admin" || user.role === "safety")
+    ?? (user && (user.role === "admin" || user.role === "safety" || user.role === "lp")
       ? { token: user.token, name: user.name, role: user.role, exp: Number.MAX_SAFE_INTEGER, viaAccount: true } : null);
   const unlock = useCallback(async (p: string) => {
-    const r = await api<{ token: string; name: string; role: "admin" | "safety" }>("/api/auth", { method: "POST", json: { pin: p } });
+    const r = await api<{ token: string; name: string; role: "admin" | "safety" | "lp" }>("/api/auth", { method: "POST", json: { pin: p } });
     const a = { ...r, exp: Date.now() + 12 * 3600e3 - 60e3 };
     try { sessionStorage.setItem("sc_admin", JSON.stringify(a)); } catch {}
     ping();

@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /** ประกาศ Code (Safety / Admin) เวลาบันทึกอัตโนมัติ แล้วแจ้งเตือนทุกคน */
 export const POST = handle(async (req: Request, { params }: Ctx) => {
-  const actor = await requireRole(req, ["admin", "safety"]);
+  const actor = await requireRole(req, ["admin", "safety", "lp"]);
   const id = Number((await params).id);
   const b = await req.json();
   const kinds: CodeKind[] = ["check", "urgent", "clear", "other"];

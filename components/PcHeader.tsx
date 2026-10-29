@@ -73,7 +73,7 @@ export function AccountButton() {
     <div className="acct-wrap" ref={box}>
       <button className={`acct${role !== "user" ? " staff" : ""}`} onClick={() => setOpen(!open)} aria-expanded={open}>
         <IUser size={16} /><span className="ellip" style={{ maxWidth: 160 }}>{name}</span>
-        <span className={`chip sm ${role === "admin" ? "err" : role === "safety" ? "warn" : "grey"}`}>{pinOnly ? `PIN ${ROLE_LABEL[role]}` : ROLE_LABEL[role]}</span>
+        <span className={`chip sm ${role === "admin" ? "err" : role === "safety" || role === "lp" ? "warn" : "grey"}`}>{pinOnly ? `PIN ${ROLE_LABEL[role]}` : ROLE_LABEL[role]}</span>
         <IDown size={14} />
       </button>
       {open && (

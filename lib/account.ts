@@ -126,7 +126,7 @@ export async function listUsers(term: string) {
 }
 
 export async function setRole(code: string, role: UserRole, by: string) {
-  if (!["user", "safety", "admin"].includes(role)) throw err("บทบาทไม่ถูกต้อง");
+  if (!["user", "safety", "lp", "admin"].includes(role)) throw err("บทบาทไม่ถูกต้อง");
   if (bootstrapAdmins().includes(code) && role !== "admin") throw err("รหัสนี้ถูกกำหนดเป็น Admin ใน ADMIN_CODES ของ Vercel แก้ที่นั่นแทน");
   if (code === by && role !== "admin") throw err("ลดสิทธิ์ตัวเองไม่ได้ ให้ Admin คนอื่นทำ");
   const r = await one<any>(`UPDATE profiles SET role = $2 WHERE code = $1 AND (password_hash IS NOT NULL OR email IS NOT NULL) RETURNING code`, [code, role]);

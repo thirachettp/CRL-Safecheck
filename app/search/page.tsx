@@ -267,7 +267,7 @@ function SearchIncident({ id, pending }: { id: number; pending: any }) {
             })}
             {list.length > LIMIT && <div className="muted xs" style={{ textAlign: "center", padding: 8 }}>แสดง {LIMIT} จาก {list.length} คน · พิมพ์ค้นหาหรือเลือกกลุ่มเพื่อแคบลง</div>}
             {list.length === 0 && <p className="muted small" style={{ textAlign: "center", padding: 16 }}>{bypass ? "ไม่พบชื่อนี้ในเหตุการณ์" : "ไม่มีรายชื่อในตัวกรองนี้"}</p>}
-            <button className="btn" onClick={() => setAdding(true)}>+ เพิ่มคนนอกรายชื่อ</button>
+            {realMode && <button className="btn" onClick={() => setAdding(true)}>+ เพิ่มคนนอกรายชื่อ</button>}
           </div>
 
           <div className="m-foot" style={{ padding: "8px 10px" }}>
@@ -308,12 +308,6 @@ function SearchIncident({ id, pending }: { id: number; pending: any }) {
             {err && <p className="notice err">{err}</p>}
             <b className="muted xs" style={{ margin: "0 4px" }}>มาวันนี้ · ติ๊กไว้ให้แล้ว แตะเอาออกคนที่ไม่เห็น</b>
             {rollRows.map((m) => <RollRow key={m.person_key} m={m} setTick={setTick} setInj={setInj} />)}
-            {rollAbs.length > 0 && (
-              <>
-                <b className="muted xs" style={{ margin: "8px 4px 0" }}>ปลอดภัยตามระบบ · ไม่ได้ติ๊ก ติ๊กถ้าเห็นตัวที่จุดรวมพล</b>
-                {rollAbs.map((m) => <RollRow key={m.person_key} m={m} dashed setTick={setTick} setInj={setInj} />)}
-              </>
-            )}
             {doneList.length > 0 && (
               <>
                 <b className="muted xs" style={{ margin: "8px 4px 0" }}>ระบุสถานะแล้ว ({doneList.length})</b>

@@ -223,7 +223,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
   }
   // ซ้อม: นับเฉพาะคนที่อยู่ในชุดธง (ไม่ดึงคนขับ KIOS / DIV+ / Outsource ที่ไม่มีในธง)
   // ข้อมูลเข้า-ออกยังใช้ตัดสิน มา/ไม่มา ของคนในธงเหมือนเดิม
-  if (inc.mode === "drill") for (const k of [...out.keys()]) if (!k.startsWith("emp:") || !planMap.has(k.slice(4))) out.delete(k);
+  if (inc.mode === "drill") for (const [k, c] of [...out.entries()]) if (!k.startsWith("emp:") || !planMap.has(k.slice(4)) || c.flag_no == null || c.flag_no === "") out.delete(k);
 
   // ชื่ออังกฤษ: ชุดธง → โปรไฟล์ → ชื่อใน MS Form ที่พิมพ์เป็นภาษาอังกฤษ
   const enProf = new Map<string, string>(profiles.filter((p) => p.name_en).map((p) => [p.code, p.name_en]));
@@ -481,6 +481,8 @@ export async function addManualPerson(
   p: { name: string; gender?: string | null; flag_no?: string | null; note?: string; by?: string },
 ) {
   await assertActive(incidentId);
+  const inc = await getIncident(incidentId);
+  if (inc?.mode === "drill") throw new UserError("ตอนซ้อมนับเฉพาะคนที่มีรายชื่อในธง · เพิ่มคนนอกรายชื่อไม่ได้");
   const key = `manual:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
   const ap = p.flag_no != null
     ? (await one<{ ap: string }>(`SELECT max(assembly_point) AS ap FROM evac_plan WHERE flag_no = $1`, [p.flag_no]))?.ap ?? null

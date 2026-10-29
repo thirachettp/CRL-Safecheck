@@ -38,7 +38,7 @@ export const POST = handle(async (req: Request) => {
     return ok({ id, pushed });
   }
   if (b.action === "drill") {
-    const actor = await requireRole(req, ["admin", "safety"]);
+    const actor = await requireRole(req, ["admin", "safety", "lp"]);
     // ซ้อม: ดึงข้อมูลเข้า-ออกล่าสุดก่อน แล้วค่อยเทียบกับผลตรวจทานธงตอนสร้างรายชื่อ (รอไม่เกิน ~15 วินาที)
     const pulled = await fanOutSync(15_000).catch(() => []);
     const id = await startDrill(actor, b.title);

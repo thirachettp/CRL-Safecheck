@@ -45,7 +45,7 @@ export default function BottomNav() {
               {user || pinOnly ? (
                 <>
                   <div className="row" style={{ gap: 8 }}><IUser size={18} /><b className="grow">{user?.name ?? admin!.name}</b>
-                    <span className={`chip sm ${role === "admin" ? "err" : role === "safety" ? "warn" : "grey"}`}>{pinOnly ? `PIN ${ROLE_LABEL[role!]}` : ROLE_LABEL[role!]}</span></div>
+                    <span className={`chip sm ${role === "admin" ? "err" : role === "safety" || role === "lp" ? "warn" : "grey"}`}>{pinOnly ? `PIN ${ROLE_LABEL[role!]}` : ROLE_LABEL[role!]}</span></div>
                   <div className="row" style={{ gap: 8, marginTop: 10 }}>
                     {user && <Link href="/profile" className="btn btn-sm grow" onClick={() => setOpen(false)}>โปรไฟล์ของฉัน</Link>}
                     <button className="btn btn-sm grow" style={{ color: "#9F1239" }}

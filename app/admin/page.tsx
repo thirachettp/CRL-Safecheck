@@ -587,7 +587,7 @@ function ConfirmersCard() {
       {(c.data?.confirmers ?? []).map((x) => (
         <div key={x.id} className="tr" style={{ gridTemplateColumns: "minmax(0,1fr) auto auto" }}>
           <div>{x.name}{!x.has_pin && <span className="chip err sm" style={{ marginLeft: 6 }}>ยังไม่มีรหัส</span>}</div>
-          <span className={`chip ${x.role === "admin" ? "grey" : "warn"}`}>{x.role === "admin" ? "Admin" : "Safety Officer"}</span>
+          <span className={`chip ${x.role === "admin" ? "grey" : "warn"}`}>{x.role === "admin" ? "Admin" : x.role === "lp" ? "Loss Prevention" : "Safety Officer"}</span>
           {pinFor === x.id ? (
             <form className="row" style={{ flexWrap: "nowrap" }} onSubmit={async (e) => { e.preventDefault(); if (await call({ id: x.id, pin })) { setPinFor(null); setPin(""); } }}>
               <input className="in mono" style={{ marginTop: 0, width: 110 }} type="password" inputMode="numeric" placeholder="4–8 หลัก" value={pin} onChange={(e) => setPin(e.target.value)} aria-label={`รหัสใหม่ของ ${x.name}`} autoFocus />
@@ -600,7 +600,7 @@ function ConfirmersCard() {
         <input className="in" placeholder="ชื่อผู้ยืนยัน" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required aria-label="ชื่อผู้ยืนยัน" />
         <div className="row" style={{ flexWrap: "nowrap" }}>
           <select className="in" style={{ marginTop: 0 }} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} aria-label="บทบาท">
-            <option value="safety">Safety Officer</option><option value="admin">Admin</option></select>
+            <option value="safety">Safety Officer</option><option value="lp">Loss Prevention</option><option value="admin">Admin</option></select>
           <input className="in mono" style={{ marginTop: 0 }} type="password" inputMode="numeric" placeholder="รหัส 4–8 หลัก" value={f.pin} onChange={(e) => setF({ ...f, pin: e.target.value })} aria-label="รหัส" />
           <button className="btn btn-sm" type="submit">+ เพิ่ม</button>
         </div>

@@ -28,7 +28,7 @@ function Home() {
   const plan = usePoll<{ flags: any[]; points: Point[]; extra_areas?: string[]; kinds?: { kinds: { name: string; code: string; main?: boolean }[] } }>("/api/plan", 0);
   const [otherKind, setOtherKind] = useState("");
   const [drillPrep, setDrillPrep] = useState(false);
-  const staff = admin?.role === "admin" || admin?.role === "safety";
+  const staff = admin?.role === "admin" || admin?.role === "safety" || admin?.role === "lp";
   const [showLogin, setShowLogin] = useState(false);
   const [reporting, setReporting] = useState(false);
   // ประเภทเหตุจากหน้าตั้งค่า (ไฟไหม้ 500 · แอมโมเนียรั่ว 520 · แผ่นดินไหว 800) + อื่นๆ
@@ -197,7 +197,7 @@ function Home() {
               {staff && <Link className="btn btn-block" href={`/dashboard?id=${inc.id}`}>แจ้งรหัส (Code 500) บน Dashboard</Link>}
             </div>
             <div className="card stack" style={{ padding: 16, background: "#17191C", color: "#fff", borderColor: "#17191C" }}>
-              <div className="row"><ILock size={18} /><b>สำหรับ Admin / Safety Officer</b></div>
+              <div className="row"><ILock size={18} /><b>สำหรับ Admin / Safety Officer / LP</b></div>
               <div className="small" style={{ fontWeight: 600 }}>จุดรวมพลที่ใช้ไม่ได้ (แตะเพื่อปิด)</div>
               <div className="stack" style={{ gap: 6 }}>
                 {points.length === 0 && <p className="small" style={{ opacity: .8 }}>ยังไม่มีจุดรวมพลในระบบ ตั้งที่หน้าตั้งค่า</p>}
@@ -216,7 +216,7 @@ function Home() {
                 })}
               </div>
               {admin ? (
-                <div className="small" style={{ background: "rgba(255,255,255,.12)", borderRadius: 8, padding: "8px 10px" }}>ยืนยันในนาม <b>{admin.name}</b> ({admin.role === "admin" ? "Admin" : "Safety Officer"})</div>
+                <div className="small" style={{ background: "rgba(255,255,255,.12)", borderRadius: 8, padding: "8px 10px" }}>ยืนยันในนาม <b>{admin.name}</b> ({admin.role === "admin" ? "Admin" : admin.role === "lp" ? "Loss Prevention" : "Safety Officer"})</div>
               ) : (
                 <label className="small">PIN ยืนยัน (หรือเข้าสู่ระบบด้วยบัญชี Admin / Safety)
                   <input type="password" inputMode="numeric" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value)}

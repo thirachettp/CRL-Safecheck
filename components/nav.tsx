@@ -17,4 +17,4 @@ export const NAV: NavItem[] = [
 
 export const isOn = (it: NavItem, path: string) => (it.match === "/" ? path === "/" : path.startsWith(it.match));
 export const allowed = (it: NavItem, role: Role | null) => !it.roles || (!!role && it.roles.includes(role));
-export const ROLE_LABEL: Record<Role, string> = { admin: "Admin", safety: "Safety Officer", user: "ผู้ใช้ทั่วไป" };
+export const ROLE_LABEL: Record<Role, string> = { admin: "Admin", safety: "Safety Officer", lp: "Loss Prevention", user: "ผู้ใช้ทั่วไป" };

@@ -4,10 +4,10 @@ import { api, fmtDateTime } from "./lib";
 import { useUser } from "./identity";
 
 type U = {
-  code: string; name: string | null; cost_center: string | null; cc_name: string | null; email: string; role: "user" | "safety" | "admin";
+  code: string; name: string | null; cost_center: string | null; cc_name: string | null; email: string; role: "user" | "safety" | "lp" | "admin";
   has_password: boolean; must_change_pw: boolean; locked: boolean | null; last_login_at: string | null; fixed_admin: boolean;
 };
-const ROLES: [U["role"], string][] = [["user", "ผู้ใช้ทั่วไป"], ["safety", "Safety Officer"], ["admin", "Admin"]];
+const ROLES: [U["role"], string][] = [["user", "ผู้ใช้ทั่วไป"], ["safety", "Safety Officer"], ["lp", "Loss Prevention"], ["admin", "Admin"]];
 
 /** Admin: ปรับบทบาท และรีเซ็ตรหัสผ่าน เท่านั้น (ข้อมูลอื่นของผู้ใช้แก้ไม่ได้ และไม่มีใครเห็นรหัสผ่านจริง) */
 export default function UsersPanel() {

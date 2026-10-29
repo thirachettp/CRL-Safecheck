@@ -5,7 +5,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { q, one } from "./db";
 
-export type Role = "admin" | "safety";
+export type Role = "admin" | "safety" | "lp";
 export type UserRole = Role | "user";
 export type Actor = { id: number; name: string; role: Role; code?: string };
 export type Session = { code: string; name: string; role: UserRole };
@@ -60,7 +60,7 @@ export const bootstrapAdmins = () => {
   return b ? [...list, b] : list;
 };
 export const effectiveRole = (code: string, dbRole: string | null): UserRole =>
-  bootstrapAdmins().includes(code) ? "admin" : (["admin", "safety"].includes(dbRole ?? "") ? (dbRole as Role) : "user");
+  bootstrapAdmins().includes(code) ? "admin" : (["admin", "safety", "lp"].includes(dbRole ?? "") ? (dbRole as Role) : "user");
 
 /** อายุการเข้าสู่ระบบ: ผู้ใช้ทั่วไป 30 วัน · Admin / Safety 12 ชม. (กันเครื่อง PC ส่วนกลางค้างสิทธิ์ Admin) */
 export const SESSION_HOURS = { user: 30 * 24, staff: 12 };
@@ -115,7 +115,7 @@ export async function requireRole(req: Request, roles: Role[] = ["admin", "safet
     const s = await sessionOf(req);
     if (s) {
       if (s.role === "user") {
-        const e: any = new Error("บัญชีนี้ไม่มีสิทธิ์ Admin / Safety");
+        const e: any = new Error("บัญชีนี้ไม่มีสิทธิ์ Admin / Safety / LP");
         e.status = 403;
         throw e;
       }
@@ -128,6 +128,14 @@ export async function requireRole(req: Request, roles: Role[] = ["admin", "safet
     throw e;
   }
   return a;
+}
+
+/** ข้อมูลการแพทย์ (อาการ / รพ.) เห็นเฉพาะ Admin / Safety — LP ไม่เห็น */
+export async function medicalOf(req: Request): Promise<boolean> {
+  const a = actorOf(req);
+  if (a) return a.role === "admin" || a.role === "safety";
+  const s = await sessionOf(req);
+  return s?.role === "admin" || s?.role === "safety";
 }
 
 /** ใครกำลังดู: anon = ไม่ได้เข้าสู่ระบบ · user = บัญชีทั่วไป · staff = Admin / Safety (บัญชีหรือ PIN) */

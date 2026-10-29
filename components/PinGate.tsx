@@ -6,7 +6,7 @@ import LoginSheet from "./LoginSheet";
 
 /** ขอรหัส Admin / Safety Officer ก่อนแสดงเนื้อหา */
 export default function PinGate({ roles = ["admin", "safety"], title, children }: {
-  roles?: ("admin" | "safety")[]; title: string; children: (a: Admin) => React.ReactNode;
+  roles?: ("admin" | "safety" | "lp")[]; title: string; children: (a: Admin) => React.ReactNode;
 }) {
   const { admin, ready, unlock } = useAdmin();
   const { user } = useUser();

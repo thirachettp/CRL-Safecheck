@@ -364,4 +364,9 @@ export const SCHEMA: string[] = [
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now()
   )`,
+  // v15: บทบาท Loss Prevention (lp) — ยืนยัน/ประกาศรหัส/ปิดซ้อมและเหตุได้ แต่เข้าแหล่งข้อมูลและตั้งค่าไม่ได้
+  `ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check`,
+  `ALTER TABLE profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('user','safety','lp','admin'))`,
+  `ALTER TABLE confirmers DROP CONSTRAINT IF EXISTS confirmers_role_check`,
+  `ALTER TABLE confirmers ADD CONSTRAINT confirmers_role_check CHECK (role IN ('admin','safety','lp'))`,
 ];
