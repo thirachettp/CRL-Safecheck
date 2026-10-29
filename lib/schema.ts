@@ -372,4 +372,16 @@ export const SCHEMA: string[] = [
   // v16: รถในลานจาก Excel รายงาน dParkTransactions (เติม freeMember ที่ API ไม่ส่งมา) · หมดอายุเอง 12 ชม.
   `ALTER TABLE driver_presence ADD COLUMN IF NOT EXISTS src text NOT NULL DEFAULT 'api'`,
   `ALTER TABLE driver_presence ADD COLUMN IF NOT EXISTS uploaded_at timestamptz`,
+  // v17: สมุดรายชื่อคนขับตามทะเบียน (เรียนรู้จาก visitor / Admin ตั้งเอง) ใช้เติมชื่อให้รถ freeMember
+  `CREATE TABLE IF NOT EXISTS driver_directory (
+    plate       text PRIMARY KEY,
+    plate_display text,
+    driver_name text,
+    phone       text,
+    company     text,
+    source      text NOT NULL DEFAULT 'visitor',
+    updated_by  text,
+    last_seen   timestamptz NOT NULL DEFAULT now()
+  )`,
+  `ALTER TABLE driver_presence ADD COLUMN IF NOT EXISTS name_src text`,
 ];

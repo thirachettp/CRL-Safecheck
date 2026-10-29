@@ -2,7 +2,7 @@ import { q, one } from "./db";
 import { fetchListDelta, graphConfigured } from "./graph";
 import { normalizeGender, type FormCheckin } from "./parsers";
 import { fetchKiosk, fetchDpark, dparkEnabled, kioskConfigured } from "./kiosk";
-import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, type KioskFields, type Vehicle } from "./kioskMap";
+import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, driverNames, nearPlate, type KioskFields, type Vehicle } from "./kioskMap";
 import { setSetting } from "./settings";
 
 export const SOURCES = [
@@ -186,17 +186,38 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
     }
 
     // แถวจาก API แทนที่ทั้งหมด · แถวจาก Excel (freeMember) เก็บไว้จนหมดอายุ 12 ชม. แต่ถ้า API มีทะเบียนนั้น ใช้ของ API
+    // สมุดรายชื่อคนขับ: จำชื่อจาก visitor ทุกแถว (ไม่ทับที่ Admin ตั้งเอง) · เก็บ 90 วันหลังเห็นล่าสุด
+    const names = driverNames(rows, fields);
+    if (names.length) await q(
+      `INSERT INTO driver_directory (plate, plate_display, driver_name, phone, company, source, last_seen)
+       SELECT x.p, x.pd, x.n, x.ph, x.c, 'visitor', now() FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) AS x(p, pd, n, ph, c)
+       ON CONFLICT (plate) DO UPDATE SET last_seen = now(),
+         driver_name = CASE WHEN driver_directory.source = 'manual' THEN driver_directory.driver_name ELSE EXCLUDED.driver_name END,
+         phone = CASE WHEN driver_directory.source = 'manual' THEN COALESCE(driver_directory.phone, EXCLUDED.phone) ELSE COALESCE(EXCLUDED.phone, driver_directory.phone) END,
+         company = COALESCE(EXCLUDED.company, driver_directory.company)`,
+      [names.map((n) => n.plate), names.map((n) => n.plate_display), names.map((n) => n.driver_name), names.map((n) => n.phone), names.map((n) => n.company)]);
+    await q(`DELETE FROM driver_directory WHERE source = 'visitor' AND last_seen < now() - interval '90 days'`);
+    // รถที่ไม่มีชื่อ (เช่น freeMember): เติมจากสมุดรายชื่อ
+    const dir = await q<any>(`SELECT plate, driver_name, phone, company, source FROM driver_directory WHERE driver_name IS NOT NULL`);
+    const nameSrc = new Map<string, string>();
+    for (const v of vehicles) {
+      if (v.driver_name) { nameSrc.set(v.plate, "visitor"); continue; }
+      const key = v.plate.replace(/^ID-/, "");
+      const d = dir.find((x) => nearPlate(x.plate, key));
+      if (d) { v.driver_name = d.driver_name; v.phone = v.phone ?? d.phone; nameSrc.set(v.plate, d.source === "manual" ? "manual" : "history"); }
+    }
+
     await q(`DELETE FROM driver_presence WHERE src = 'api' OR (src = 'xlsx' AND uploaded_at < now() - interval '12 hours')`);
     if (vehicles.length) {
       await q(
-        `INSERT INTO driver_presence (plate, plate_display, driver_name, phone, company, zone, checkin_at)
-         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[])
+        `INSERT INTO driver_presence (plate, plate_display, driver_name, phone, company, zone, checkin_at, name_src)
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::text[])
          ON CONFLICT (plate) DO UPDATE SET plate_display = EXCLUDED.plate_display, driver_name = EXCLUDED.driver_name, phone = EXCLUDED.phone,
-           company = EXCLUDED.company, zone = EXCLUDED.zone, checkin_at = EXCLUDED.checkin_at, src = 'api', uploaded_at = NULL, seen_at = now()`,
+           company = EXCLUDED.company, zone = EXCLUDED.zone, checkin_at = EXCLUDED.checkin_at, name_src = EXCLUDED.name_src, src = 'api', uploaded_at = NULL, seen_at = now()`,
         [
           vehicles.map((v) => v.plate), vehicles.map((v) => v.plate_display), vehicles.map((v) => v.driver_name),
           vehicles.map((v) => v.phone), vehicles.map((v) => v.company), vehicles.map((v) => v.zone),
-          vehicles.map((v) => v.checkin_at),
+          vehicles.map((v) => v.checkin_at), vehicles.map((v) => nameSrc.get(v.plate) ?? null),
         ],
       );
     }

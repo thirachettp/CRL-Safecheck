@@ -192,6 +192,35 @@ function ExcelUpload({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** ชื่อคนขับ: จาก visitor / จำจากครั้งก่อน / Admin ตั้งเอง (แก้ได้) */
+function DriverName({ v, onDone }: { v: any; onDone: () => void }) {
+  const [edit, setEdit] = useState(false);
+  const [name, setName] = useState(v.driver_name ?? "");
+  const [phone, setPhone] = useState(v.phone ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const SRC: Record<string, string> = { history: "จำจากครั้งก่อน", manual: "ตั้งเอง" };
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setErr(null);
+    try { await api("/api/sources/driver", { method: "POST", json: { action: "name", plate: v.plate, plate_display: v.plate_display, driver_name: name, phone } }); setEdit(false); onDone(); }
+    catch (x: any) { setErr(x.message); }
+  }
+  if (edit) return (
+    <form className="row" style={{ gap: 4, flexWrap: "nowrap" }} onSubmit={save}>
+      <input className="in" style={{ marginTop: 0, minWidth: 140 }} autoFocus placeholder="ชื่อคนขับ" value={name} onChange={(e) => setName(e.target.value)} />
+      <input className="in mono" style={{ marginTop: 0, width: 120 }} placeholder="เบอร์" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      <button className="btn btn-sm btn-pri" type="submit">บันทึก</button>
+      <button className="lk" type="button" onClick={() => setEdit(false)}>ยกเลิก</button>
+      {err && <span className="xs" style={{ color: "#B91C1C" }}>{err}</span>}
+    </form>
+  );
+  return (
+    <span>{v.driver_name ?? <span className="muted">—</span>} <span className="muted xs">{v.phone ?? ""}</span>
+      {v.name_src && SRC[v.name_src] && <span className="chip sm grey" style={{ marginLeft: 6 }}>{SRC[v.name_src]}</span>}
+      <button className="lk" style={{ marginLeft: 6, minHeight: 0, padding: 0 }} onClick={() => { setName(v.driver_name ?? ""); setPhone(v.phone ?? ""); setEdit(true); }}>{v.driver_name ? "แก้" : "+ ใส่ชื่อ"}</button>
+    </span>
+  );
+}
+
 /** Excel รายงานรถเข้าออก (เมนู dParkTransactions) → เติมรถ freeMember ที่ API ไม่ส่งมา */
 function DparkUpload({ onDone }: { onDone: () => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -334,7 +363,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
             <thead><tr><th>ทะเบียน</th><th>คนขับ</th><th>บริษัท</th><th>โซน</th><th>เข้าลาน</th></tr></thead>
             <tbody>
               {d.data.vehicles.map((v) => (
-                <tr key={v.plate}><td><b>{v.plate_display ?? v.plate}</b></td><td>{v.driver_name ?? "—"} <span className="muted xs">{v.phone ?? ""}</span></td>
+                <tr key={v.plate}><td><b>{v.plate_display ?? v.plate}</b></td><td><DriverName v={v} onDone={() => d.reload()} /></td>
                   <td>{v.company ?? "—"}{v.src === "xlsx" && <span className="chip sm warn" style={{ marginLeft: 6 }}>จาก Excel</span>}</td><td>{v.zone ?? "—"}</td><td className="mono">{fmtDateTime(v.checkin_at)}</td></tr>
               ))}
             </tbody>

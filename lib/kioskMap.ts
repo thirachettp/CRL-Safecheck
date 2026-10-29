@@ -274,3 +274,21 @@ export function mergeDriverSources(dp: Vehicle[], dpSeen: Set<string>, vis: Vehi
   }
   return { vehicles: out, visOnly };
 }
+
+/** ชื่อ/เบอร์คนขับจากทุกแถว visitor (รวมที่ออกแล้ว) ไว้จำว่าทะเบียนนี้ใครขับ */
+export function driverNames(rows: Record<string, unknown>[], f: KioskFields) {
+  const m = new Map<string, { plate: string; plate_display: string; driver_name: string | null; phone: string | null; company: string | null; at: string }>();
+  for (const r of rows) {
+    const a = f.plate ? str(r[f.plate]) : null, b = f.plate_alt ? str(r[f.plate_alt]) : null;
+    const raw = [a, b].find((x) => x && !isUrl(x)) ?? null;
+    const plate = normalizePlate(raw);
+    const name = f.driver_name ? str(r[f.driver_name]) : null;
+    if (!plate || plate.length < 4 || !name || isUrl(name)) continue;
+    const at = (f.checkin_at ? toIso(r[f.checkin_at]) : null) ?? (f.checkin_alt ? toIso(r[f.checkin_alt]) : null) ?? "";
+    const prev = m.get(plate);
+    if (!prev || at > prev.at) m.set(plate, { plate, plate_display: raw!, driver_name: name, phone: f.phone ? str(r[f.phone]) : null, company: f.company ? str(r[f.company]) : null, at });
+  }
+  return [...m.values()];
+}
+/** ทะเบียนใกล้กัน: ตรงกัน หรือขึ้นต้นเหมือนกัน (มี/ไม่มีจังหวัดต่อท้าย) */
+export const nearPlate = (a: string, b: string) => a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)));
