@@ -1,8 +1,8 @@
 import { q, one } from "./db";
 import { fetchListDelta, graphConfigured } from "./graph";
 import { normalizeGender, type FormCheckin } from "./parsers";
-import { fetchKiosk, kioskConfigured } from "./kiosk";
-import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, type KioskFields } from "./kioskMap";
+import { fetchKiosk, fetchDpark, dparkEnabled, kioskConfigured } from "./kiosk";
+import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, type KioskFields, type Vehicle } from "./kioskMap";
 import { setSetting } from "./settings";
 
 export const SOURCES = [
@@ -136,26 +136,47 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
     }
   }
   try {
-    const rows = prepareRows(await fetchKiosk());
+    // 2 แหล่งพร้อมกัน: รายการลานจอด (dpark · มี freeMember) + รายการ visitor (มีชื่อ/เบอร์คนขับ)
+    const [visR, dpR] = await Promise.allSettled([fetchKiosk(), dparkEnabled() ? fetchDpark() : Promise.reject(new Error("off"))]);
+    if (visR.status === "rejected" && dpR.status === "rejected") throw visR.reason;
+    const rows = visR.status === "fulfilled" ? prepareRows(visR.value) : [];
+    const dpRows = dpR.status === "fulfilled" ? prepareRows(dpR.value) : null;
     await q(`INSERT INTO ingest_raw (source, batch_id, payload) VALUES ('driver', $1, $2) ON CONFLICT DO NOTHING`, [
       `kios-${Date.now()}`,
-      JSON.stringify(rows),
+      JSON.stringify({ visitor: rows, dpark: dpRows }),
     ]);
     // ของดิบเก็บ 14 วันพอสำหรับตรวจย้อนหลัง
     await q(`DELETE FROM ingest_raw WHERE source = 'driver' AND received_at < now() - interval '14 days'`);
 
     const fields = detectFields(rows, kioskOverride());
+    const dpF = dpRows ? dparkFields(dpRows) : null;
     const sampleKeys = rows[0] ? Object.keys(rows[0]) : [];
     // แยกตามรูปแบบการทำรายการ (freeMember / Visitor …) ไว้ตรวจว่าข้อมูลแต่ละแบบมาครบไหม
-    const types = typeBreakdown(rows, fields);
-    await setSetting("driver_fields", { fields, sampleKeys, sample: rows.slice(0, 3), types, total_rows: rows.length, at: new Date().toISOString() });
-    if (rows.length && !fields.plate) {
+    const types = dpRows && dpF ? typeBreakdown(dpRows, dpF) : typeBreakdown(rows, fields);
+    await setSetting("driver_fields", {
+      fields, sampleKeys, sample: rows.slice(0, 3), types, total_rows: dpRows?.length ?? rows.length, at: new Date().toISOString(),
+      dpark: dpRows ? { ok: true, fields: dpF, keys: dpRows[0] ? Object.keys(dpRows[0]) : [], rows: dpRows.length }
+        : { ok: false, error: dpR.status === "rejected" ? String((dpR.reason as any)?.message ?? dpR.reason) : null },
+      visitor: visR.status === "fulfilled" ? { ok: true, rows: rows.length } : { ok: false, error: String((visR.reason as any)?.message ?? visR.reason) },
+    });
+    if (!dpRows && rows.length && !fields.plate) {
       await markStatus("driver", false, null, "หาคอลัมน์ทะเบียนรถไม่เจอ ตั้ง KIOS_FIELD_MAP");
       return { ok: false, message: `หาคอลัมน์ทะเบียนรถไม่เจอ คอลัมน์ที่มี: ${sampleKeys.join(", ")}` };
     }
-    const { vehicles, skipped, url, old, out } = toVehicles(rows, fields);
-    const notes = [out && `ออกแล้ว (มีเวลาออก) ${out} คัน`, url && `ตัดทะเบียนที่เป็นลิงก์ ${url} แถว`, old && `ตัดรถที่เข้าลานเกิน 2 วัน ${old} คัน`,
-      !fields.checkout_at && !fields.checkout_alt && "⚠️ หาคอลัมน์เวลาออกไม่เจอ นับทุกแถวว่ายังอยู่"].filter(Boolean).join(" · ");
+    const vis = toVehicles(rows, fields);
+    let vehicles: Vehicle[] = vis.vehicles, skipped = vis.skipped, url = vis.url, old = vis.old, out = vis.out, visOnly = 0;
+    if (dpRows && dpF) {
+      const dp = toVehicles(dpRows, dpF);
+      const seen = new Set<string>(dpRows.map((r) => normalizePlate((dpF.plate && r[dpF.plate]) || (dpF.plate_alt && r[dpF.plate_alt]) || "")).filter(Boolean));
+      const m = mergeDriverSources(dp.vehicles, seen, vis.vehicles);
+      vehicles = m.vehicles; visOnly = m.visOnly; skipped = dp.skipped; url = dp.url; old = dp.old; out = dp.out;
+    }
+    const notes = [
+      dpRows ? `รายการลานจอด ${dpRows.length} แถว (รวม freeMember)` : `⚠️ ดึงรายการลานจอดไม่ได้ ใช้เฉพาะ visitor${dpR.status === "rejected" && String((dpR.reason as any)?.message) !== "off" ? ` (${String((dpR.reason as any)?.message).slice(0, 120)})` : ""}`,
+      visR.status === "rejected" && "⚠️ ดึงรายการ visitor ไม่ได้ (ไม่มีชื่อ/เบอร์คนขับ)",
+      visOnly && `visitor ที่ไม่มีในรายการลานจอด ${visOnly} คัน`,
+      out && `ออกแล้ว (มีเวลาออก) ${out} คัน`, url && `ตัดทะเบียนที่เป็นลิงก์ ${url} แถว`, old && `ตัดรถที่เข้าลานเกิน 2 วัน ${old} คัน`,
+      !dpRows && !fields.checkout_at && !fields.checkout_alt && "⚠️ หาคอลัมน์เวลาออกไม่เจอ นับทุกแถวว่ายังอยู่"].filter(Boolean).join(" · ");
 
     const prev = await one<{ n: number }>(`SELECT count(*)::int AS n FROM driver_presence WHERE src = 'api'`);
     if (!opts.force && shouldHold(prev?.n ?? 0, vehicles.length)) {

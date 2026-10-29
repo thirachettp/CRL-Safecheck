@@ -176,3 +176,26 @@ test("อ่าน Excel รายงานรถเข้าออก (dParkTra
   assert.deepEqual(v.vehicles.map((x) => x.plate_display).sort(), ["415020", "ญฐ1748"]);
   assert.equal(v.vehicles.find((x) => x.plate_display === "ญฐ1748")!.company, "freeMember");
 });
+
+test("รวมรายการลานจอด (มี freeMember) กับ visitor: ใช้ลานจอดตัดสิน เติมชื่อคนขับจาก visitor", async () => {
+  const { dparkFields, mergeDriverSources } = await import("../lib/kioskMap.ts");
+  const now = new Date("2026-10-29T10:00:00Z");
+  const dp = [
+    { transactionid: 11, carplatenumber: "2ฒล6541", carplatecity: "กรุงเทพมหานคร", transactionchkin: "2026-10-29T16:00:00", transactionchkout: null, transactiontypename: "visitor" },
+    { transactionid: 12, carplatenumber: "ญฐ1748", carplatecity: "กรุงเทพมหานคร", transactionchkin: "2026-10-29T16:35:33", transactionchkout: null, transactiontypename: "freeMember" },
+    { transactionid: 13, carplatenumber: "3ฒธ5518", carplatecity: "กรุงเทพมหานคร", transactionchkin: "2026-10-29T16:30:06", transactionchkout: "2026-10-29T16:30:06", transactiontypename: "freeMember" },
+    { transactionid: 14, carplatenumber: "9กก9999", carplatecity: "กรุงเทพมหานคร", transactionchkin: "2026-10-29T15:00:00", transactionchkout: "2026-10-29T16:00:00", transactiontypename: "visitor" },
+  ];
+  const f = dparkFields(dp);
+  assert.equal(f.plate, "carplatenumber"); assert.equal(f.plate_alt, null); assert.equal(f.checkout_at, "transactionchkout");
+  const d = toVehicles(dp, f, now);
+  const vis = toVehicles([
+    { visitor_transaction_id: 1, visitor_vehicle_plate: "2ฒล6541", visitor_checkin_date: "2026-10-29T16:00:00", visitor_name: "สมชาย", visitor_phone: "081" },
+    { visitor_transaction_id: 2, visitor_vehicle_plate: "9กก9999", visitor_checkin_date: "2026-10-29T15:00:00", visitor_name: "ค้าง", visitor_phone: "082" },
+  ], detectFields([{ visitor_transaction_id: 1, visitor_vehicle_plate: "x", visitor_checkin_date: "x", visitor_name: "x", visitor_phone: "x" }]), now).vehicles;
+  const seen = new Set(dp.map((r) => normalizePlate(r.carplatenumber)));
+  const m = mergeDriverSources(d.vehicles, seen, vis);
+  assert.deepEqual(m.vehicles.map((v) => v.plate).sort(), ["2ฒล6541", "ญฐ1748"]);
+  assert.equal(m.vehicles.find((v) => v.plate === "2ฒล6541")!.driver_name, "สมชาย");
+  assert.equal(m.visOnly, 0); // 9กก9999 ลานจอดบอกออกแล้ว ไม่นับ แม้ visitor ยังไม่ออก
+});

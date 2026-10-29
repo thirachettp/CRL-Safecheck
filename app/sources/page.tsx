@@ -214,8 +214,8 @@ function DparkUpload({ onDone }: { onDone: () => void }) {
   }
   return (
     <div className="stack" style={{ gap: 6, borderTop: "1px solid var(--line-3)", paddingTop: 12 }}>
-      <b className="small">เติม freeMember จาก Excel (เมนู dParkTransactions)</b>
-      <p className="muted xs">API ของ KIOS ที่ใช้อยู่ไม่ส่งรายการ freeMember มา · ส่งออก “รายงานรถเข้าออกทั้งหมด” จากเว็บ KIOS แล้วนำเข้าที่นี่ ระบบนับเฉพาะรถที่ยังไม่มีเวลาออกและเข้าภายใน 2 วัน · ข้อมูลจาก Excel หมดอายุเองใน 12 ชม. (ควรส่งออกใหม่ก่อนซ้อม/เมื่อเกิดเหตุ)</p>
+      <b className="small">ทางสำรอง: นำเข้า Excel จากเมนู dParkTransactions</b>
+      <p className="muted xs">ทางสำรองเมื่อดึงรายการลานจอดจาก API ไม่ได้ · ส่งออก “รายงานรถเข้าออกทั้งหมด” จากเว็บ KIOS แล้วนำเข้าที่นี่ ระบบนับเฉพาะรถที่ยังไม่มีเวลาออกและเข้าภายใน 2 วัน · ข้อมูลจาก Excel หมดอายุเองใน 12 ชม. (ควรส่งออกใหม่ก่อนซ้อม/เมื่อเกิดเหตุ)</p>
       <div><button className="btn btn-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "กำลังอ่าน…" : "เลือกไฟล์ Excel"}</button></div>
       <input ref={input} type="file" accept=".xlsx,.xls" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
       {msg && <p className={`notice ${msg.k}`}>{msg.t}</p>}
@@ -279,7 +279,10 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
       {d.data && !d.data.configured && <p className="notice warn">ยังไม่ได้ตั้งค่า ใส่ KIOS_BASE_URL และ KIOS_API_KEY ใน Vercel แล้ว Redeploy</p>}
       {d.data?.kios && (
         <div className="small" style={{ background: "var(--subtle)", borderRadius: 10, padding: "8px 12px" }}>
-          <div>เรียก <span className="mono">{d.data.kios.rpc}</span> (ข้อมูลเดียวกับเมนู dParkTransactions) {d.data.kios.status
+          <div>รายการลานจอด (ทุกรูปแบบ รวม freeMember): <span className="mono">rpc/dpark_tr_transaction_alltime_bydate</span> ย้อนหลัง 48 ชม. · ตัวเดียวกับเมนู dParkTransactions
+            {d.data.fields?.dpark && (d.data.fields.dpark.ok ? <span className="chip sm ok" style={{ marginLeft: 6 }}>ดึงได้ {d.data.fields.dpark.rows} แถว</span>
+              : d.data.fields.dpark.error && d.data.fields.dpark.error !== "off" ? <span className="chip sm err" style={{ marginLeft: 6 }}>{d.data.fields.dpark.error.slice(0, 120)}</span> : null)}</div>
+          <div>ชื่อ/เบอร์/บริษัทคนขับ: <span className="mono">{d.data.kios.rpc}</span> {d.data.kios.status
             ? <>เฉพาะ <span className="mono">status_id = {d.data.kios.status}</span> (ตั้ง KIOS_STATUS_ID ไว้ · ลบออกเพื่อใช้เวลาออกแทน)</>
             : <>· นับว่ายังอยู่เฉพาะรถที่<b>ยังไม่มีเวลาออก</b> (ไม่เชื่อสถานะ ออกแล้ว/ยังไม่ออก ของ KIOS)</>}</div>
           <div className="muted xs" style={{ marginTop: 4 }}>Body (KIOS_RPC_BODY): <span className="mono">{d.data.kios.template}</span></div>
@@ -320,7 +323,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
             </table></div>
           ) : <p className="muted xs" style={{ marginTop: 4 }}>{d.data.fields.total_rows != null ? `KIOS ส่งมา ${d.data.fields.total_rows} แถว · ไม่พบคอลัมน์รูปแบบการทำรายการ (เช่น freeMember / Visitor) ในข้อมูล` : "กด “ดึงข้อมูลตอนนี้” เพื่อดูการแยกตามรูปแบบ"}</p>}
           {d.data.fields.types?.types?.length > 0 && !d.data.fields.types.types.some((t: any) => /free.?member/i.test(t.type)) && (
-            <p className="notice warn" style={{ marginTop: 6 }}>KIOS ไม่ได้ส่งรายการ freeMember มาเลยในรอบนี้ · แปลว่า API ที่ใช้ ({d.data.kios?.rpc}) ไม่ได้รวม freeMember หรือ Body จำกัดไว้ ไม่ใช่แอปตัดทิ้ง</p>
+            <p className="notice warn" style={{ marginTop: 6 }}>รอบนี้ไม่มีรายการ freeMember {d.data.fields?.dpark?.ok ? "ใน 48 ชม. ล่าสุด" : "· ดึงรายการลานจอดไม่ได้ ใช้ได้แค่ visitor"}</p>
           )}
         </div>
       )}

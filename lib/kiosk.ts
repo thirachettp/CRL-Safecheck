@@ -75,3 +75,38 @@ export function rpcBody(now = new Date()) {
     .replaceAll("{{tomorrow}}", day(1))
     .replaceAll("{{now}}", now.toISOString());
 }
+
+/** วันเวลาไทยแบบ YYYY-MM-DDTHH:mm:ss (รูปแบบที่หน้า dParkTransactions ส่ง) */
+const bkkStamp = (d: Date) => new Date(d.getTime() + 7 * 3600e3).toISOString().slice(0, 19);
+
+/** เปิดใช้ RPC รายการเข้า-ออกทั้งหมดของลานจอด (มี freeMember) ไหม · ปิดได้ด้วย KIOS_DPARK_RPC=off */
+export const dparkEnabled = () => kioskConfigured() && (process.env.KIOS_DPARK_RPC ?? "") !== "off";
+
+/**
+ * รายการเข้า-ออกทั้งหมดของลานจอด (ตัวเดียวกับเมนู dParkTransactions: rpc/dpark_tr_transaction_alltime_bydate)
+ * ได้ทั้ง freeMember และ visitor · ช่วงเวลา 48 ชม. ย้อนหลังถึงตอนนี้
+ */
+export async function fetchDpark(now = new Date()): Promise<Record<string, unknown>[]> {
+  const base = (process.env.KIOS_DPARK_BASE_URL || process.env.KIOS_BASE_URL!).replace(/\/+$/, "");
+  const fn = process.env.KIOS_DPARK_RPC || "dpark_tr_transaction_alltime_bydate";
+  const body = JSON.stringify({
+    appid: Number(process.env.KIOS_APPID || 34),
+    begindatetime: bkkStamp(new Date(now.getTime() - 48 * 3600e3)),
+    enddatetime: bkkStamp(new Date(now.getTime() + 3600e3)),
+  });
+  let res: Response;
+  try {
+    res = await fetch(`${base}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: process.env.KIOS_API_KEY!, Authorization: `Bearer ${process.env.KIOS_API_KEY!}`, "Content-Type": "application/json" },
+      body, signal: AbortSignal.timeout(12_000), cache: "no-store",
+    });
+  } catch (e: any) {
+    throw new Error(e?.name === "TimeoutError" ? "dpark: KIOS ไม่ตอบภายใน 12 วินาที" : `dpark: เชื่อมต่อไม่ได้: ${e?.message ?? e}`);
+  }
+  if (!res.ok) throw new Error(`dpark: ${kioskError(res.status, await res.text())}`);
+  const j = await res.json();
+  const rows = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : null;
+  if (!rows) throw new Error("dpark: ข้อมูลที่ได้ไม่ใช่รายการ");
+  return rows;
+}

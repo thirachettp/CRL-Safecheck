@@ -37,9 +37,9 @@ const GUESS: Record<keyof KioskFields, RegExp[]> = {
   phone: [/phone|mobile|tel/i, /เบอร์/],
   company: [/company|vendor|carrier|transport|supplier/i, /บริษัท|ขนส่ง/],
   // ต้องจับก่อน checkin_at (ไม่งั้น /datetime/ ของเวลาเข้าจะคว้าคอลัมน์เวลาออกไป)
-  checkout_at: [/visitor.?check.?out/i, /^check.?out/i, /time.?out|out.?time|exit.?(time|date|at)/i, /เวลาออก/],
+  checkout_at: [/visitor.?check.?out/i, /^check.?out/i, /chk.?out/i, /time.?out|out.?time|exit.?(time|date|at)/i, /เวลาออก/],
   checkout_alt: [/dpark.?check.?out/i, /check.?out/i],
-  checkin_at: [/visitor.?check.?in/i, /check.?in.*(time|date|at)?/i, /time.?in|in.?time|entry|arriv/i, /gate.?in/i, /เวลาเข้า/, /created.?at/i, /^date$|datetime|timestamp/i],
+  checkin_at: [/visitor.?check.?in/i, /chk.?in/i, /check.?in.*(time|date|at)?/i, /time.?in|in.?time|entry|arriv/i, /gate.?in/i, /เวลาเข้า/, /created.?at/i, /^date$|datetime|timestamp/i],
   checkin_alt: [/dpark.?check.?in/i, /check.?in/i, /create.?date/i],
   zone: [/^places$/i, /dock|zone|parking(?!.?time)|lane|slot|bay/i, /ช่องจอด|โซน/],
 };
@@ -238,3 +238,39 @@ export const DPARK_FIELDS: KioskFields = {
   plate: "plate", plate_alt: "card", row_id: "id", province: null, driver_name: null, phone: null, company: "type",
   checkout_at: "checkout_at", checkout_alt: null, checkin_at: "checkin_at", checkin_alt: null, zone: "gate",
 };
+
+/** คอลัมน์ของ rpc/dpark_tr_transaction_alltime_bydate (ใช้เมื่อมีคอลัมน์นั้นจริง) */
+export const DPARK_API_MAP: Partial<KioskFields> = {
+  plate: "carplatenumber", plate_alt: "cardnumber", row_id: "transactionid", province: null, driver_name: null, phone: null,
+  company: "transactiontypename", checkout_at: "transactionchkout", checkout_alt: null, checkin_at: "transactionchkin", checkin_alt: null, zone: "gatein",
+};
+export function dparkFields(rows: Record<string, unknown>[]): KioskFields {
+  const keys = new Set<string>(); for (const r of rows.slice(0, 50)) for (const k of Object.keys(r)) keys.add(k);
+  const ov: Partial<KioskFields> = {};
+  for (const [k, v] of Object.entries(DPARK_API_MAP) as [keyof KioskFields, string | null][]) {
+    if (v === null || keys.has(v)) ov[k] = v;
+    else if (k === "plate_alt") ov[k] = null; // ไม่มีเลขบัตร: อย่าเดาไปจับคอลัมน์จังหวัด (carplatecity)
+  }
+  return detectFields(rows, ov);
+}
+
+/**
+ * รวม 2 แหล่ง: รายการลานจอด (ครบทุกรูปแบบ ใช้ตัดสินว่ายังอยู่) + รายการ visitor (มีชื่อ/เบอร์/บริษัทคนขับ)
+ * รถที่ไม่มีในรายการลานจอดเลย แต่ visitor บอกว่ายังอยู่ → ยังนับ (กันตกหล่น)
+ */
+export function mergeDriverSources(dp: Vehicle[], dpSeen: Set<string>, vis: Vehicle[]) {
+  const base = (p: string) => p.replace(/^ID-/, "");
+  const near = (a: string, b: string) => a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)));
+  const find = (p: string) => vis.find((v) => near(v.plate, p));
+  const out: Vehicle[] = dp.map((d) => {
+    const v = find(d.plate);
+    return v ? { ...d, driver_name: v.driver_name ?? d.driver_name, phone: v.phone ?? d.phone, company: v.company ?? d.company, zone: v.zone ?? d.zone } : d;
+  });
+  let visOnly = 0;
+  for (const v of vis) {
+    const b = base(v.plate);
+    if ([...dpSeen].some((s) => near(s, b))) continue;
+    out.push(v); visOnly++;
+  }
+  return { vehicles: out, visOnly };
+}
