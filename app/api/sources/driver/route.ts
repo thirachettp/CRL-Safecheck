@@ -2,8 +2,7 @@ import { normFlag } from "@/lib/flag";
 import { requireRole } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
-import { syncDriver, syncDriverIfStale } from "@/lib/sources";
-import { after } from "next/server";
+import { syncDriver } from "@/lib/sources";
 import { kioskConfigured, rpcBody } from "@/lib/kiosk";
 import { toVehicles, DPARK_FIELDS, normalizePlate, nearPlate, type DparkRow } from "@/lib/kioskMap";
 import { getSetting, setSetting } from "@/lib/settings";
@@ -12,8 +11,6 @@ export const dynamic = "force-dynamic";
 
 export const GET = handle(async (req: Request) => {
   await requireRole(req, ["admin"]);
-  // เปิดหน้านี้ค้างไว้ = อัปเดตจาก KIOS อัตโนมัติทุก ~1 นาที
-  after(() => syncDriverIfStale(60).catch(() => null));
   const [vehicles, flag, fields] = await Promise.all([
     q(`SELECT * FROM driver_presence WHERE src = 'api' OR uploaded_at > now() - interval '12 hours' ORDER BY checkin_at DESC NULLS LAST LIMIT 500`),
     getSetting<number | null>("driver_flag", null),

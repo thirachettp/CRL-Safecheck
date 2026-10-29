@@ -125,26 +125,13 @@ function kioskOverride(): Partial<KioskFields> {
  * ดึงรถที่อยู่ในลานจาก KIOS (status_id=2) เป็น snapshot ทั้งชุด ใช้ทะเบียนรถเป็น key
  * จำนวนรถลดเกิน 30% จากรอบก่อน = กักไว้ไม่ใช้ จนกว่าจะกดยืนยัน (force)
  */
-/**
- * อัปเดตอัตโนมัติ (เกือบเรียลไทม์): เรียกได้บ่อย แต่ดึง KIOS จริงไม่เกิน 1 ครั้งต่อ `sec` วินาที (จองสิทธิ์ในฐานข้อมูล กันหลายเครื่องดึงพร้อมกัน)
- * ใช้ตอนมีคนเปิด Dashboard / หน้าค้นหา / หน้าแหล่งข้อมูล
- */
-export async function syncDriverIfStale(sec = 60) {
-  if (!kioskConfigured()) return null;
-  await q(`INSERT INTO source_status (source) VALUES ('driver') ON CONFLICT DO NOTHING`);
-  const claim = await one(
-    `UPDATE source_status SET last_try_at = now() WHERE source = 'driver' AND (last_try_at IS NULL OR last_try_at < now() - make_interval(secs => $1)) RETURNING source`, [sec]);
-  if (!claim) return null;
-  return syncDriver({ auto: true });
-}
-
-export async function syncDriver(opts: { force?: boolean; auto?: boolean } = {}): Promise<{ ok: boolean; held?: boolean; count?: number; message: string }> {
+export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: boolean; held?: boolean; count?: number; message: string }> {
   if (!kioskConfigured()) return { ok: false, message: "ยังไม่ได้ตั้งค่า KIOS_BASE_URL / KIOS_API_KEY" };
   // KIOS ล่มรอบก่อน → พัก 1 นาทีก่อนเรียกใหม่ (ไม่ซ้ำเติมเซิร์ฟเวอร์ที่ล่มอยู่) ใช้ข้อมูลเดิมไปก่อน
   const st = await one<any>(`SELECT last_try_at, last_ok_at, last_error FROM source_status WHERE source = 'driver'`);
   if (st?.last_error && st.last_try_at && (!st.last_ok_at || new Date(st.last_try_at) > new Date(st.last_ok_at))) {
     const wait = 60 - Math.floor((Date.now() - new Date(st.last_try_at).getTime()) / 1000);
-    if (wait > 0 && !opts.force && !opts.auto) {
+    if (wait > 0 && !opts.force) {
       return { ok: false, message: `KIOS ไม่ตอบรอบก่อน รออีก ${wait} วินาทีก่อนดึงใหม่ · ใช้ข้อมูลเดิมไปก่อน` };
     }
   }
