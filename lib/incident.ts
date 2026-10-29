@@ -221,6 +221,10 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       here: hereMap.get(key) ?? true, source: "Driver (KIOS)",
     });
   }
+  // ซ้อม: นับเฉพาะคนที่อยู่ในชุดธง (ไม่ดึงคนขับ KIOS / DIV+ / Outsource ที่ไม่มีในธง)
+  // ข้อมูลเข้า-ออกยังใช้ตัดสิน มา/ไม่มา ของคนในธงเหมือนเดิม
+  if (inc.mode === "drill") for (const k of [...out.keys()]) if (!k.startsWith("emp:") || !planMap.has(k.slice(4))) out.delete(k);
+
   // ชื่ออังกฤษ: ชุดธง → โปรไฟล์ → ชื่อใน MS Form ที่พิมพ์เป็นภาษาอังกฤษ
   const enProf = new Map<string, string>(profiles.filter((p) => p.name_en).map((p) => [p.code, p.name_en]));
   const enDiv = new Map<string, string>();

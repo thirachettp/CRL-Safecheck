@@ -180,11 +180,16 @@ ok((await (await post({ kind: "staff", records: [{ field_1: "OS900", field_2: "8
 ok((await (await post({ ID: 77, Title: "OS900", Clock_in: nowIso, Clock_out: null, Site: { Value: "SCDC" } })).json()).saved === 1, "Outsource: รับแถวเข้างาน");
 ok((await (await post({ ID: 78, Title: "OS901", Clock_in: nowIso, Clock_out: new Date().toISOString() })).json()).saved === 1, "Outsource: รับแถวที่ออกแล้ว");
 const { id: drill2 } = await j("/api/incidents", { method: "POST", json: { action: "drill" } });
-const sd = await j(`/api/incidents/${drill2}`);
-const osp = sd.people.find((p: any) => p.person_key === "os:OS900");
-ok(osp?.name === "สมใจ รับจ้าง" && osp.cost_center === "82002" && osp.presence_site === "SCDC", "Outsource ที่ยังไม่ออกเข้าไปอยู่ในรายชื่อเหตุการณ์ พร้อมชื่อและ Cost Center");
-ok(!sd.people.some((p: any) => p.person_key === "os:OS901"), "Outsource ที่ Clock out แล้วไม่ถูกนับ");
+const dd = await j(`/api/incidents/${drill2}`);
+ok(dd.people.length > 0 && dd.people.every((p: any) => p.person_key.startsWith("emp:")), "ซ้อม: นับเฉพาะคนในชุดธง (ไม่ดึง Outsource / คนขับนอกธง)");
 await j(`/api/incidents/${drill2}`, { method: "POST", json: { action: "close" }, tok: token });
+const { id: real2 } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้" }, tok: minReg.token });
+await j(`/api/incidents/${real2}`, { method: "POST", json: { action: "confirm", closedPoints: [] } });
+const sd = await j(`/api/incidents/${real2}`);
+const osp = sd.people.find((p: any) => p.person_key === "os:OS900");
+ok(osp?.name === "สมใจ รับจ้าง" && osp.cost_center === "82002" && osp.presence_site === "SCDC", "เหตุจริง: Outsource ที่ยังไม่ออกเข้าไปอยู่ในรายชื่อ พร้อมชื่อและ Cost Center");
+ok(!sd.people.some((p: any) => p.person_key === "os:OS901"), "Outsource ที่ Clock out แล้วไม่ถูกนับ");
+await j(`/api/incidents/${real2}`, { method: "POST", json: { action: "close" }, tok: token });
 const src = await j("/api/sources");
 ok(src.outsource.present === 1 && src.outsource.staff === 1, "หน้าแหล่งข้อมูลเห็น Outsource ในพื้นที่ 1 คน");
 
