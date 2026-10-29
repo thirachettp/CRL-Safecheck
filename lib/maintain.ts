@@ -99,7 +99,7 @@ export async function presenceReport(now = new Date()) {
     q<any>(`SELECT lower(email) AS email, full_name, gender, site, submitted_at FROM div_checkins WHERE submitted_at > $1 ORDER BY submitted_at`, [since]),
     q<any>(`SELECT emp_id, clock_in, clock_out, status, site FROM outsource_attendance WHERE clock_in > $1 OR received_at > $1`, [since]),
     q<any>(`SELECT emp_id, concat_ws(' ', first_name, last_name) AS name, cost_center FROM outsource_staff`),
-    q<any>(`SELECT plate, plate_display, driver_name, phone, company, zone, checkin_at FROM driver_presence`),
+    q<any>(`SELECT plate, plate_display, driver_name, phone, company, zone, checkin_at FROM driver_presence WHERE src = 'api' OR uploaded_at > now() - interval '12 hours'`),
     q<any>(`SELECT emp_id, concat_ws(' ', first_name, last_name) AS name, gender, cost_center, area, flag_no, assembly_point, tel FROM evac_plan WHERE NOT removed`),
     q<any>(`SELECT lower(email) AS email, emp_id FROM person_links`),
     q<any>(`SELECT code, concat_ws(' ', first_name, last_name) AS name, gender, tel, cost_center, lower(email) AS email FROM profiles`),

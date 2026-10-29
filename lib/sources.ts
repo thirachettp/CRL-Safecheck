@@ -157,18 +157,21 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
     const notes = [out && `ออกแล้ว (มีเวลาออก) ${out} คัน`, url && `ตัดทะเบียนที่เป็นลิงก์ ${url} แถว`, old && `ตัดรถที่เข้าลานเกิน 2 วัน ${old} คัน`,
       !fields.checkout_at && !fields.checkout_alt && "⚠️ หาคอลัมน์เวลาออกไม่เจอ นับทุกแถวว่ายังอยู่"].filter(Boolean).join(" · ");
 
-    const prev = await one<{ n: number }>(`SELECT count(*)::int AS n FROM driver_presence`);
+    const prev = await one<{ n: number }>(`SELECT count(*)::int AS n FROM driver_presence WHERE src = 'api'`);
     if (!opts.force && shouldHold(prev?.n ?? 0, vehicles.length)) {
       const msg = `จำนวนรถลดจาก ${prev!.n} เหลือ ${vehicles.length} คัน (เกิน 30%) กักไว้ก่อน ยังใช้ข้อมูลรอบก่อน`;
       await markStatus("driver", false, null, msg);
       return { ok: false, held: true, count: vehicles.length, message: msg };
     }
 
-    await q(`DELETE FROM driver_presence`);
+    // แถวจาก API แทนที่ทั้งหมด · แถวจาก Excel (freeMember) เก็บไว้จนหมดอายุ 12 ชม. แต่ถ้า API มีทะเบียนนั้น ใช้ของ API
+    await q(`DELETE FROM driver_presence WHERE src = 'api' OR (src = 'xlsx' AND uploaded_at < now() - interval '12 hours')`);
     if (vehicles.length) {
       await q(
         `INSERT INTO driver_presence (plate, plate_display, driver_name, phone, company, zone, checkin_at)
-         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[])`,
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[])
+         ON CONFLICT (plate) DO UPDATE SET plate_display = EXCLUDED.plate_display, driver_name = EXCLUDED.driver_name, phone = EXCLUDED.phone,
+           company = EXCLUDED.company, zone = EXCLUDED.zone, checkin_at = EXCLUDED.checkin_at, src = 'api', uploaded_at = NULL, seen_at = now()`,
         [
           vehicles.map((v) => v.plate), vehicles.map((v) => v.plate_display), vehicles.map((v) => v.driver_name),
           vehicles.map((v) => v.phone), vehicles.map((v) => v.company), vehicles.map((v) => v.zone),

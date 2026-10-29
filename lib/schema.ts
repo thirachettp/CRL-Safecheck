@@ -369,4 +369,7 @@ export const SCHEMA: string[] = [
   `ALTER TABLE profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('user','safety','lp','admin'))`,
   `ALTER TABLE confirmers DROP CONSTRAINT IF EXISTS confirmers_role_check`,
   `ALTER TABLE confirmers ADD CONSTRAINT confirmers_role_check CHECK (role IN ('admin','safety','lp'))`,
+  // v16: รถในลานจาก Excel รายงาน dParkTransactions (เติม freeMember ที่ API ไม่ส่งมา) · หมดอายุเอง 12 ชม.
+  `ALTER TABLE driver_presence ADD COLUMN IF NOT EXISTS src text NOT NULL DEFAULT 'api'`,
+  `ALTER TABLE driver_presence ADD COLUMN IF NOT EXISTS uploaded_at timestamptz`,
 ];

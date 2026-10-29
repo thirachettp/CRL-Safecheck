@@ -193,6 +193,19 @@ await j(`/api/incidents/${real2}`, { method: "POST", json: { action: "close" }, 
 const src = await j("/api/sources");
 ok(src.outsource.present === 1 && src.outsource.staff === 1, "หน้าแหล่งข้อมูลเห็น Outsource ในพื้นที่ 1 คน");
 
+// ---------- KIOS: เติม freeMember จาก Excel dParkTransactions ----------
+{
+  const t = new Date(Date.now() - 3600e3).toISOString();
+  const up = await j("/api/sources/driver", { method: "POST", json: { action: "upload", rows: [
+    { id: "1", plate: "ญฐ1748", card: "ญฐ1748", checkin_at: t, checkout_at: null, type: "freeMember", gate: "ทางเข้า ป้อมรปภ." },
+    { id: "2", plate: "3ฒธ5518", card: "3ฒธ5518", checkin_at: t, checkout_at: t, type: "freeMember", gate: "ทางเข้า ป้อมรปภ." },
+  ] } });
+  ok(up.in_lot === 1 && up.inserted === 1 && up.out === 1, "Excel dParkTransactions: นับเฉพาะ freeMember ที่ยังไม่ออก");
+  const dv = await j("/api/sources/driver");
+  ok(dv.vehicles.some((v: any) => v.plate === "ญฐ1748" && v.src === "xlsx" && v.company === "freeMember"), "รถจาก Excel ขึ้นในรายการรถในลาน");
+  ok(await fails(j("/api/sources/driver", { method: "POST", json: { action: "upload", rows: [] }, tok: "x" })), "นำเข้า Excel KIOS ต้องเป็น Admin");
+}
+
 // ---------- Maintain ----------
 ok(await fails(j("/api/maintain", { tok: "bad" })), "Maintain: ต้องใช้รหัส Admin");
 const mt = await j("/api/maintain", { method: "POST" });

@@ -80,7 +80,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
        WHERE submitted_at > $1::timestamptz - interval '48 hours' ORDER BY submitted_at`,
       [now.toISOString()],
     ),
-    q<any>(`SELECT * FROM driver_presence`),
+    q<any>(`SELECT * FROM driver_presence WHERE src = 'api' OR uploaded_at > now() - interval '12 hours'`),
     getSetting<string | number | null>("driver_flag", null).then((v) => normFlag(v)),
     q<any>(`SELECT person_key, here FROM attendance WHERE day = $1`, [bangkokDay(now)]),
     q<any>(`SELECT code AS cost_center, name FROM cost_centers

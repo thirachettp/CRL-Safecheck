@@ -199,3 +199,42 @@ export function typeBreakdown(rows: Record<string, unknown>[], f: KioskFields, n
   }).sort((a, b) => b.rows - a.rows);
   return { column: col, types };
 }
+
+/** วันเวลาแบบรายงาน KIOS "29/10/2026 16:49:03" (เวลาไทย) → ISO · "-" / ว่าง = null */
+export function parseThaiDateTime(v: unknown): string | null {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+  const s = String(v ?? "").trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!m) return null;
+  let y = Number(m[3]); if (y > 2400) y -= 543;
+  const d = new Date(Date.UTC(y, Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0) - 7, Number(m[5] ?? 0), Number(m[6] ?? 0)));
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+export type DparkRow = { id: string | null; plate: string | null; card: string | null; checkin_at: string | null; checkout_at: string | null; type: string | null; gate: string | null };
+/** อ่าน Excel "รายงานรถเข้าออกทั้งหมด" จากเมนู dParkTransactions (หัวตาราง: ลำดับ เวลาเข้า เวลาออก … เลขทะเบียน ประเภท) */
+export function parseDparkReport(aoa: unknown[][]): { rows: DparkRow[]; error?: string } {
+  const hi = aoa.findIndex((r) => Array.isArray(r) && r.some((c) => String(c ?? "").trim() === "เวลาเข้า") && r.some((c) => /ทะเบียน|หมายเลขบัตร/.test(String(c ?? ""))));
+  if (hi < 0) return { rows: [], error: "ไม่พบหัวตาราง (เวลาเข้า / เลขทะเบียน) · ใช้ไฟล์ส่งออกจากเมนู dParkTransactions" };
+  const H = (aoa[hi] as unknown[]).map((c) => String(c ?? "").trim());
+  const col = (re: RegExp) => H.findIndex((h) => re.test(h));
+  const c = { id: col(/^ลำดับ$/), in: col(/^เวลาเข้า$/), out: col(/^เวลาออก$/), plate: col(/เลขทะเบียน/), card: col(/หมายเลขบัตร/), type: col(/^ประเภท$/), gate: col(/ประตูทางเข้า/) };
+  const get = (r: unknown[], i: number) => (i >= 0 ? r[i] : null);
+  const rows: DparkRow[] = [];
+  for (const r of aoa.slice(hi + 1) as unknown[][]) {
+    if (!Array.isArray(r) || !r.some((x) => x != null && String(x).trim() !== "")) continue;
+    const plate = str(get(r, c.plate)) ?? str(get(r, c.card));
+    const checkin_at = parseThaiDateTime(get(r, c.in));
+    if (!plate && !checkin_at) continue;
+    rows.push({
+      id: str(get(r, c.id)), plate: plate && plate !== "-" ? plate : null, card: str(get(r, c.card)),
+      checkin_at, checkout_at: parseThaiDateTime(get(r, c.out)), type: str(get(r, c.type)), gate: str(get(r, c.gate)),
+    });
+  }
+  return { rows };
+}
+/** คอลัมน์ของ DparkRow สำหรับ toVehicles */
+export const DPARK_FIELDS: KioskFields = {
+  plate: "plate", plate_alt: "card", row_id: "id", province: null, driver_name: null, phone: null, company: "type",
+  checkout_at: "checkout_at", checkout_alt: null, checkin_at: "checkin_at", checkin_alt: null, zone: "gate",
+};

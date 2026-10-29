@@ -192,6 +192,37 @@ function ExcelUpload({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** Excel รายงานรถเข้าออก (เมนู dParkTransactions) → เติมรถ freeMember ที่ API ไม่ส่งมา */
+function DparkUpload({ onDone }: { onDone: () => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function upload(file: File) {
+    setBusy(true); setMsg(null);
+    try {
+      const XLSX = await import("xlsx");
+      const { parseDparkReport } = await import("@/lib/kioskMap");
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false }) as unknown[][];
+      const { rows, error } = parseDparkReport(aoa);
+      if (error || !rows.length) return setMsg({ k: "warn", t: error ?? "ไม่พบแถวในไฟล์" });
+      const r: any = await api("/api/sources/driver", { method: "POST", json: { action: "upload", rows } });
+      const t = Object.entries(r.types ?? {}).map(([k, n]) => `${k} ${n}`).join(" · ");
+      setMsg({ k: "ok", t: `อ่าน ${r.rows} แถว${r.onlyMissing ? ` (ใช้เฉพาะที่ API ไม่ส่งมา ${r.used} แถว)` : ""} · ยังไม่ออกภายใน 2 วัน ${r.in_lot} คัน${t ? ` (${t})` : ""} · เพิ่มเข้า ${r.inserted} คัน${r.dup ? ` · ซ้ำกับ API ${r.dup}` : ""} · ใช้ได้ 12 ชม.` });
+      onDone();
+    } catch (e: any) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); if (input.current) input.current.value = ""; }
+  }
+  return (
+    <div className="stack" style={{ gap: 6, borderTop: "1px solid var(--line-3)", paddingTop: 12 }}>
+      <b className="small">เติม freeMember จาก Excel (เมนู dParkTransactions)</b>
+      <p className="muted xs">API ของ KIOS ที่ใช้อยู่ไม่ส่งรายการ freeMember มา · ส่งออก “รายงานรถเข้าออกทั้งหมด” จากเว็บ KIOS แล้วนำเข้าที่นี่ ระบบนับเฉพาะรถที่ยังไม่มีเวลาออกและเข้าภายใน 2 วัน · ข้อมูลจาก Excel หมดอายุเองใน 12 ชม. (ควรส่งออกใหม่ก่อนซ้อม/เมื่อเกิดเหตุ)</p>
+      <div><button className="btn btn-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "กำลังอ่าน…" : "เลือกไฟล์ Excel"}</button></div>
+      <input ref={input} type="file" accept=".xlsx,.xls" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+      {msg && <p className={`notice ${msg.k}`}>{msg.t}</p>}
+    </div>
+  );
+}
+
 function TestCheckin({ sites, onDone }: { sites: string[]; onDone: () => void }) {
   const [f, setF] = useState({ email: "", name: "", gender: "หญิง", site: "", at: "" });
   const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
@@ -293,6 +324,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
           )}
         </div>
       )}
+      <DparkUpload onDone={() => { d.reload(); onDone(); }} />
       {!!d.data?.vehicles.length && (
         <div className="scroll-x freeze" style={{ maxHeight: 360 }}>
           <table className="tbl">
@@ -300,7 +332,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
             <tbody>
               {d.data.vehicles.map((v) => (
                 <tr key={v.plate}><td><b>{v.plate_display ?? v.plate}</b></td><td>{v.driver_name ?? "—"} <span className="muted xs">{v.phone ?? ""}</span></td>
-                  <td>{v.company ?? "—"}</td><td>{v.zone ?? "—"}</td><td className="mono">{fmtDateTime(v.checkin_at)}</td></tr>
+                  <td>{v.company ?? "—"}{v.src === "xlsx" && <span className="chip sm warn" style={{ marginLeft: 6 }}>จาก Excel</span>}</td><td>{v.zone ?? "—"}</td><td className="mono">{fmtDateTime(v.checkin_at)}</td></tr>
               ))}
             </tbody>
           </table>

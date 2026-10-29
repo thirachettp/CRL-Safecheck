@@ -158,3 +158,21 @@ test("แยกตามรูปแบบการทำรายการ free
   const vi = b.types.find((t) => t.type === "Visitor")!;
   assert.equal(vi.rows, 2); assert.equal(vi.in_lot, 1); assert.equal(vi.out, 1);
 });
+
+test("อ่าน Excel รายงานรถเข้าออก (dParkTransactions): freeMember ที่ยังไม่ออก = อยู่ในลาน", async () => {
+  const { parseDparkReport, DPARK_FIELDS } = await import("../lib/kioskMap.ts");
+  const aoa = [
+    [null, null, null, "รายงานรถเข้าออกทั้งหมด"], [],
+    ["ลำดับ", "เวลาเข้า", "เวลาออก", "ระยะเวลาจอด", "ประตูทางเข้า", "ประตูทางออก", "หมายเลขบัตร", "เลขทะเบียน", "โปรไฟล์", "ประเภท"],
+    [2289853, "29/10/2026 16:35:33", "-", "00:00:00", "ทางเข้า ป้อมรปภ.", "-", "ญฐ1748", "ญฐ1748", "Visitor ปกติ", "freeMember"],
+    [2289851, "29/10/2026 16:30:06", "29/10/2026 16:30:06", "00:00:00.001", "ทางเข้า ป้อมรปภ.", "ทางออก ป้อมรปภ.", "3ฒธ5518", "3ฒธ5518", "ปกติ", "freeMember"],
+    [2289858, "29/10/2026 16:49:03", "-", "00:00:00", "ทางเข้า ป้อมรปภ.", "-", "415020", "415020", "Visitor ปกติ", "visitor"],
+  ];
+  const { rows } = parseDparkReport(aoa);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].checkin_at, "2026-10-29T09:35:33.000Z");
+  assert.equal(rows[1].checkout_at, "2026-10-29T09:30:06.000Z");
+  const v = toVehicles(rows as any, DPARK_FIELDS, new Date("2026-10-29T10:00:00Z"));
+  assert.deepEqual(v.vehicles.map((x) => x.plate_display).sort(), ["415020", "ญฐ1748"]);
+  assert.equal(v.vehicles.find((x) => x.plate_display === "ญฐ1748")!.company, "freeMember");
+});
