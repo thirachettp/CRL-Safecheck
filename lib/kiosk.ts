@@ -23,13 +23,15 @@ export function kioskError(status: number, text: string) {
 const RETRY = new Set([502, 503, 504, 520, 522, 524]);
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** เทียบเท่าสูตร Power Query: POST rest/v1/rpc/<fn>?status_id=eq.2 (เฉพาะรถที่ยังอยู่ในลาน) พร้อม header apikey
+/** เทียบเท่าสูตร Power Query: POST rest/v1/rpc/<fn> พร้อม header apikey (ข้อมูลเดียวกับเมนู dParkTransactions)
  *  ล่ม (502/503/504/เชื่อมต่อไม่ได้) → ไม่ลองซ้ำทันที ระบบพัก 1 นาทีก่อนเรียกรอบถัดไป (ดู syncDriver) */
 export async function fetchKiosk(): Promise<Record<string, unknown>[]> {
   const base = process.env.KIOS_BASE_URL!.replace(/\/+$/, "");
   const fn = process.env.KIOS_RPC || "vms_dpark_withtransaction_detail";
-  const status = process.env.KIOS_STATUS_ID || "2";
-  const url = `${base}/rest/v1/rpc/${fn}?status_id=eq.${encodeURIComponent(status)}`;
+  // ไม่ใช้ filter สถานะของ KIOS (ไม่น่าเชื่อถือ) · ดึงทุกแถวในช่วงเวลาของ KIOS_RPC_BODY แล้วนับเฉพาะแถวที่ยังไม่มีเวลาออก
+  // ตั้ง KIOS_STATUS_ID ไว้ = กลับไปใช้ filter สถานะแบบเดิม
+  const status = process.env.KIOS_STATUS_ID;
+  const url = `${base}/rest/v1/rpc/${fn}${status ? `?status_id=eq.${encodeURIComponent(status)}` : ""}`;
   const body = rpcBody();
   let lastErr: Error | null = null;
   for (let attempt = 1; attempt <= 1; attempt++) {

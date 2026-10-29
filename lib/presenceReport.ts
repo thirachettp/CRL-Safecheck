@@ -107,7 +107,7 @@ export function checkOutsource(emp: string, name: string | null, rows: OsRow[], 
     reason: `Clock in ${bkk(r.clock_in!, now)}${r.site ? ` ที่ ${r.site}` : ""} ยังไม่ Clock out${r.status ? ` · สถานะ ${r.status}` : ""}` };
 }
 
-/** KIOS: API ให้เฉพาะรถที่ยังอยู่ในลาน (status 2) */
+/** KIOS: รถที่แถวล่าสุดยังไม่มีเวลาออก (ไม่เชื่อสถานะของ KIOS) */
 export function checkDriver(v: { plate: string; plate_display: string | null; driver_name: string | null; zone: string | null; checkin_at: string | null; phone?: string | null; company?: string | null }, now: Date): PersonCheck {
   const flags: string[] = [];
   if (!v.driver_name) flags.push("ไม่มีชื่อคนขับ");
@@ -120,7 +120,7 @@ export function checkDriver(v: { plate: string; plate_display: string | null; dr
     in_at: v.checkin_at, out_at: null, cost_center: "DRIVER", cc_name: "คนขับ (KIOS)",
     name: v.driver_name || `คนขับรถ ${v.plate_display ?? v.plate}`, events: 1, flags,
     verdict: "in", site: v.zone, since: v.checkin_at,
-    reason: `KIOS ยังเป็น check-in${v.checkin_at ? ` เข้าลาน ${bkk(v.checkin_at, now)}` : ""}${v.zone ? ` · ${v.zone}` : ""}`,
+    reason: `KIOS ยังไม่มีเวลาออก${v.checkin_at ? ` เข้าลาน ${bkk(v.checkin_at, now)}` : ""}${v.zone ? ` · ${v.zone}` : ""}`,
   };
 }
 

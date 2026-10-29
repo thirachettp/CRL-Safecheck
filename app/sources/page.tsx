@@ -247,7 +247,9 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
       {d.data && !d.data.configured && <p className="notice warn">ยังไม่ได้ตั้งค่า ใส่ KIOS_BASE_URL และ KIOS_API_KEY ใน Vercel แล้ว Redeploy</p>}
       {d.data?.kios && (
         <div className="small" style={{ background: "var(--subtle)", borderRadius: 10, padding: "8px 12px" }}>
-          <div>เรียก <span className="mono">{d.data.kios.rpc}</span> เฉพาะ <span className="mono">status_id = {d.data.kios.status}</span> (รถที่ยังอยู่ในลาน)</div>
+          <div>เรียก <span className="mono">{d.data.kios.rpc}</span> (ข้อมูลเดียวกับเมนู dParkTransactions) {d.data.kios.status
+            ? <>เฉพาะ <span className="mono">status_id = {d.data.kios.status}</span> (ตั้ง KIOS_STATUS_ID ไว้ · ลบออกเพื่อใช้เวลาออกแทน)</>
+            : <>· นับว่ายังอยู่เฉพาะรถที่<b>ยังไม่มีเวลาออก</b> (ไม่เชื่อสถานะ ออกแล้ว/ยังไม่ออก ของ KIOS)</>}</div>
           <div className="muted xs" style={{ marginTop: 4 }}>Body (KIOS_RPC_BODY): <span className="mono">{d.data.kios.template}</span></div>
           <div className="muted xs">ส่งจริงวันนี้: <span className="mono">{d.data.kios.body}</span></div>
           {!/\{\{(today|yesterday)/.test(d.data.kios.template) && <div className="xs" style={{ color: "#92400E", marginTop: 4 }}>Body ยังไม่ได้จำกัดช่วงวันที่ ถ้า KIOS ตอบ 502 บ่อย ให้ตั้งให้ดึงแค่ 2 วัน เช่น ใช้ {"{{yesterday}}"} ถึง {"{{today}}"}</div>}

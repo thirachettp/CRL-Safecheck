@@ -151,8 +151,9 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
       await markStatus("driver", false, null, "หาคอลัมน์ทะเบียนรถไม่เจอ ตั้ง KIOS_FIELD_MAP");
       return { ok: false, message: `หาคอลัมน์ทะเบียนรถไม่เจอ คอลัมน์ที่มี: ${sampleKeys.join(", ")}` };
     }
-    const { vehicles, skipped, url, old } = toVehicles(rows, fields);
-    const notes = [url && `ตัดทะเบียนที่เป็นลิงก์ ${url} แถว`, old && `ตัดรถที่เข้าลานเกิน 2 วัน ${old} คัน`].filter(Boolean).join(" · ");
+    const { vehicles, skipped, url, old, out } = toVehicles(rows, fields);
+    const notes = [out && `ออกแล้ว (มีเวลาออก) ${out} คัน`, url && `ตัดทะเบียนที่เป็นลิงก์ ${url} แถว`, old && `ตัดรถที่เข้าลานเกิน 2 วัน ${old} คัน`,
+      !fields.checkout_at && !fields.checkout_alt && "⚠️ หาคอลัมน์เวลาออกไม่เจอ นับทุกแถวว่ายังอยู่"].filter(Boolean).join(" · ");
 
     const prev = await one<{ n: number }>(`SELECT count(*)::int AS n FROM driver_presence`);
     if (!opts.force && shouldHold(prev?.n ?? 0, vehicles.length)) {

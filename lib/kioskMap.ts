@@ -9,6 +9,9 @@ export type KioskFields = {
   driver_name: string | null;
   phone: string | null;
   company: string | null;
+  /** เวลาออก: มีค่า = ออกแล้ว (ไม่เชื่อสถานะ/filter ของ KIOS) */
+  checkout_at: string | null;
+  checkout_alt: string | null;
   checkin_at: string | null;
   checkin_alt: string | null;
   zone: string | null;
@@ -33,6 +36,9 @@ const GUESS: Record<keyof KioskFields, RegExp[]> = {
   driver_name: [/visitor.?name/i, /driver.?name/i, /^driver$/i, /ชื่อคนขับ|คนขับ/, /full.?name/i, /(^|_)name$/i, /driver/i],
   phone: [/phone|mobile|tel/i, /เบอร์/],
   company: [/company|vendor|carrier|transport|supplier/i, /บริษัท|ขนส่ง/],
+  // ต้องจับก่อน checkin_at (ไม่งั้น /datetime/ ของเวลาเข้าจะคว้าคอลัมน์เวลาออกไป)
+  checkout_at: [/visitor.?check.?out/i, /^check.?out/i, /time.?out|out.?time|exit.?(time|date|at)/i, /เวลาออก/],
+  checkout_alt: [/dpark.?check.?out/i, /check.?out/i],
   checkin_at: [/visitor.?check.?in/i, /check.?in.*(time|date|at)?/i, /time.?in|in.?time|entry|arriv/i, /gate.?in/i, /เวลาเข้า/, /created.?at/i, /^date$|datetime|timestamp/i],
   checkin_alt: [/dpark.?check.?in/i, /check.?in/i, /create.?date/i],
   zone: [/^places$/i, /dock|zone|parking(?!.?time)|lane|slot|bay/i, /ช่องจอด|โซน/],
@@ -104,14 +110,18 @@ export const isUrl = (v: string | null) => !!v && /^(https?:\/\/|www\.)|lin\.ee\
 /** ดึงเฉพาะรถที่เข้าลานภายในกี่ชั่วโมง (ไม่ดูประเภท freeMember / Visitor) */
 export const KIOS_WINDOW_H = 48;
 
+/** มีเวลาออกแล้ว = ออกแล้ว ("-" / ว่าง / null = ยังไม่ออก) */
+const hasOut = (v: unknown) => { const s = str(v); return !!s && s !== "-" && !/^(null|0)$/i.test(s); };
+
 /**
  * แปลงเป็นรายการรถ รถคันเดียวมีหลายแถว (หลายรายการขนส่ง) ให้เหลือแถวที่เข้าล่าสุด
+ * - ยังอยู่ในลาน = แถวล่าสุดยังไม่มีเวลาออก (ไม่เชื่อสถานะ/filter ออกแล้ว-ยังไม่ออก ของ KIOS)
  * - ทะเบียนที่เป็นลิงก์ ใช้ทะเบียนสำรองแทน ถ้าไม่มีทะเบียนจริงเลย ไม่นำมาใช้
  * - ไม่นับรถที่เข้าลานเกิน 2 วัน (ถ้ามีเวลาเข้าลาน)
  */
 export function toVehicles(rows: Record<string, unknown>[], f: KioskFields, now = new Date()):
-  { vehicles: Vehicle[]; skipped: number; url: number; old: number } {
-  const map = new Map<string, Vehicle>();
+  { vehicles: Vehicle[]; skipped: number; url: number; old: number; out: number } {
+  const map = new Map<string, Vehicle & { _out: boolean }>();
   let skipped = 0, url = 0, old = 0;
   const since = now.getTime() - KIOS_WINDOW_H * 3600e3;
   for (const r of rows) {
@@ -132,7 +142,9 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields, now 
     const checkin_at = (f.checkin_at ? toIso(r[f.checkin_at]) : null) ?? (f.checkin_alt ? toIso(r[f.checkin_alt]) : null);
     if (checkin_at && new Date(checkin_at).getTime() < since) { old++; continue; }
     const prov = f.province ? str(r[f.province]) : null;
-    const v: Vehicle = {
+    const _out = (!!f.checkout_at && hasOut(r[f.checkout_at])) || (!!f.checkout_alt && hasOut(r[f.checkout_alt]));
+    const v: Vehicle & { _out: boolean } = {
+      _out,
       plate: prov ? plate + normalizePlate(prov) : plate,
       plate_display: rawPlate ? [rawPlate, prov].filter(Boolean).join(" ") : `ไม่มีทะเบียน (${plate.slice(3)})`,
       driver_name: f.driver_name ? str(r[f.driver_name]) : null,
@@ -151,7 +163,9 @@ export function toVehicles(rows: Record<string, unknown>[], f: KioskFields, now 
       });
     }
   }
-  return { vehicles: [...map.values()], skipped, url, old };
+  const all = [...map.values()];
+  const vehicles = all.filter((v) => !v._out).map(({ _out, ...v }) => v);
+  return { vehicles, skipped, url, old, out: all.length - vehicles.length };
 }
 
 /** กันฟีดพัง: จำนวนลดลงเกิน 30% จากรอบก่อน (เมื่อรอบก่อนมีอย่างน้อย 10 คัน) ให้กักไว้ก่อน */

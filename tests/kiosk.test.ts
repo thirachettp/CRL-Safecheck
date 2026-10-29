@@ -128,3 +128,18 @@ test("KIOS: ตัดทะเบียนที่เป็นลิงก์ (
   assert.equal(r.url, 1);
   assert.equal(r.old, 1);
 });
+
+test("ยังอยู่ = ยังไม่มีเวลาออก (ไม่เชื่อสถานะของ KIOS)", () => {
+  const now = new Date("2026-10-29T10:00:00Z");
+  const rows = [
+    { visitor_transaction_id: 1, visitor_vehicle_plate: "2ฒก4564", visitor_checkin_date: "2026-10-29T15:28:22", visitor_checkout_date: null, status_id: 3 },
+    { visitor_transaction_id: 2, visitor_vehicle_plate: "2ฒล1444", visitor_checkin_date: "2026-10-29T15:28:12", visitor_checkout_date: "2026-10-29T16:00:00", status_id: 2 },
+    { visitor_transaction_id: 3, visitor_vehicle_plate: "605282", visitor_checkin_date: "2026-10-29T15:29:02", visitor_checkout_date: "-", status_id: 3 },
+  ];
+  const f = detectFields(rows);
+  assert.equal(f.checkout_at, "visitor_checkout_date");
+  assert.equal(f.checkin_at, "visitor_checkin_date");
+  const r = toVehicles(rows, f, now);
+  assert.deepEqual(r.vehicles.map((v) => v.plate_display).sort(), ["2ฒก4564", "605282"]);
+  assert.equal(r.out, 1);
+});

@@ -16,7 +16,7 @@ export const GET = handle(async (req: Request) => {
     getSetting<any>("driver_fields", null),
   ]);
   // Body ที่ส่งไป KIOS (ไม่มี apikey) ให้เห็นว่าดึงช่วงวันที่เท่าไร
-  const kios = { template: process.env.KIOS_RPC_BODY || "{}", body: rpcBody(), status: process.env.KIOS_STATUS_ID || "2", rpc: process.env.KIOS_RPC || "vms_dpark_withtransaction_detail" };
+  const kios = { template: process.env.KIOS_RPC_BODY || "{}", body: rpcBody(), status: process.env.KIOS_STATUS_ID || null, rpc: process.env.KIOS_RPC || "vms_dpark_withtransaction_detail" };
   return ok({ configured: kioskConfigured(), vehicles, flag, fields, kios });
 });
 
