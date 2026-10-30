@@ -2,7 +2,7 @@ import { normFlag } from "@/lib/flag";
 import { requireRole } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { handle, ok, fail } from "@/lib/http";
-import { syncDriver } from "@/lib/sources";
+import { syncDriver, syncMembers } from "@/lib/sources";
 import { kioskConfigured, rpcBody } from "@/lib/kiosk";
 import { toVehicles, DPARK_FIELDS, normalizePlate, nearPlate, type DparkRow } from "@/lib/kioskMap";
 import { getSetting, setSetting } from "@/lib/settings";
@@ -11,20 +11,23 @@ export const dynamic = "force-dynamic";
 
 export const GET = handle(async (req: Request) => {
   await requireRole(req, ["admin"]);
-  const [vehicles, flag, fields] = await Promise.all([
+  const [vehicles, flag, fields, members, memberCount] = await Promise.all([
     q(`SELECT * FROM driver_presence WHERE src = 'api' OR uploaded_at > now() - interval '12 hours' ORDER BY checkin_at DESC NULLS LAST LIMIT 500`),
     getSetting<number | null>("driver_flag", null),
     getSetting<any>("driver_fields", null),
+    getSetting<any>("member_sync", null),
+    q(`SELECT count(*) FILTER (WHERE source = 'member')::int AS n, count(*) FILTER (WHERE emp_code IS NOT NULL)::int AS emp FROM driver_directory`),
   ]);
   // Body ที่ส่งไป KIOS (ไม่มี apikey) ให้เห็นว่าดึงช่วงวันที่เท่าไร
   const kios = { template: process.env.KIOS_RPC_BODY || "{}", body: rpcBody(), status: process.env.KIOS_STATUS_ID || null, rpc: process.env.KIOS_RPC || "vms_dpark_withtransaction_detail" };
-  return ok({ configured: kioskConfigured(), vehicles, flag, fields, kios });
+  return ok({ configured: kioskConfigured(), vehicles, flag, fields, kios, members: { ...(members ?? {}), dir: memberCount[0] } });
 });
 
 export const POST = handle(async (req: Request) => {
   await requireRole(req, ["admin"]);
   const b = await req.json();
   if (b.action === "sync") return ok(await syncDriver({ force: !!b.force }));
+  if (b.action === "members") return ok(await syncMembers());
   if (b.action === "upload") {
     // Excel รายงานรถเข้าออก (dParkTransactions): เติมรถที่ API ไม่ส่งมา (freeMember ฯลฯ) · ไม่ทับทะเบียนที่ API มีแล้ว
     const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 20000) as DparkRow[];

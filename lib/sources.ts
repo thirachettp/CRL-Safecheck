@@ -1,9 +1,9 @@
 import { q, one } from "./db";
 import { fetchListDelta, graphConfigured } from "./graph";
 import { normalizeGender, type FormCheckin } from "./parsers";
-import { fetchKiosk, fetchDpark, dparkEnabled, kioskConfigured } from "./kiosk";
-import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, driverNames, nearPlate, type KioskFields, type Vehicle } from "./kioskMap";
-import { setSetting } from "./settings";
+import { fetchKiosk, fetchDpark, fetchMembers, dparkEnabled, kioskConfigured } from "./kiosk";
+import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, driverNames, nearPlate, memberEntries, type KioskFields, type Vehicle } from "./kioskMap";
+import { setSetting, getSetting } from "./settings";
 
 export const SOURCES = [
   { key: "div", label: "DIV+ และอื่นๆ (MS Form)", ready: true },
@@ -125,6 +125,42 @@ function kioskOverride(): Partial<KioskFields> {
  * ดึงรถที่อยู่ในลานจาก KIOS (status_id=2) เป็น snapshot ทั้งชุด ใช้ทะเบียนรถเป็น key
  * จำนวนรถลดเกิน 30% จากรอบก่อน = กักไว้ไม่ใช้ จนกว่าจะกดยืนยัน (force)
  */
+/**
+ * สมาชิกลานจอด (KIOS ticketMember): ทะเบียน → ชื่อ + รหัสพนักงาน ลงสมุดรายชื่อคนขับ
+ * ไม่ทับชื่อที่ Admin ตั้งเอง · สมาชิกที่ถูกลบออกจาก KIOS ลบออกจากสมุดด้วย
+ */
+export async function syncMembers() {
+  if (!kioskConfigured()) return { ok: false, message: "ยังไม่ได้ตั้งค่า KIOS" };
+  try {
+    const rows = await fetchMembers();
+    const { cols, entries } = memberEntries(rows);
+    if (!cols.plate) {
+      const msg = `ไม่พบคอลัมน์ทะเบียนในข้อมูลสมาชิก · คอลัมน์ที่มี: ${cols.keys.join(", ")}`;
+      await setSetting("member_sync", { at: new Date().toISOString(), ok: false, error: msg, members: rows.length, cols });
+      return { ok: false, message: msg };
+    }
+    const uniq = new Map(entries.map((e) => [e.plate, e]));
+    const E = [...uniq.values()];
+    if (E.length) await q(
+      `INSERT INTO driver_directory (plate, plate_display, driver_name, phone, emp_code, source, last_seen)
+       SELECT x.p, x.pd, x.n, x.ph, x.e, 'member', now() FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) AS x(p, pd, n, ph, e)
+       ON CONFLICT (plate) DO UPDATE SET last_seen = now(), emp_code = COALESCE(EXCLUDED.emp_code, driver_directory.emp_code),
+         driver_name = CASE WHEN driver_directory.source = 'manual' THEN driver_directory.driver_name ELSE COALESCE(EXCLUDED.driver_name, driver_directory.driver_name) END,
+         phone = CASE WHEN driver_directory.source = 'manual' THEN driver_directory.phone ELSE COALESCE(EXCLUDED.phone, driver_directory.phone) END,
+         plate_display = EXCLUDED.plate_display,
+         source = CASE WHEN driver_directory.source = 'manual' THEN 'manual' ELSE 'member' END`,
+      [E.map((e) => e.plate), E.map((e) => e.plate_display), E.map((e) => e.name), E.map((e) => e.phone), E.map((e) => e.emp)]);
+    await q(`DELETE FROM driver_directory WHERE source = 'member' AND NOT (plate = ANY($1::text[]))`, [E.map((e) => e.plate)]);
+    const withEmp = E.filter((e) => e.emp).length;
+    await setSetting("member_sync", { at: new Date().toISOString(), ok: true, members: rows.length, plates: E.length, with_emp: withEmp, cols: { name: cols.name, plate: cols.plate, emp: cols.emp, phone: cols.phone } });
+    return { ok: true, message: `สมาชิก ${rows.length} คน · ทะเบียน ${E.length} คัน · มีรหัสพนักงาน ${withEmp}` };
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    await setSetting("member_sync", { at: new Date().toISOString(), ok: false, error: msg });
+    return { ok: false, message: msg };
+  }
+}
+
 export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: boolean; held?: boolean; count?: number; message: string }> {
   if (!kioskConfigured()) return { ok: false, message: "ยังไม่ได้ตั้งค่า KIOS_BASE_URL / KIOS_API_KEY" };
   // KIOS ล่มรอบก่อน → พัก 1 นาทีก่อนเรียกใหม่ (ไม่ซ้ำเติมเซิร์ฟเวอร์ที่ล่มอยู่) ใช้ข้อมูลเดิมไปก่อน
@@ -135,6 +171,9 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
       return { ok: false, message: `KIOS ไม่ตอบรอบก่อน รออีก ${wait} วินาทีก่อนดึงใหม่ · ใช้ข้อมูลเดิมไปก่อน` };
     }
   }
+  // สมาชิกลานจอดเปลี่ยนไม่บ่อย: ดึงใหม่ทุก 12 ชม. (หรือกดในหน้าแหล่งข้อมูล)
+  const ms = await getSetting<any>("member_sync", null);
+  if (!ms?.at || Date.now() - new Date(ms.at).getTime() > 12 * 3600e3) await syncMembers().catch(() => null);
   try {
     // 2 แหล่งพร้อมกัน: รายการลานจอด (dpark · มี freeMember) + รายการ visitor (มีชื่อ/เบอร์คนขับ)
     const [visR, dpR] = await Promise.allSettled([fetchKiosk(), dparkEnabled() ? fetchDpark() : Promise.reject(new Error("off"))]);
@@ -192,11 +231,12 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
       `INSERT INTO driver_directory (plate, plate_display, driver_name, phone, company, source, last_seen)
        SELECT x.p, x.pd, x.n, x.ph, x.c, 'visitor', now() FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) AS x(p, pd, n, ph, c)
        ON CONFLICT (plate) DO UPDATE SET last_seen = now(),
-         driver_name = CASE WHEN driver_directory.source = 'manual' THEN driver_directory.driver_name ELSE EXCLUDED.driver_name END,
-         phone = CASE WHEN driver_directory.source = 'manual' THEN COALESCE(driver_directory.phone, EXCLUDED.phone) ELSE COALESCE(EXCLUDED.phone, driver_directory.phone) END,
+         driver_name = CASE WHEN driver_directory.source IN ('manual','member') AND driver_directory.driver_name IS NOT NULL THEN driver_directory.driver_name ELSE EXCLUDED.driver_name END,
+         phone = CASE WHEN driver_directory.source IN ('manual','member') THEN COALESCE(driver_directory.phone, EXCLUDED.phone) ELSE COALESCE(EXCLUDED.phone, driver_directory.phone) END,
          company = COALESCE(EXCLUDED.company, driver_directory.company)`,
       [names.map((n) => n.plate), names.map((n) => n.plate_display), names.map((n) => n.driver_name), names.map((n) => n.phone), names.map((n) => n.company)]);
     await q(`DELETE FROM driver_directory WHERE source = 'visitor' AND last_seen < now() - interval '90 days'`);
+    // ลำดับความเชื่อถือของชื่อ: Admin ตั้งเอง > สมาชิก KIOS > visitor ครั้งนี้ > visitor ครั้งก่อน
     // รถที่ไม่มีชื่อ (เช่น freeMember): เติมจากสมุดรายชื่อ
     const dir = await q<any>(`SELECT plate, driver_name, phone, company, source FROM driver_directory WHERE driver_name IS NOT NULL`);
     const nameSrc = new Map<string, string>();
@@ -204,7 +244,7 @@ export async function syncDriver(opts: { force?: boolean } = {}): Promise<{ ok: 
       if (v.driver_name) { nameSrc.set(v.plate, "visitor"); continue; }
       const key = v.plate.replace(/^ID-/, "");
       const d = dir.find((x) => nearPlate(x.plate, key));
-      if (d) { v.driver_name = d.driver_name; v.phone = v.phone ?? d.phone; nameSrc.set(v.plate, d.source === "manual" ? "manual" : "history"); }
+      if (d) { v.driver_name = d.driver_name; v.phone = v.phone ?? d.phone; nameSrc.set(v.plate, d.source === "manual" ? "manual" : d.source === "member" ? "member" : "history"); }
     }
 
     await q(`DELETE FROM driver_presence WHERE src = 'api' OR (src = 'xlsx' AND uploaded_at < now() - interval '12 hours')`);

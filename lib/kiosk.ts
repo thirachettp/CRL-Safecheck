@@ -110,3 +110,23 @@ export async function fetchDpark(now = new Date()): Promise<Record<string, unkno
   if (!rows) throw new Error("dpark: ข้อมูลที่ได้ไม่ใช่รายการ");
   return rows;
 }
+
+/** สมาชิกลานจอด (เมนู จัดการสมาชิก: rest/v1/ticketMember) มีรหัสพนักงาน ชื่อ ทะเบียน */
+export async function fetchMembers(): Promise<Record<string, unknown>[]> {
+  const base = (process.env.KIOS_DPARK_BASE_URL || process.env.KIOS_BASE_URL!).replace(/\/+$/, "");
+  const table = process.env.KIOS_MEMBER_TABLE || "ticketMember";
+  const appid = Number(process.env.KIOS_APPID || 34);
+  let res: Response;
+  try {
+    res = await fetch(`${base}/rest/v1/${table}?select=*&AppID=eq.${appid}&Del=eq.false`, {
+      headers: { apikey: process.env.KIOS_API_KEY!, Authorization: `Bearer ${process.env.KIOS_API_KEY!}` },
+      signal: AbortSignal.timeout(15_000), cache: "no-store",
+    });
+  } catch (e: any) {
+    throw new Error(e?.name === "TimeoutError" ? "สมาชิก: KIOS ไม่ตอบภายใน 15 วินาที" : `สมาชิก: เชื่อมต่อไม่ได้: ${e?.message ?? e}`);
+  }
+  if (!res.ok) throw new Error(`สมาชิก: ${kioskError(res.status, await res.text())}`);
+  const j = await res.json();
+  if (!Array.isArray(j)) throw new Error("สมาชิก: ข้อมูลที่ได้ไม่ใช่รายการ");
+  return j;
+}

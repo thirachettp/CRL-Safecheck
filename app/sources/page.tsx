@@ -192,13 +192,36 @@ function ExcelUpload({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** สมาชิกลานจอด KIOS (เมนู จัดการสมาชิก): ทะเบียน → ชื่อ + รหัสพนักงาน */
+function MemberSync({ m, onDone }: { m: any; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ k: string; t: string } | null>(null);
+  async function run() {
+    setBusy(true); setMsg(null);
+    try { const r: any = await api("/api/sources/driver", { method: "POST", json: { action: "members" } }); setMsg({ k: r.ok ? "ok" : "warn", t: r.message }); onDone(); }
+    catch (e: any) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
+  }
+  return (
+    <div className="stack" style={{ gap: 6, borderTop: "1px solid var(--line-3)", paddingTop: 12 }}>
+      <div className="row"><b className="small grow">สมาชิกลานจอด KIOS (เมนู จัดการสมาชิก)</b>
+        <button className="btn btn-sm" disabled={busy} onClick={run}>{busy ? "กำลังดึง…" : "ดึงรายชื่อสมาชิก"}</button></div>
+      <p className="muted xs">ใช้ทะเบียนของสมาชิกเติมชื่อคนขับ และถ้ามีรหัสพนักงานที่อยู่ในชุดธง ระบบนับรถคันนั้นเป็นพนักงานคนนั้น (ไม่นับเป็นคนขับแยก) · ดึงใหม่อัตโนมัติทุก 12 ชม.</p>
+      {m?.at && (m.ok
+        ? <p className="small">ล่าสุด {fmtDateTime(m.at)} · สมาชิก {m.members} คน · ทะเบียน {m.plates} คัน · มีรหัสพนักงาน {m.with_emp}
+            <span className="muted xs"> (คอลัมน์ ชื่อ: {m.cols?.name ?? "—"} · ทะเบียน: {m.cols?.plate ?? "—"} · รหัส: {m.cols?.emp ?? "—"})</span></p>
+        : <p className="notice warn">ล่าสุด {fmtDateTime(m.at)} · {m.error}</p>)}
+      {msg && <p className={`notice ${msg.k}`}>{msg.t}</p>}
+    </div>
+  );
+}
+
 /** ชื่อคนขับ: จาก visitor / จำจากครั้งก่อน / Admin ตั้งเอง (แก้ได้) */
 function DriverName({ v, onDone }: { v: any; onDone: () => void }) {
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(v.driver_name ?? "");
   const [phone, setPhone] = useState(v.phone ?? "");
   const [err, setErr] = useState<string | null>(null);
-  const SRC: Record<string, string> = { history: "จำจากครั้งก่อน", manual: "ตั้งเอง" };
+  const SRC: Record<string, string> = { history: "จำจากครั้งก่อน", manual: "ตั้งเอง", member: "สมาชิก KIOS" };
   async function save(e: React.FormEvent) {
     e.preventDefault(); setErr(null);
     try { await api("/api/sources/driver", { method: "POST", json: { action: "name", plate: v.plate, plate_display: v.plate_display, driver_name: name, phone } }); setEdit(false); onDone(); }
@@ -356,6 +379,7 @@ function DriverPanel({ onDone }: { onDone: () => void }) {
           )}
         </div>
       )}
+      <MemberSync m={(d.data as any)?.members} onDone={() => d.reload()} />
       <DparkUpload onDone={() => { d.reload(); onDone(); }} />
       {!!d.data?.vehicles.length && (
         <div className="scroll-x freeze" style={{ maxHeight: 360 }}>

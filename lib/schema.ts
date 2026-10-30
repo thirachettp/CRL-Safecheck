@@ -384,4 +384,6 @@ export const SCHEMA: string[] = [
     last_seen   timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE driver_presence ADD COLUMN IF NOT EXISTS name_src text`,
+  // v18: สมาชิกลานจอด KIOS (ticketMember) → รหัสพนักงานของทะเบียน
+  `ALTER TABLE driver_directory ADD COLUMN IF NOT EXISTS emp_code text`,
 ];

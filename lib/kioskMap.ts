@@ -292,3 +292,38 @@ export function driverNames(rows: Record<string, unknown>[], f: KioskFields) {
 }
 /** ทะเบียนใกล้กัน: ตรงกัน หรือขึ้นต้นเหมือนกัน (มี/ไม่มีจังหวัดต่อท้าย) */
 export const nearPlate = (a: string, b: string) => a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)));
+
+/**
+ * สมาชิกลานจอด → (ทะเบียน, ชื่อ, รหัสพนักงาน) · เดาคอลัมน์จากชื่อ ไม่เก็บข้อมูลอื่น
+ * รหัสที่เป็นเลข 13 หลัก (เลขบัตรประชาชน) ไม่นำมาใช้
+ */
+export function memberColumns(rows: Record<string, unknown>[]) {
+  const keys = new Set<string>(); for (const r of rows.slice(0, 50)) for (const [k, v] of Object.entries(r)) if (v === null || ["string", "number"].includes(typeof v)) keys.add(k);
+  const list = [...keys];
+  const pick = (res: RegExp[], not?: RegExp) => { for (const re of res) { const k = list.find((x) => re.test(x) && !(not && not.test(x))); if (k) return k; } return null; };
+  return {
+    name: pick([/member.?name$/i, /^name$/i, /full.?name/i, /(^|_)name$/i], /type|car|plate|company/i),
+    plate: pick([/car.?plate/i, /plate/i, /license/i, /vehicle/i, /car.?no/i, /ทะเบียน/]),
+    emp: pick([/emp(loyee)?.?(id|code|no)/i, /staff.?(id|code)/i, /member.?code/i, /taxid/i, /รหัส/]),
+    phone: pick([/phone|mobile|tel/i]),
+    keys: list,
+  };
+}
+export function memberEntries(rows: Record<string, unknown>[]) {
+  const c = memberColumns(rows);
+  const out: { plate: string; plate_display: string; name: string | null; emp: string | null; phone: string | null }[] = [];
+  if (!c.plate) return { cols: c, entries: out };
+  for (const r of rows) {
+    const rawAll = str(r[c.plate]);
+    if (!rawAll) continue;
+    let emp = c.emp ? str(r[c.emp]) : null;
+    if (emp && /^\d{13}$/.test(emp.replace(/\D/g, "")) && emp.replace(/\D/g, "").length === 13) emp = null; // เลขบัตรประชาชน ไม่ใช้
+    // หนึ่งคนมีหลายทะเบียนได้ คั่นด้วย , ; / หรือขึ้นบรรทัด
+    for (const raw of rawAll.split(/[,;\n|]+/).map((x) => x.trim()).filter(Boolean)) {
+      const plate = normalizePlate(raw);
+      if (plate.length < 4 || isUrl(raw)) continue;
+      out.push({ plate, plate_display: raw, name: c.name ? str(r[c.name]) : null, emp: emp ? emp.toUpperCase() : null, phone: c.phone ? str(r[c.phone]) : null });
+    }
+  }
+  return { cols: c, entries: out };
+}

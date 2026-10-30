@@ -196,8 +196,11 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
   }
 
   // ทะเบียนรถที่ลงทะเบียนไว้ในโปรไฟล์ → รู้ว่าเป็นใคร
-  const plates = (await q<any>(`SELECT code, name, cost_center, tel, plate FROM profiles WHERE plate IS NOT NULL AND plate <> ''`))
-    .map((p) => ({ ...p, key: normalizePlate(p.plate) })).filter((p) => p.key.length >= 4);
+  // + สมาชิกลานจอด KIOS ที่มีรหัสพนักงาน (โปรไฟล์ในแอปมาก่อน)
+  const plates = [
+    ...(await q<any>(`SELECT code, name, cost_center, tel, plate FROM profiles WHERE plate IS NOT NULL AND plate <> ''`)),
+    ...(await q<any>(`SELECT emp_code AS code, driver_name AS name, NULL AS cost_center, phone AS tel, plate FROM driver_directory WHERE emp_code IS NOT NULL AND emp_code <> ''`)),
+  ].map((p) => ({ ...p, key: normalizePlate(p.plate) })).filter((p) => p.key.length >= 4);
   const byPlate = (vp: string) => plates.find((p) => vp === p.key || (vp.startsWith(p.key) && !/^\d/.test(vp.slice(p.key.length))));
 
   // คนขับจาก KIOS: หนึ่งคันหนึ่งคน key = ทะเบียนรถ
@@ -209,7 +212,7 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       // เป็นพนักงานในชุดธง: ใช้แถวของคนนั้น (ไม่สร้างคนขับซ้ำ)
       const c = out.get(`emp:${owner.code}`) ?? fromPlan(ownerPlan);
       out.set(c.person_key, { ...c, plate: v.plate_display ?? v.plate, presence: "kiosk", presence_site: v.zone, presence_since: iso(v.checkin_at),
-        here: true, note: null, basis: "src_kiosk", source: "Driver (KIOS) · ทะเบียนตรงโปรไฟล์" });
+        here: true, note: null, basis: "src_kiosk", source: "Driver (KIOS) · ทะเบียนตรงโปรไฟล์/สมาชิก" });
       continue;
     }
     out.set(key, {

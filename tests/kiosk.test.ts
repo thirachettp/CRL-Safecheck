@@ -199,3 +199,13 @@ test("รวมรายการลานจอด (มี freeMember) กั�
   assert.equal(m.vehicles.find((v) => v.plate === "2ฒล6541")!.driver_name, "สมชาย");
   assert.equal(m.visOnly, 0); // 9กก9999 ลานจอดบอกออกแล้ว ไม่นับ แม้ visitor ยังไม่ออก
 });
+
+test("สมาชิกลานจอด: ทะเบียน ชื่อ รหัสพนักงาน (ไม่ใช้เลข 13 หลัก)", async () => {
+  const { memberEntries } = await import("../lib/kioskMap.ts");
+  const r = memberEntries([
+    { id: 1, ticketMemberName: "สมชาย ใจดี", ticketMemberTaxID: "20076487", ticketMemberCarPlate: "ญฐ1748, 1กข 1234", ticketMemberTel: "0811111111", AppID: 34 },
+    { id: 2, ticketMemberName: "สมหญิง", ticketMemberTaxID: "1100000000000", ticketMemberCarPlate: "2ฒก4564" },
+  ]);
+  assert.equal(r.cols.name, "ticketMemberName"); assert.equal(r.cols.plate, "ticketMemberCarPlate"); assert.equal(r.cols.emp, "ticketMemberTaxID");
+  assert.deepEqual(r.entries.map((e) => [e.plate, e.emp]), [["ญฐ1748", "20076487"], ["1กข1234", "20076487"], ["2ฒก4564", null]]);
+});
