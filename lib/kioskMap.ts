@@ -303,7 +303,7 @@ export function memberColumns(rows: Record<string, unknown>[]) {
   const pick = (res: RegExp[], not?: RegExp) => { for (const re of res) { const k = list.find((x) => re.test(x) && !(not && not.test(x))); if (k) return k; } return null; };
   return {
     name: pick([/member.?name$/i, /^name$/i, /full.?name/i, /(^|_)name$/i], /type|car|plate|company/i),
-    plate: pick([/car.?plate/i, /plate/i, /license/i, /vehicle/i, /car.?no/i, /ทะเบียน/]),
+    plate: pick([/^plate$/i, /car.?plate/i, /plate/i, /license/i, /vehicle/i, /car.?no/i, /ทะเบียน/]),
     emp: pick([/emp(loyee)?.?(id|code|no)/i, /staff.?(id|code)/i, /member.?code/i, /taxid/i, /รหัส/]),
     phone: pick([/phone|mobile|tel/i]),
     keys: list,
@@ -326,4 +326,18 @@ export function memberEntries(rows: Record<string, unknown>[]) {
     }
   }
   return { cols: c, entries: out };
+}
+
+/** รถของสมาชิก (dpark_Car) จับคู่กับสมาชิก (ticketMember) → ทะเบียน ชื่อ รหัสพนักงาน */
+export function joinMemberCars(members: Record<string, unknown>[], cars: Record<string, unknown>[]) {
+  const mid = (r: Record<string, unknown>) => str(r.ticketMemberID ?? r.ticketMemberId ?? r.memberId);
+  const byId = new Map(members.map((m) => [mid(m), m]));
+  const rows: Record<string, unknown>[] = [];
+  for (const c of cars) {
+    if (c.Deleted === true || c.delete === true || c.carActive === false) continue;
+    const m = byId.get(mid(c));
+    if (!m || m.ticketMemberActive === false) continue;
+    rows.push({ plate: c.carPlateNumber ?? c.plate, ticketMemberName: m.ticketMemberName, ticketMemberTaxID: m.ticketMemberTaxID, ticketMemberTel: m.ticketMemberTel });
+  }
+  return rows;
 }

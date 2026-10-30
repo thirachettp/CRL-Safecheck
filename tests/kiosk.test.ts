@@ -209,3 +209,14 @@ test("สมาชิกลานจอด: ทะเบียน ชื่อ �
   assert.equal(r.cols.name, "ticketMemberName"); assert.equal(r.cols.plate, "ticketMemberCarPlate"); assert.equal(r.cols.emp, "ticketMemberTaxID");
   assert.deepEqual(r.entries.map((e) => [e.plate, e.emp]), [["ญฐ1748", "20076487"], ["1กข1234", "20076487"], ["2ฒก4564", null]]);
 });
+
+test("สมาชิก + รถ (dpark_Car) จับคู่ด้วย ticketMemberID", async () => {
+  const { joinMemberCars, memberEntries } = await import("../lib/kioskMap.ts");
+  const rows = joinMemberCars(
+    [{ ticketMemberID: 7, ticketMemberName: "ทดสอบ สมาชิก", ticketMemberTaxID: "20371039", ticketMemberTel: "081" },
+     { ticketMemberID: 8, ticketMemberName: "ปิดใช้งาน", ticketMemberTaxID: "20000000", ticketMemberActive: false }],
+    [{ carID: 1, carPlateNumber: "1กข 1234", ticketMemberID: 7, Deleted: false }, { carID: 2, carPlateNumber: "9ขข9999", ticketMemberID: 7, Deleted: true },
+     { carID: 3, carPlateNumber: "5คค5555", ticketMemberID: 8 }]);
+  const { entries } = memberEntries(rows);
+  assert.deepEqual(entries.map((e) => [e.plate, e.name, e.emp]), [["1กข1234", "ทดสอบ สมาชิก", "20371039"]]);
+});

@@ -2,7 +2,7 @@ import { q, one } from "./db";
 import { fetchListDelta, graphConfigured } from "./graph";
 import { normalizeGender, type FormCheckin } from "./parsers";
 import { fetchKiosk, fetchDpark, fetchMembers, dparkEnabled, kioskConfigured } from "./kiosk";
-import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, driverNames, nearPlate, memberEntries, type KioskFields, type Vehicle } from "./kioskMap";
+import { detectFields, toVehicles, shouldHold, prepareRows, typeBreakdown, dparkFields, mergeDriverSources, normalizePlate, driverNames, nearPlate, memberEntries, joinMemberCars, type KioskFields, type Vehicle } from "./kioskMap";
 import { setSetting, getSetting } from "./settings";
 
 export const SOURCES = [
@@ -132,11 +132,12 @@ function kioskOverride(): Partial<KioskFields> {
 export async function syncMembers() {
   if (!kioskConfigured()) return { ok: false, message: "ยังไม่ได้ตั้งค่า KIOS" };
   try {
-    const rows = await fetchMembers();
+    const { members, cars } = await fetchMembers();
+    const rows = joinMemberCars(members, cars);
     const { cols, entries } = memberEntries(rows);
     if (!cols.plate) {
-      const msg = `ไม่พบคอลัมน์ทะเบียนในข้อมูลสมาชิก · คอลัมน์ที่มี: ${cols.keys.join(", ")}`;
-      await setSetting("member_sync", { at: new Date().toISOString(), ok: false, error: msg, members: rows.length, cols });
+      const msg = `ไม่พบทะเบียนรถของสมาชิก (สมาชิก ${members.length} · รถ ${cars.length}) · คอลัมน์รถ: ${Object.keys(cars[0] ?? {}).join(", ")}`;
+      await setSetting("member_sync", { at: new Date().toISOString(), ok: false, error: msg, members: members.length });
       return { ok: false, message: msg };
     }
     const uniq = new Map(entries.map((e) => [e.plate, e]));
@@ -152,8 +153,8 @@ export async function syncMembers() {
       [E.map((e) => e.plate), E.map((e) => e.plate_display), E.map((e) => e.name), E.map((e) => e.phone), E.map((e) => e.emp)]);
     await q(`DELETE FROM driver_directory WHERE source = 'member' AND NOT (plate = ANY($1::text[]))`, [E.map((e) => e.plate)]);
     const withEmp = E.filter((e) => e.emp).length;
-    await setSetting("member_sync", { at: new Date().toISOString(), ok: true, members: rows.length, plates: E.length, with_emp: withEmp, cols: { name: cols.name, plate: cols.plate, emp: cols.emp, phone: cols.phone } });
-    return { ok: true, message: `สมาชิก ${rows.length} คน · ทะเบียน ${E.length} คัน · มีรหัสพนักงาน ${withEmp}` };
+    await setSetting("member_sync", { at: new Date().toISOString(), ok: true, members: members.length, cars: cars.length, plates: E.length, with_emp: withEmp, cols: { name: cols.name, plate: "dpark_Car.carPlateNumber", emp: cols.emp, phone: cols.phone } });
+    return { ok: true, message: `สมาชิก ${members.length} คน · รถ ${cars.length} คัน · ทะเบียนที่ใช้ได้ ${E.length} · มีรหัสพนักงาน ${withEmp}` };
   } catch (e: any) {
     const msg = e?.message ?? String(e);
     await setSetting("member_sync", { at: new Date().toISOString(), ok: false, error: msg });

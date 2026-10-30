@@ -111,22 +111,34 @@ export async function fetchDpark(now = new Date()): Promise<Record<string, unkno
   return rows;
 }
 
-/** สมาชิกลานจอด (เมนู จัดการสมาชิก: rest/v1/ticketMember) มีรหัสพนักงาน ชื่อ ทะเบียน */
-export async function fetchMembers(): Promise<Record<string, unknown>[]> {
+async function kiosGet(path: string, label: string): Promise<Record<string, unknown>[]> {
   const base = (process.env.KIOS_DPARK_BASE_URL || process.env.KIOS_BASE_URL!).replace(/\/+$/, "");
-  const table = process.env.KIOS_MEMBER_TABLE || "ticketMember";
-  const appid = Number(process.env.KIOS_APPID || 34);
   let res: Response;
   try {
-    res = await fetch(`${base}/rest/v1/${table}?select=*&AppID=eq.${appid}&Del=eq.false`, {
+    res = await fetch(`${base}/rest/v1/${path}`, {
       headers: { apikey: process.env.KIOS_API_KEY!, Authorization: `Bearer ${process.env.KIOS_API_KEY!}` },
       signal: AbortSignal.timeout(15_000), cache: "no-store",
     });
   } catch (e: any) {
-    throw new Error(e?.name === "TimeoutError" ? "สมาชิก: KIOS ไม่ตอบภายใน 15 วินาที" : `สมาชิก: เชื่อมต่อไม่ได้: ${e?.message ?? e}`);
+    throw new Error(e?.name === "TimeoutError" ? `${label}: KIOS ไม่ตอบภายใน 15 วินาที` : `${label}: เชื่อมต่อไม่ได้: ${e?.message ?? e}`);
   }
-  if (!res.ok) throw new Error(`สมาชิก: ${kioskError(res.status, await res.text())}`);
+  if (!res.ok) throw new Error(`${label}: ${kioskError(res.status, await res.text())}`);
   const j = await res.json();
-  if (!Array.isArray(j)) throw new Error("สมาชิก: ข้อมูลที่ได้ไม่ใช่รายการ");
+  if (!Array.isArray(j)) throw new Error(`${label}: ข้อมูลที่ได้ไม่ใช่รายการ`);
   return j;
+}
+
+/**
+ * สมาชิกลานจอด (เมนู จัดการสมาชิก › สมาชิก + บัตร + รถ)
+ * - ticketMember: ticketMemberID, ticketMemberName, ticketMemberTaxID (= หมายเลขประจำตัว / รหัสพนักงาน), ticketMemberTel
+ * - dpark_Car: carPlateNumber, ticketMemberID (รถของสมาชิก)
+ * ขอเฉพาะคอลัมน์ที่ใช้ (ไม่ดึงที่อยู่ / อีเมล)
+ */
+export async function fetchMembers(): Promise<{ members: Record<string, unknown>[]; cars: Record<string, unknown>[] }> {
+  const appid = Number(process.env.KIOS_APPID || 34);
+  const [members, cars] = await Promise.all([
+    kiosGet(`ticketMember?select=ticketMemberID,ticketMemberName,ticketMemberTaxID,ticketMemberTel,ticketMemberActive&AppID=eq.${appid}&Del=eq.false`, "สมาชิก"),
+    kiosGet(`dpark_Car?select=*&AppID=eq.${appid}`, "รถสมาชิก"),
+  ]);
+  return { members, cars };
 }

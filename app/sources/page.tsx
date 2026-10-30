@@ -207,7 +207,7 @@ function MemberSync({ m, onDone }: { m: any; onDone: () => void }) {
         <button className="btn btn-sm" disabled={busy} onClick={run}>{busy ? "กำลังดึง…" : "ดึงรายชื่อสมาชิก"}</button></div>
       <p className="muted xs">ใช้ทะเบียนของสมาชิกเติมชื่อคนขับ และถ้ามีรหัสพนักงานที่อยู่ในชุดธง ระบบนับรถคันนั้นเป็นพนักงานคนนั้น (ไม่นับเป็นคนขับแยก) · ดึงใหม่อัตโนมัติทุก 12 ชม.</p>
       {m?.at && (m.ok
-        ? <p className="small">ล่าสุด {fmtDateTime(m.at)} · สมาชิก {m.members} คน · ทะเบียน {m.plates} คัน · มีรหัสพนักงาน {m.with_emp}
+        ? <p className="small">ล่าสุด {fmtDateTime(m.at)} · สมาชิก {m.members} คน{m.cars != null ? ` · รถ ${m.cars} คัน` : ""} · ทะเบียนที่ใช้ได้ {m.plates} · มีรหัสพนักงาน {m.with_emp}
             <span className="muted xs"> (คอลัมน์ ชื่อ: {m.cols?.name ?? "—"} · ทะเบียน: {m.cols?.plate ?? "—"} · รหัส: {m.cols?.emp ?? "—"})</span></p>
         : <p className="notice warn">ล่าสุด {fmtDateTime(m.at)} · {m.error}</p>)}
       {msg && <p className={`notice ${msg.k}`}>{msg.t}</p>}
