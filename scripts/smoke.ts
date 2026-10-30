@@ -557,6 +557,19 @@ await j(`/api/incidents/${drill3}`, { method: "POST", json: { action: "close" } 
   await j(`/api/incidents/${rid}`, { method: "POST", json: { action: "close" } });
 }
 
+// ---------- นำเข้า Excel ลงเวอร์ชันที่เลือก (ไม่สร้างเวอร์ชันใหม่) · ตารางทั้งหมด ----------
+{
+  const before = await j("/api/plan");
+  const n = before.versions.length, act = before.version.active;
+  ok(await fails(j("/api/plan", { method: "POST", json: { people: plan.people, leaders: plan.leaders, files: 3, into: before.versions.find((v: any) => v.id !== act)?.id ?? -1 } })), "นำเข้าลงเวอร์ชันที่ไม่ได้ใช้อยู่ไม่ได้");
+  const r = await j("/api/plan", { method: "POST", json: { people: plan.people, leaders: plan.leaders, files: 3, into: act } });
+  const after = await j("/api/plan");
+  ok(r.version === act && after.versions.length === n && after.version.active === act && !after.version.dirty, "นำเข้า Excel แทนที่ข้อมูลในเวอร์ชันที่เลือก (ไม่สร้างใหม่)");
+  const all = await j("/api/admin/flags?all=1");
+  ok(all.people.length >= plan.people.length && all.people.every((p: any) => "emp_id" in p && "flag_no" in p), "ตารางแบบ Excel: ได้ทุกคนในชุดธง");
+  ok(await fails(j("/api/admin/flags?all=1", { tok: "x" })), "ตารางชุดธงต้องเป็น Admin");
+}
+
 for (const p of ["/", "/review", "/search", "/injury", "/profile", "/admin", "/dashboard", `/dashboard?id=${drill}`, "/sources"]) {
   const r = await fetch(B + p);
   ok(r.status === 200, `หน้า ${p} เปิดได้`);

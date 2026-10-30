@@ -345,3 +345,23 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .code-step.done .code-n { background: #16A34A; color: #fff; }
 .code-step.cur .code-n { background: #B45309; color: #fff; }
 @media (max-width: 900px) { .code-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* ตารางแบบ Excel (ชุดธง) */
+.xl-wrap { overflow: auto; max-height: 70vh; }
+.xl { border-collapse: separate; border-spacing: 0; font-size: 13px; width: max-content; min-width: 100%; }
+.xl th { position: sticky; top: 0; z-index: 2; background: #F1F5F9; color: #334155; font-weight: 700; text-align: left; padding: 6px 8px; border-right: 1px solid #E2E8F0; border-bottom: 1px solid #CBD5E1; white-space: nowrap; }
+.xl td { border-right: 1px solid #EEF2F6; border-bottom: 1px solid #EEF2F6; padding: 0; height: 30px; background: #fff; }
+.xl .xl-n { position: sticky; left: 0; z-index: 1; background: #F8FAFC; color: #94A3B8; text-align: right; padding: 0 8px; width: 44px; font-size: 11px; font-family: var(--mono, monospace); }
+.xl th.xl-n { z-index: 3; }
+.xl-c { cursor: cell; }
+.xl-c > span { display: block; padding: 0 8px; line-height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.xl-c.cur { outline: 2px solid #1F6FEB; outline-offset: -2px; position: relative; z-index: 1; }
+.xl-c.saving { background: #FEF9C3 !important; }
+.xl-c.ok { background: #DCFCE7 !important; transition: background .6s; }
+.xl-c.err { background: #FEE2E2 !important; }
+.xl-c.ro { color: #94A3B8; text-decoration: line-through; cursor: default; }
+.xl-in { width: 100%; height: 30px; border: 0; outline: 2px solid #1F6FEB; outline-offset: -2px; padding: 0 8px; font: inherit; background: #fff; }
+.xl tr.xl-lead td.xl-c { background: #FFFBEB; }
+.xl tr.xl-new td { background: #F0FDF4; }
+.xl tr.xl-removed td { background: #F8FAFC; }
+.xl-act { padding: 0 8px !important; white-space: nowrap; }
+.xl tbody tr:hover td.xl-c:not(.cur) { background: #F8FAFC; }

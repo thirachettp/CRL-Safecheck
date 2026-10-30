@@ -5,6 +5,7 @@ import PcHeader from "@/components/PcHeader";
 import PinGate from "@/components/PinGate";
 import UsersPanel from "@/components/UsersPanel";
 import PlanEditor, { type FlagRow } from "@/components/PlanEditor";
+import PlanSheet from "@/components/PlanSheet";
 import { PushAdminCard } from "@/components/Notify";
 import ReviewPanel from "@/components/ReviewPanel";
 import Tabs, { useTab } from "@/components/Tabs";
@@ -40,6 +41,7 @@ function Admin() {
   const [naming, setNaming] = useState(false);
   const [vName, setVName] = useState("");
   const [vMode, setVMode] = useState<"copy" | "blank">("copy");
+  const [editView, setEditView] = useState<"sheet" | "flags">("sheet");
   const activeName = o.data?.versions.find((v) => v.id === o.data?.version.active)?.name ?? "เวอร์ชันที่ใช้อยู่";
 
   async function run(fn: () => Promise<any>, ok: string) {
@@ -109,8 +111,20 @@ function Admin() {
       {tab === "plan" && (
         <div className="wrap layout" style={{ display: "grid" }}>
           <section className="stack" style={{ gap: 20, minWidth: 0 }}>
-            <ImportCard onSaved={() => o.reload()} />
-            {o.data && <PlanEditor flags={o.data.flags} leaders={o.data.leaders} points={o.data.points} total={o.data.total} roles={o.data.roles} onChanged={o.reload} />}
+            {o.data && <VersionPicker versions={o.data.versions} state={o.data.version} onNew={() => { setVMode("copy"); setNaming(true); }} onDone={o.reload} />}
+            <ImportCard onSaved={() => o.reload()} active={o.data?.versions.find((v) => v.id === o.data?.version.active) ?? null} />
+            {o.data && (
+              <div className="stack" style={{ gap: 10 }}>
+                <div className="row" style={{ gap: 8 }}>
+                  <b className="grow" style={{ fontSize: 17 }}>③ แก้ไขข้อมูล</b>
+                  <button className={`pill${editView === "sheet" ? " on" : ""}`} onClick={() => setEditView("sheet")}>ตารางแบบ Excel</button>
+                  <button className={`pill${editView === "flags" ? " on" : ""}`} onClick={() => setEditView("flags")}>รายธง (ผู้นำธง · จุดรวมพล)</button>
+                </div>
+                {editView === "sheet"
+                  ? <PlanSheet flags={o.data.flags.map((f) => f.flag_no!).filter(Boolean)} roles={o.data.roles} onChanged={o.reload} />
+                  : <PlanEditor flags={o.data.flags} leaders={o.data.leaders} points={o.data.points} total={o.data.total} roles={o.data.roles} onChanged={o.reload} />}
+              </div>
+            )}
           </section>
           <aside className="stack" style={{ gap: 20, alignSelf: "start" }}>
             {o.data && <AccuracyCard a={o.data.accuracy} />}
@@ -133,8 +147,46 @@ function Admin() {
   );
 }
 
+// ---------- ① เลือกเวอร์ชันที่จะแก้ ----------
+function VersionPicker({ versions, state, onNew, onDone }: { versions: Overview["versions"]; state: Overview["version"]; onNew: () => void; onDone: () => void }) {
+  const [pick, setPick] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const act = versions.find((v) => v.id === state.active);
+  async function use(id: number) {
+    setBusy(true); setErr(null);
+    try { await api("/api/admin/versions", { method: "POST", json: { action: "activate", id } }); setPick(null); onDone(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="card" style={{ padding: "14px 18px", borderColor: "#93C5FD", background: "#F8FBFF" }}>
+      <div className="row" style={{ gap: 10 }}>
+        <b style={{ fontSize: 17 }}>① เลือกเวอร์ชันที่จะแก้</b>
+        <select className="in" style={{ marginTop: 0, minWidth: 280, flex: "1 1 280px", maxWidth: 460, fontWeight: 600 }} value={pick ?? state.active ?? ""}
+          onChange={(e) => { const id = Number(e.target.value); if (id === state.active) setPick(null); else if (state.dirty) setPick(id); else use(id); }} disabled={busy}>
+          {!versions.length && <option value="">ยังไม่มีเวอร์ชัน</option>}
+          {versions.map((v) => <option key={v.id} value={v.id}>{v.name ?? "ไม่มีชื่อ"} · {v.people} คน{v.id === state.active ? " (ใช้อยู่)" : ""}</option>)}
+        </select>
+        <button className="btn btn-sm" onClick={onNew}>+ เวอร์ชันใหม่</button>
+        {act && <span className={`chip ${state.dirty ? "warn" : "ok"}`}>{state.dirty ? "มีแก้ไขที่ยังไม่บันทึกลงเวอร์ชัน" : "ข้อมูลตรงกับเวอร์ชัน"}</span>}
+      </div>
+      {pick != null && (
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <span className="small" style={{ color: "#92400E" }}>เวอร์ชัน “{act?.name}” มีแก้ไขที่ยังไม่บันทึก ถ้าเปลี่ยนเวอร์ชันตอนนี้ ที่แก้ไว้จะหาย</span>
+          <button className="btn btn-sm" onClick={async () => { await api("/api/admin/versions", { method: "POST", json: { action: "overwrite", id: state.active } }); await use(pick); }}>บันทึกทับก่อนแล้วเปลี่ยน</button>
+          <button className="btn btn-sm" style={{ color: "#9F1239" }} onClick={() => use(pick)}>เปลี่ยนเลย (ทิ้งที่แก้)</button>
+          <button className="lk" onClick={() => setPick(null)}>ยกเลิก</button>
+        </div>
+      )}
+      <p className="muted xs" style={{ marginTop: 8 }}>ทุกอย่างด้านล่าง (นำเข้า Excel · แก้ไขตาราง) ทำกับเวอร์ชันที่เลือกนี้ · แก้ในตารางแล้วกด “บันทึกทับ” เพื่อเก็บลงเวอร์ชัน · ตอนซ้อม/เกิดเหตุ ระบบใช้ข้อมูลล่าสุดที่แก้แล้ว</p>
+      {err && <p className="notice err">{err}</p>}
+    </div>
+  );
+}
+
 // ---------- นำเข้าไฟล์ธง ----------
-function ImportCard({ onSaved }: { onSaved: () => void }) {
+function ImportCard({ onSaved, active }: { onSaved: () => void; active: { id: number; name: string | null } | null }) {
+  const [into, setInto] = useState<"active" | "new">("active");
   const input = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
   const mergePlanFn = useRef<typeof import("@/lib/parsers").mergePlan | null>(null);
@@ -182,8 +234,9 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
     setBusy(true);
     try {
       const people = m.people.map(({ sheet, bad_id, ...p }) => p);
-      const r = await api("/api/plan", { method: "POST", json: { people, leaders: m.leaders, files: m.files, name } });
-      setMsg({ k: "ok", t: `บันทึกเป็นชุดธง “${r.version_name ?? name.trim()}” แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
+      const toActive = into === "active" && !!active;
+      const r = await api("/api/plan", { method: "POST", json: { people, leaders: m.leaders, files: m.files, name, into: toActive ? active!.id : null } });
+      setMsg({ k: "ok", t: toActive ? `นำเข้าแทนที่ข้อมูลในเวอร์ชัน “${active!.name}” แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` : `บันทึกเป็นชุดธง “${r.version_name ?? name.trim()}” แล้ว ${r.saved} คน ผู้นำธง ${r.leaders} ธง` });
       setRaw(null); onSaved();
     } catch (e: any) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
@@ -191,7 +244,7 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
   const warns = m?.issues.filter((i) => i.level === "warn") ?? [];
   return (
     <div className="card">
-      <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>นำเข้าไฟล์ธง (Excel)</span>
+      <div className="card-h"><span className="grow" style={{ fontSize: 17 }}>② นำเข้าไฟล์ธง (Excel) <span className="muted small" style={{ fontWeight: 500 }}>ไม่บังคับ</span></span>
         <span className="muted xs" style={{ fontWeight: 500 }}>ไฟล์รายแผนก หัวตารางแถว 4 (จุดรวมพล … รหัสพนักงาน) · ไม่ใช้ชีตรายชื่อผู้นำธง · เลือกหลายไฟล์หรือทั้งโฟลเดอร์ได้</span></div>
       <div className="dropzone" data-over={over} role="button" tabIndex={0}
         onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
@@ -229,8 +282,12 @@ function ImportCard({ onSaved }: { onSaved: () => void }) {
             </div>
           )}
           <div className="row" style={{ padding: "12px 18px", borderTop: "1px solid var(--line-3)" }}>
-            <input className="in" style={{ marginTop: 0, width: 260 }} maxLength={80} placeholder="ชื่อเวอร์ชัน (ไม่ตั้ง = ใช้วันเวลา)" value={name} onChange={(e) => setName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />
-            <button className="btn btn-pri" onClick={save} disabled={busy || !m.people.length}>บันทึกเป็นชุดธงใหม่ ({m.people.length} คน)</button>
+            {active && <>
+              <button type="button" className={`pill${into === "active" ? " on" : ""}`} onClick={() => setInto("active")}>แทนที่ข้อมูลในเวอร์ชัน “{active.name}”</button>
+              <button type="button" className={`pill${into === "new" ? " on" : ""}`} onClick={() => setInto("new")}>สร้างเวอร์ชันใหม่</button>
+            </>}
+            {(into === "new" || !active) && <input className="in" style={{ marginTop: 0, width: 240 }} maxLength={80} placeholder="ชื่อเวอร์ชันใหม่ (ไม่ตั้ง = ใช้วันเวลา)" value={name} onChange={(e) => setName(e.target.value)} aria-label="ชื่อเวอร์ชัน" />}
+            <button className="btn btn-pri" onClick={save} disabled={busy || !m.people.length}>{into === "active" && active ? `นำเข้าลง “${active.name}”` : "บันทึกเป็นเวอร์ชันใหม่"} ({m.people.length} คน)</button>
             <button className="btn" onClick={() => setRaw(null)} disabled={busy}>ยกเลิก</button>
             <button className="btn" onClick={download} disabled={busy}>ดาวน์โหลดไฟล์รวม (.xlsx)</button>
             <span className="muted xs">แทนที่ชุดธงปัจจุบันทั้งหมด เหตุการณ์ที่เปิดอยู่ไม่กระทบ</span>

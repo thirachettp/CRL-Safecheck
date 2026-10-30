@@ -115,7 +115,7 @@ export async function versionState() {
 }
 
 /** นำเข้าแผนจาก Excel แทนที่ชุดเดิม เก็บธงจาก Excel ไว้เทียบความแม่นยำ แล้วบันทึกเป็นเวอร์ชันใหม่ */
-export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, fileCount: number, name?: string | null) {
+export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, fileCount: number, name?: string | null, intoVersion?: number | null) {
   await q(`DELETE FROM evac_plan`);
   await q(
     `INSERT INTO evac_plan (emp_id, prefix, first_name, last_name, gender, cost_center, area,
@@ -148,7 +148,16 @@ export async function importPlan(P: PlanPerson[], L: FlagLeader[], by: string, f
      WHERE cost_center IS NOT NULL AND cost_center <> '' GROUP BY cost_center
      ON CONFLICT (code) DO NOTHING`);
   await q(`DELETE FROM flag_reviews`);
-  const v = await saveVersion(`นำเข้าจาก Excel ${fileCount} ไฟล์`, by, name);
+  // นำเข้าลงเวอร์ชันที่เลือก (แทนที่ข้อมูลในเวอร์ชันนั้น) หรือสร้างเวอร์ชันใหม่
+  let v: number;
+  if (intoVersion) {
+    const cur = await activeVersionId();
+    if (cur !== intoVersion) throw new UserError("นำเข้าได้เฉพาะเวอร์ชันที่ใช้อยู่ · เลือกใช้เวอร์ชันนั้นก่อน");
+    await overwriteVersion(intoVersion, by);
+    await q(`UPDATE plan_versions SET note = $2 WHERE id = $1`, [intoVersion, `นำเข้าจาก Excel ${fileCount} ไฟล์ (แทนที่ข้อมูลเดิม) โดย ${by}`]);
+    await setSetting(CHANGED, null);
+    v = intoVersion;
+  } else v = await saveVersion(`นำเข้าจาก Excel ${fileCount} ไฟล์`, by, name);
   const vn = (await one<{ name: string }>(`SELECT name FROM plan_versions WHERE id = $1`, [v]))?.name ?? null;
   return { saved: P.length, leaders: L.length, version: v, version_name: vn };
 }

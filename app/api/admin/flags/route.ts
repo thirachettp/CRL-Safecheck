@@ -1,5 +1,6 @@
 import { handle, ok, fail } from "@/lib/http";
 import { requireRole } from "@/lib/auth";
+import { q } from "@/lib/db";
 import { normFlag } from "@/lib/flag";
 import { reviewFlag, searchPlan, saveFlag, deleteFlag, editPerson, addPlanPerson, removePerson, touchPlan, lookupPerson } from "@/lib/plan";
 
@@ -10,6 +11,10 @@ export const GET = handle(async (req: Request) => {
   await requireRole(req, ["admin"]);
   const term = new URL(req.url).searchParams.get("q");
   if (term != null) return ok({ results: await searchPlan(term) });
+  // ทุกคนในชุดธง (ตารางแบบ Excel)
+  if (new URL(req.url).searchParams.get("all") != null) return ok({ people: await q(
+    `SELECT emp_id, prefix, first_name, last_name, name_en, gender, flag_no, role, cost_center, area, tel, removed, removed_reason, added_manually
+     FROM evac_plan ORDER BY removed, flag_key(flag_no) NULLS LAST, flag_no, (role ILIKE 'ผู้นำ%') DESC, first_name`) });
   const lk = new URL(req.url).searchParams.get("lookup");
   if (lk != null) return ok({ person: await lookupPerson(lk) });
   const f = normFlag(new URL(req.url).searchParams.get("flag"));
