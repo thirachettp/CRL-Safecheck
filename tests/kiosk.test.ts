@@ -213,8 +213,8 @@ test("สมาชิกลานจอด: ทะเบียน ชื่อ �
 test("สมาชิก + รถ (dpark_Car) จับคู่ด้วย ticketMemberID", async () => {
   const { joinMemberCars, memberEntries } = await import("../lib/kioskMap.ts");
   const rows = joinMemberCars(
-    [{ ticketMemberID: 7, ticketMemberName: "ทดสอบ สมาชิก", ticketMemberTaxID: "20371039", ticketMemberTel: "081" },
-     { ticketMemberID: 8, ticketMemberName: "ปิดใช้งาน", ticketMemberTaxID: "20000000", ticketMemberActive: false }],
+    [{ id: 7, ticketMemberName: "ทดสอบ สมาชิก", ticketMemberTaxID: "20371039", ticketMemberTel: "081" },
+     { id: 8, ticketMemberName: "ปิดใช้งาน", ticketMemberTaxID: "20000000", ticketMemberActive: false }],
     [{ carID: 1, carPlateNumber: "1กข 1234", ticketMemberID: 7, Deleted: false }, { carID: 2, carPlateNumber: "9ขข9999", ticketMemberID: 7, Deleted: true },
      { carID: 3, carPlateNumber: "5คค5555", ticketMemberID: 8 }]);
   const { entries } = memberEntries(rows);

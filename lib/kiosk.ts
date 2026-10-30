@@ -130,14 +130,14 @@ async function kiosGet(path: string, label: string): Promise<Record<string, unkn
 
 /**
  * สมาชิกลานจอด (เมนู จัดการสมาชิก › สมาชิก + บัตร + รถ)
- * - ticketMember: ticketMemberID, ticketMemberName, ticketMemberTaxID (= หมายเลขประจำตัว / รหัสพนักงาน), ticketMemberTel
+ * - ticketMember: id, ticketMemberName, ticketMemberTaxID (= หมายเลขประจำตัว / รหัสพนักงาน), ticketMemberTel
  * - dpark_Car: carPlateNumber, ticketMemberID (รถของสมาชิก)
  * ขอเฉพาะคอลัมน์ที่ใช้ (ไม่ดึงที่อยู่ / อีเมล)
  */
 export async function fetchMembers(): Promise<{ members: Record<string, unknown>[]; cars: Record<string, unknown>[] }> {
   const appid = Number(process.env.KIOS_APPID || 34);
   const [members, cars] = await Promise.all([
-    kiosGet(`ticketMember?select=ticketMemberID,ticketMemberName,ticketMemberTaxID,ticketMemberTel,ticketMemberActive&AppID=eq.${appid}&Del=eq.false`, "สมาชิก"),
+    kiosGet(`ticketMember?select=id,ticketMemberName,ticketMemberTaxID,ticketMemberTel&AppID=eq.${appid}&Del=eq.false`, "สมาชิก"),
     kiosGet(`dpark_Car?select=*&AppID=eq.${appid}`, "รถสมาชิก"),
   ]);
   return { members, cars };

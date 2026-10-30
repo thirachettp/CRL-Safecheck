@@ -330,8 +330,9 @@ export function memberEntries(rows: Record<string, unknown>[]) {
 
 /** รถของสมาชิก (dpark_Car) จับคู่กับสมาชิก (ticketMember) → ทะเบียน ชื่อ รหัสพนักงาน */
 export function joinMemberCars(members: Record<string, unknown>[], cars: Record<string, unknown>[]) {
-  const mid = (r: Record<string, unknown>) => str(r.ticketMemberID ?? r.ticketMemberId ?? r.memberId);
-  const byId = new Map(members.map((m) => [mid(m), m]));
+  // สมาชิก: คีย์ id · รถ: อ้างถึงสมาชิกด้วย ticketMemberID (หรือชื่ออื่นที่ใกล้เคียง)
+  const mid = (r: Record<string, unknown>) => str(r.ticketMemberID ?? r.ticketMemberId ?? r.memberId ?? r.member_id);
+  const byId = new Map(members.map((m) => [str(m.id ?? m.ticketMemberID), m]));
   const rows: Record<string, unknown>[] = [];
   for (const c of cars) {
     if (c.Deleted === true || c.delete === true || c.carActive === false) continue;
