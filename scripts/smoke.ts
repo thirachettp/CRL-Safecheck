@@ -155,12 +155,22 @@ let cur = await j("/api/incidents");
 ok(cur.current.id === rep && cur.current.state === "pending", "แจ้งเหตุแล้ว รอยืนยัน");
 await j(`/api/incidents/${rep}`, { method: "POST", json: { action: "cancel", by: user.name } });
 ok((await j("/api/incidents")).current === null, "ยกเลิกการแจ้งได้");
+// เหตุจริงตั้งรายชื่อจากข้อมูล: คนในธงเข้าเฉพาะที่ตรวจทานว่า "มา" วันนี้ หรือระบบเข้า-ออกเห็นว่าอยู่
+{
+  const { id: r0 } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้" }, tok: user2.token });
+  await j(`/api/incidents/${r0}`, { method: "POST", json: { action: "confirm", closedPoints: [] }, tok: safety });
+  const s0 = await j(`/api/incidents/${r0}`);
+  ok(!s0.people.some((p: any) => p.person_key === "emp:30000104"), "เหตุจริง: คนในธงที่ไม่มีข้อมูลว่ามา ไม่อยู่ในรายชื่อ");
+  await j(`/api/incidents/${r0}`, { method: "POST", json: { action: "close" }, tok: token });
+  for (const fl of ["1", "2", "3"]) for (const p of (await j(`/api/admin/flags?flag=${fl}`)).people)
+    if (!p.removed && p.emp_id !== "30000101") await j("/api/review", { method: "POST", json: { action: "attend", emp_id: p.emp_id, here: true, by: "ผู้ตรวจ" } });
+}
 const { id: real } = await j("/api/incidents", { method: "POST", json: { action: "report", kind: "ไฟไหม้", area: "Sort" }, tok: user2.token });
 ok(await fails(j(`/api/incidents/${real}`, { method: "POST", json: { action: "confirm" }, tok: "bad" })), "ยืนยันโดยไม่มีรหัสถูกปฏิเสธ");
 await j(`/api/incidents/${real}`, { method: "POST", json: { action: "confirm", closedPoints: ["1"] }, tok: safety });
 s = await j(`/api/incidents/${real}`);
 ok(s.incident.state === "active" && s.incident.closed_points?.[0] === "1" && s.incident.confirmed_by === "Safety ทดสอบ", "ยืนยันเหตุจริง ปิดจุดรวมพล 1");
-ok(s.people.length >= 15 && P("emp:30000100")?.emer === "คุณแม่ · 0899999999", "snapshot + ผู้ติดต่อฉุกเฉินจากโปรไฟล์");
+ok(s.people.length >= 12 && !s.people.some((p: any) => p.person_key === "emp:30000101") && P("emp:30000100")?.emer === "คุณแม่ · 0899999999", "เหตุจริง: รายชื่อจากข้อมูล (ตรวจทานว่ามา) + ผู้ติดต่อฉุกเฉินจากโปรไฟล์");
 ok(new Set(s.people.map((p: any) => p.cost_center)).size >= 3, "มี Cost Center ให้กรองในเหตุจริง");
 ok(await fails(j(`/api/incidents/${real}/roll`, { method: "POST", json: { flag: 1, safe: [], count: 0 } })), "เช็คชื่อทั้งธงใช้ไม่ได้ในเหตุจริง");
 await j(`/api/incidents/${real}/people`, { method: "PATCH", json: { person_key: "emp:30000100", status: "inj", by: "ผู้นำธง" } });

@@ -156,7 +156,15 @@ async function buildCandidates(inc: Incident, now = new Date()): Promise<Candida
       here: dc.here, note: dc.note, basis: dc.basis, source: p.added_manually ? "เพิ่มจากหน้าตรวจทาน" : "แผนอพยพ (Excel)",
     };
   };
-  if (inc.include_plan) for (const p of plan) out.set(`emp:${p.emp_id}`, fromPlan(p));
+  // ซ้อม: ตั้งรายชื่อจากชุดธงทั้งหมด
+  // เหตุจริง: ตั้งจากข้อมูล — คนในธงเข้ารายชื่อเฉพาะที่ระบบเข้า-ออกเห็นว่าอยู่ หรือตรวจทานธงว่า "มา" วันนี้
+  //           (คนที่มาจาก DIV+ / Outsource / KIOS ถูกเพิ่มด้านล่างอยู่แล้ว)
+  const PRESENT_BASIS = new Set(["review_in", "sys_in", "review_out_sys_in"]);
+  if (inc.include_plan) for (const p of plan) {
+    const c = fromPlan(p);
+    if (inc.mode === "real" && !PRESENT_BASIS.has(c.basis ?? "")) continue;
+    out.set(c.person_key, c);
+  }
 
   for (const [email, pr] of present) {
     const emp = linkMap.get(email);
